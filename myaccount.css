@@ -1,0 +1,473 @@
+/* =========================================================
+   ROOMHIVE - MY ACCOUNT (RENTER DASHBOARD)
+   Loaded on myaccount.php, after style.css and
+   host-dashboard.css (this page reuses the navbar, hero,
+   sidebar, card, stat-tile, status-pill, empty-state and
+   quick-add styles defined there). Anything new here is
+   namespaced .ma- to avoid clashing with either file.
+========================================================= */
+
+/* =========================
+   ABOUT ME (inside the Profile Information card)
+========================= */
+
+.ma-about-me {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #f0ead9;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ma-about-me p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1c2a38;
+  opacity: 0.8;
+  max-width: 640px;
+}
+
+/* Small caption under each stat number (Total / Properties / etc.) */
+.ma-stat-sub {
+  font-size: 10px;
+  color: #999999;
+  margin-top: -2px;
+}
+
+/* =========================
+   BOOKINGS + PAYMENTS SPLIT
+========================= */
+
+.ma-content-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+.ma-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* =========================
+   RECENT BOOKINGS
+========================= */
+
+.ma-booking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ma-booking-row {
+  display: grid;
+  grid-template-columns: 56px 1.6fr auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #f0ead9;
+  border-radius: 10px;
+}
+
+.ma-booking-thumb {
+  width: 56px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #e6dcc8;
+  display: block;
+}
+
+.ma-booking-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ma-booking-main strong {
+  font-size: 13px;
+  color: #1c2a38;
+}
+
+.ma-booking-main span {
+  font-size: 11px;
+  color: #999999;
+}
+
+.ma-booking-dates {
+  color: #b9770e !important;
+}
+
+.ma-booking-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ma-metric-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1c2a38;
+}
+
+.ma-metric-label {
+  font-size: 10px;
+  color: #999999;
+}
+
+.ma-remove-link {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c0392b;
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ma-remove-link:hover {
+  background: #fff0f0;
+}
+
+.ma-view-all-btn {
+  display: flex;
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.ma-booking-form-grid {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+.ma-booking-form-grid select {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #dedede;
+  border-radius: 6px;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+/* =========================
+   PAYMENT SUMMARY
+========================= */
+
+.ma-payment-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ma-payment-summary-label {
+  font-size: 12px;
+  color: #999999;
+}
+
+.ma-payment-summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #eda423;
+}
+
+/* =========================
+   PAYMENT METHODS
+========================= */
+
+.ma-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ma-payment-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f0ead9;
+  border-radius: 8px;
+}
+
+.ma-card-brand {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c2a38;
+  padding: 3px 8px;
+  background: #f4ecdc;
+  border-radius: 4px;
+}
+
+.ma-card-number {
+  font-size: 12.5px;
+  color: #1c2a38;
+  letter-spacing: 1px;
+}
+
+.ma-card-expiry {
+  font-size: 11px;
+  color: #999999;
+}
+
+.ma-payment-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ma-payment-form-grid select,
+.ma-payment-form-grid input {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #dedede;
+  border-radius: 6px;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+}
+
+/* =========================
+   ACCOUNT SECURITY
+========================= */
+
+.ma-security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ma-security-row strong {
+  display: block;
+  font-size: 13px;
+  color: #1c2a38;
+  margin-bottom: 4px;
+}
+
+.ma-security-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.ma-security-status.ma-enabled {
+  background: #e6f6ea;
+  color: #2e7d32;
+}
+
+.ma-security-status.ma-disabled {
+  background: #f1f1f1;
+  color: #777777;
+}
+
+/* =========================
+   WISHLIST
+========================= */
+
+.ma-wishlist-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.ma-wishlist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ma-wishlist-image-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.ma-wishlist-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #e6dcc8;
+  display: block;
+}
+
+.ma-wishlist-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #eda423;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.ma-wishlist-card strong {
+  font-size: 13px;
+  color: #1c2a38;
+}
+
+.ma-wishlist-card span {
+  font-size: 11px;
+  color: #999999;
+}
+
+.ma-wishlist-price {
+  font-weight: 700 !important;
+  color: #eda423 !important;
+}
+
+/* =========================
+   NEED HELP BANNER
+========================= */
+
+.ma-help-banner {
+  background: #fdf1e0;
+  border-radius: 14px;
+  padding: 26px 30px;
+
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 20px;
+}
+
+.ma-help-illustration {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.ma-help-text h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: #1c2a38;
+}
+
+.ma-help-text p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #1c2a38;
+  opacity: 0.7;
+}
+
+/* =========================================================
+   SIDEBAR NAVIGATION FIX
+   =========================================================
+   - Anchor targets get scroll-margin-top so a smooth-scroll
+     jump doesn't tuck the section under the fixed navbar.
+   - "Soon" items (not built yet) are visually disabled
+     instead of behaving like dead `#` links.
+   - .active on a sidebar link reuses whatever styling
+     host-dashboard.css already gives .hd-sidebar-nav a.active
+     (Overview already uses it) — no new active-state rule
+     needed here, just toggled by JS as the user scrolls.
+========================================================= */
+
+#ma-profile,
+#ma-bookings,
+#ma-payments,
+#ma-wishlist,
+#ma-help {
+  scroll-margin-top: 110px;
+}
+
+.ma-sidebar-soon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ma-sidebar-soon:hover {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.ma-soon-badge {
+  margin-left: auto;
+
+  padding: 2px 8px;
+
+  background: #eee4d3;
+  border-radius: 10px;
+
+  color: #6d757c;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 1100px) {
+  .ma-content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ma-wishlist-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ma-booking-row {
+    grid-template-columns: 48px 1fr;
+    grid-template-areas:
+      "thumb main"
+      "thumb status"
+      "thumb amount";
+    row-gap: 6px;
+  }
+
+  .ma-booking-amount {
+    align-items: flex-start;
+  }
+
+  .ma-help-banner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .ma-help-illustration {
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .ma-wishlist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ma-booking-form-grid,
+  .ma-payment-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

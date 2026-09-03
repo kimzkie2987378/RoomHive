@@ -1,0 +1,7238 @@
+/* =========================
+RESET
+========================= */
+html {
+  scroll-behavior: smooth;
+}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  width: 100%;
+  font-family: "Poppins", sans-serif;
+  color: #1c2a38;
+}
+
+/* =========================
+   NAVIGATION BAR
+========================= */
+/* MY ACCOUNT */
+
+.nav-links .my-account {
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  color: #1c2a38;
+}
+
+/* MY ACCOUNT ICON WITH CIRCLE */
+.my-account img {
+  width: 34px;
+  height: 34px;
+
+  padding: 6px;
+
+  background: #1c2a38;
+
+  border-radius: 50%;
+
+  object-fit: contain;
+
+  display: block;
+}
+
+.my-account span {
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 90px;
+
+  background-color: #ffffff;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 60px;
+
+  z-index: 1000;
+
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+/* =========================
+   LOGO
+========================= */
+
+.logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.logo img {
+  width: 125px;
+  height: auto;
+  display: block;
+}
+
+/* =========================
+   NAVIGATION LINKS
+========================= */
+
+.nav-links {
+  margin-left: auto;
+
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 32px;
+}
+
+.nav-links a {
+  color: #111111;
+
+  text-decoration: none;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  letter-spacing: 0.3px;
+
+  white-space: nowrap;
+
+  transition: 0.2s ease;
+}
+
+.nav-links a:hover {
+  color: #eda423;
+}
+
+/* =========================
+   ACTIVE LINK
+========================= */
+
+.nav-links .active {
+  color: #eda423;
+}
+
+/* =========================
+   LIST YOUR SPACE
+========================= */
+
+.nav-links .list-space {
+  background-color: #1c2a38;
+  color: #ffffff;
+
+  padding: 13px 20px;
+
+  border-radius: 4px;
+}
+
+.nav-links .list-space:hover {
+  background-color: #eda423;
+  color: #1c2a38;
+}
+/* =========================
+HERO SECTION
+========================= */
+.hero {
+  position: relative;
+  margin-top: 70px; /* offset for fixed navbar */
+  width: 100%;
+  min-height: 560px;
+  overflow: hidden;
+}
+.hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+/* DARK GRADIENT OVERLAY */
+.hero-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background-color: #1c2a38;
+  opacity: 0.78;
+  z-index: 2;
+}
+/* HERO CONTENT */
+.hero-content {
+  position: relative;
+  z-index: 3;
+  max-width: 560px;
+  padding: 100px 60px;
+  color: white;
+}
+.hero-content h1 {
+  margin: 0 0 10px;
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.hero-content p {
+  margin: 0 0 26px;
+  color: white;
+  font-family: "Poppins", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  opacity: 0.95;
+  margin-left: 40px;
+}
+/* HERO BUTTONS */
+.hero-buttons {
+  display: flex;
+  gap: 12px;
+  margin-left: 40px;
+}
+.btn-primary,
+.btn-secondary {
+  height: 42px;
+  padding: 0 22px;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-primary {
+  background: #eda423;
+  color: #1c2a38;
+  border: 3px solid #1c2a38;
+}
+.btn-primary:hover {
+  background: transparent;
+  color: #eda423;
+}
+.btn-secondary {
+  background: transparent;
+  color: white;
+  border: 1px solid white;
+}
+.btn-secondary:hover {
+  background: white;
+  color: #1c2a38;
+}
+/* =========================
+HIVE CLUB SECTION
+========================= */
+.hive-club {
+  width: 100%;
+  min-height: 130px;
+  background-color: #1c2a38;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 24px 50px;
+}
+/* CLUB LEFT CONTENT */
+.club-content {
+  display: flex;
+  align-items: center;
+}
+/* CROWN LOGO */
+.crown-logo {
+  width: 90px;
+  height: auto;
+  object-fit: contain;
+  margin-right: 16px;
+}
+/* CLUB TEXT */
+.club-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* MEMBERSHIP */
+.membership {
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+/* TITLE */
+.club-text h3 {
+  color: #ffffff;
+  font-family: "Poppins", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+/* DESCRIPTION */
+.club-text p {
+  color: #ffffff;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 420px;
+  margin: 0;
+  opacity: 0.8;
+}
+/* JOIN NOW BUTTON */
+.join-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 150px;
+  height: 44px;
+  background-color: #eda423;
+  color: #1c2a38;
+  border-radius: 6px;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  transition: 0.2s ease;
+  border: 3px solid #ffffff;
+}
+.join-button:hover {
+  background-color: white;
+  color: #1c2a38;
+}
+/* =========================
+TOP LISTINGS SECTION
+========================= */
+.listings {
+  width: 100%;
+  background-color: #f4ecdc;
+  padding: 70px 60px 100px;
+  text-align: center;
+}
+.listings-eyebrow {
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.listings-title {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 50px;
+  font-weight: 700;
+  margin: 8px 0 44px;
+}
+.listings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.listing-card {
+  display: block;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+  text-decoration: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.listing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.14);
+}
+.listing-card img {
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  display: block;
+}
+.listing-info {
+  background-color: #ffffff;
+  padding: 18px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+.listing-name {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.listing-link {
+  color: white;
+  background: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  padding: 8px 18px;
+  border-radius: 12px 12px 0 0;
+  transition: 0.2s ease;
+  width: 150px;
+}
+.listing-card:hover .listing-link {
+  background: #eda423;
+  color: #1c2a38;
+}
+/* =========================
+ABOUT US SECTION
+========================= */
+.about {
+  width: 100%;
+  background-color: #ffffff;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 60px;
+  padding: 80px 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.about-eyebrow {
+  display: block;
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+.about-text h2 {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 20px;
+}
+.about-text p {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  opacity: 0.75;
+  margin: 0 0 18px;
+  max-width: 460px;
+}
+.about-button {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 14px 24px;
+  border: 1.5px solid #1c2a38;
+  border-radius: 4px;
+  color: #1c2a38;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: 0.2s ease;
+}
+.about-button:hover {
+  background-color: #1c2a38;
+  color: white;
+}
+.about-image img {
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+/* =========================
+REASON WHY SECTION
+========================= */
+.reasons {
+  width: 100%;
+  background-color: #1c2a38;
+  padding: 70px 60px;
+}
+.reasons-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  flex-wrap: wrap;
+}
+.reasons-eyebrow {
+  display: block;
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.reasons-heading h2 {
+  color: #ffffff;
+  font-family: "Poppins", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+  max-width: 420px;
+}
+.reasons-desc {
+  color: #ffffff;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  opacity: 0.7;
+  max-width: 380px;
+  margin: 0;
+}
+.reasons-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.reason-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.reason-card img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.reason-text h4 {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+.reason-text p {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  opacity: 0.65;
+  margin: 0;
+}
+/* =========================
+HAPPY TENANTS / TESTIMONIALS SECTION
+========================= */
+.testimonials {
+  width: 100%;
+  background-color: #ffffff;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: start;
+  gap: 30px;
+  padding: 70px 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.testimonials-eyebrow {
+  display: block;
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.testimonials-text h2 {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+.testimonials-text p {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  opacity: 0.7;
+  margin: 0 0 20px;
+}
+.testimonials-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.nav-arrow {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+.nav-arrow img {
+  display: block;
+  width: 50px;
+  height: 50px;
+}
+.nav-arrow:hover {
+  background: #1c2a38;
+}
+.nav-arrow:hover img {
+  filter: brightness(0) invert(1);
+}
+.testimonials-dots {
+  display: flex;
+  gap: 8px;
+}
+.testimonials-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e6dcc8;
+}
+.testimonials-dots .dot.active {
+  background: #1c2a38;
+  border-radius: 3px;
+  width: 20px;
+}
+.testimonials-slider {
+  grid-column: 2 / 4;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.testimonials-track {
+  display: flex;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.testimonials-track .testimonial-card {
+  flex: 0 0 calc(50% - 10px);
+  min-width: calc(50% - 10px);
+  margin-right: 20px;
+  background: #f4ecdc;
+  border-radius: 10px;
+  padding: 24px 22px;
+  box-sizing: border-box;
+}
+
+.testimonials-track .testimonial-card:last-child {
+  margin-right: 0;
+}
+.testimonial-quote {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+.testimonial-body {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 12.5px;
+  line-height: 1.6;
+  opacity: 0.7;
+  margin: 0 0 20px;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.testimonial-author img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.testimonial-author span {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+/* =========================
+READY TO MOVE / FINAL CTA SECTION
+========================= */
+.final-cta {
+  width: 100%;
+  background-color: #ffffff;
+  padding-bottom: 80px;
+}
+.cta-image-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  width: 100%;
+  height: 220px;
+}
+.cta-image-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cta-box {
+  max-width: 720px;
+  margin: 50px auto 0;
+  background: #ffffff;
+  border: 1px solid #eee4d3;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  padding: 46px 30px;
+  text-align: center;
+}
+.cta-eyebrow {
+  display: block;
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.cta-title {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 26px;
+}
+.cta-button {
+  display: inline-block;
+  background: #eda423;
+  color: #1c2a38;
+  padding: 14px 30px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: 0.2s ease;
+}
+.cta-button:hover {
+  background: #1c2a38;
+  color: white;
+}
+/* =========================
+JOIN HIVE CLUB / BECOME A HOST SECTION
+========================= */
+.dual-cta {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.dual-cta-panel {
+  padding: 50px 60px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.dual-cta-icon {
+  width: 20%;
+  height: 20%;
+  object-fit: contain;
+  margin-bottom: 14px;
+}
+.dual-cta-panel h3 {
+  font-family: "Poppins", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.dual-cta-panel p {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 340px;
+  margin: 0 0 22px;
+  opacity: 0.85;
+}
+.hive-panel {
+  background-color: #1c2a38;
+  color: #ffffff;
+}
+.host-panel {
+  background-color: #eda423;
+  color: #1c2a38;
+}
+.dual-cta-button {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: 0.2s ease;
+}
+.hive-button {
+  background-color: #eda423;
+  color: #1c2a38;
+}
+.hive-button:hover {
+  background-color: #ffffff;
+  color: #1c2a38;
+}
+.host-button {
+  background-color: #1c2a38;
+  color: #ffffff;
+}
+.host-button:hover {
+  background-color: #ffffff;
+  color: #1c2a38;
+}
+/* =========================
+FOOTER
+========================= */
+.site-footer {
+  width: 100%;
+  background-color: #ffffff;
+  padding: 60px 60px 30px;
+  border-top: 1px solid #eee4d3;
+}
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto 40px;
+}
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.footer-logo {
+  width: 120px;
+  height: auto;
+  margin-bottom: 2px;
+}
+.footer-tagline {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1c2a38;
+  opacity: 0.7;
+  max-width: 260px;
+  margin: 0 0 4px;
+}
+.footer-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.footer-heading {
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.footer-links a {
+  color: #1c2a38;
+  opacity: 0.75;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  transition: 0.2s ease;
+}
+.footer-links a:hover {
+  color: #eda423;
+  opacity: 1;
+}
+.footer-links a.active {
+  color: #eda423;
+}
+.footer-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.footer-app-badges {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.footer-app-badges img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+.footer-contact-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-contact-line img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.footer-contact-line span {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  color: #1c2a38;
+  opacity: 0.75;
+}
+.footer-bottom {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 24px;
+  border-top: 1px solid #eee4d3;
+  text-align: center;
+}
+.footer-bottom p {
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  color: #1c2a38;
+  opacity: 0.6;
+}
+/* =========================
+RESPONSIVE — SITE-WIDE (home / listings hero / about / reasons / testimonials / cta / footer)
+========================= */
+@media (max-width: 900px) {
+  .listings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hero-content {
+    padding: 70px 40px;
+  }
+  .about {
+    grid-template-columns: 1fr;
+    padding: 60px 40px;
+    gap: 30px;
+  }
+  .about-image {
+    order: -1;
+  }
+  .reasons-grid {
+    grid-template-columns: 1fr;
+  }
+  .testimonials {
+    grid-template-columns: 1fr;
+  }
+  .cta-image-strip {
+    grid-template-columns: repeat(3, 1fr);
+    height: auto;
+  }
+  .cta-image-strip img {
+    height: 150px;
+  }
+  .dual-cta {
+    grid-template-columns: 1fr;
+  }
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+  }
+  .steps-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .navbar {
+    padding: 0 20px;
+  }
+  .nav-links {
+    gap: 12px;
+  }
+  .nav-links a {
+    font-size: 11px;
+  }
+  .hero-content {
+    max-width: 100%;
+    padding: 60px 24px;
+  }
+  .hero-content h1 {
+    font-size: 30px;
+  }
+  .hero-overlay {
+    background: rgba(16, 32, 48, 0.82);
+  }
+  .hive-club {
+    justify-content: center;
+    text-align: center;
+    padding: 30px 24px;
+  }
+  .club-content {
+    flex-direction: column;
+    text-align: center;
+  }
+  .crown-logo {
+    margin: 0 0 12px;
+  }
+  .club-text p {
+    max-width: 100%;
+  }
+  .listings-grid {
+    grid-template-columns: 1fr;
+  }
+  .listings {
+    padding: 50px 24px 70px;
+  }
+  .about {
+    padding: 50px 24px;
+  }
+  .about-text p {
+    max-width: 100%;
+  }
+  .reasons {
+    padding: 50px 24px;
+  }
+  .reasons-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .reason-card {
+    padding: 18px;
+  }
+  .testimonials {
+    padding: 50px 24px;
+  }
+  .cta-image-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cta-box {
+    margin: 30px 20px 0;
+    padding: 34px 20px;
+  }
+  .cta-title {
+    font-size: 21px;
+  }
+  .dual-cta-panel {
+    padding: 40px 24px;
+  }
+  .site-footer {
+    padding: 50px 24px 24px;
+  }
+  .footer-top {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+}
+@media (max-width: 550px) {
+  .nav-links {
+    gap: 8px;
+  }
+  .nav-links a {
+    font-size: 6px;
+  }
+  .steps-container {
+    grid-template-columns: 1fr;
+  }
+  .how-header h1 {
+    font-size: 25px;
+  }
+}
+/* =========================
+LISTINGS PAGE LAYOUT
+========================= */
+.listings-page {
+  margin-top: 70px; /* offset for fixed navbar */
+  width: 100%;
+  max-width: 1300px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 40px 60px 80px;
+}
+/* GREETING */
+.listings-greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 26px;
+}
+.greeting-text p {
+  font-family: "Poppins", sans-serif;
+  font-size: 30px;
+  color: #1c2a38;
+  opacity: 0.7;
+  margin: 0;
+}
+.greeting-text h1 {
+  font-family: "Poppins", sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  color: #1c2a38;
+  margin: 4px 0 0;
+  margin-left: 15px;
+}
+.greeting-illustration {
+  width: 400px;
+  height: auto;
+  object-fit: contain;
+}
+/* =========================
+FILTER BAR
+========================= */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(28, 42, 56, 0.1);
+  padding: 14px 24px;
+  gap: 18px;
+  margin-bottom: 34px;
+  flex-wrap: wrap;
+}
+.filter-divider {
+  width: 1px;
+  height: 28px;
+  background: #e6dcc8;
+  flex-shrink: 0;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-icon {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.filter-arrow {
+  width: 10px;
+  height: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.filter-select {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1c2a38;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 4px;
+}
+.filter-bar {
+  position: relative;
+}
+
+.category-filter {
+  position: relative;
+}
+
+.category-dropdown-btn {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1c2a38;
+  cursor: pointer;
+  padding: 0;
+}
+
+.category-dropdown-caret {
+  transition: transform 0.2s ease;
+}
+
+.category-filter.open .category-dropdown-caret {
+  transform: rotate(180deg);
+}
+
+.category-dropdown-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 14px);
+  left: -24px;
+  width: max-content;
+  min-width: 640px;
+  padding: 16px;
+
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(28, 42, 56, 0.14);
+
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+
+  z-index: 200;
+}
+
+.category-filter.open .category-dropdown-panel {
+  display: grid;
+}
+
+.category-dropdown-item {
+  border: 1px solid #e6dcc8;
+  background: #fffdf9;
+  border-radius: 6px;
+  padding: 10px 14px;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c2a38;
+
+  text-align: left;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.category-dropdown-item:hover {
+  background: #f4ecdc;
+  border-color: #eda423;
+}
+
+.category-dropdown-item.active {
+  background: #eda423;
+  border-color: #eda423;
+  color: #ffffff;
+}
+
+@media (max-width: 700px) {
+  .category-dropdown-panel {
+    left: 0;
+    min-width: 280px;
+    grid-template-columns: 1fr;
+  }
+}
+/* PRICE RANGE */
+.price-filter {
+  gap: 10px;
+  min-width: 220px;
+}
+.price-icon {
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #eda423;
+}
+.price-value {
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1c2a38;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.price-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e6dcc8;
+  cursor: pointer;
+}
+.price-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #eda423;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.price-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #eda423;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+/* SEARCH CONTAINER */
+.search-filter {
+  display: flex;
+  width: 400px;
+  height: 36px;
+}
+/* SEARCH INPUT */
+.search-input {
+  flex: 1;
+  height: 100%;
+  padding: 0 8px;
+  font-size: 13px;
+  box-sizing: border-box;
+  border: 1px solid #555;
+  border-right: none;
+  outline: none;
+}
+/* SEARCH BUTTON */
+.search-button {
+  border: none;
+  width: 70px;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: #1c2a38;
+  border-radius: 0 5px 5px 0;
+}
+/* SEARCH ICON */
+.search-button img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+/* =========================
+LISTINGS CONTENT / SIDEBAR LAYOUT
+========================= */
+.listings-content {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  align-items: start;
+  gap: 30px;
+}
+.listings-results {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+/* AMENITIES SIDEBAR */
+.amenities-sidebar {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(28, 42, 56, 0.08);
+  padding: 24px;
+}
+.amenities-sidebar h3 {
+  font-family: "Poppins", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1c2a38;
+  margin: 0 0 16px;
+}
+.amenity-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  color: #1c2a38;
+  opacity: 0.85;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.amenity-option input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #eda423;
+  cursor: pointer;
+}
+.amenities-clear {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #e6dcc8;
+  border-radius: 6px;
+  background: transparent;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1c2a38;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.amenities-clear:hover {
+  background: #f4ecdc;
+  opacity: 1;
+}
+.need-help {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid #eee4d3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.need-help h4 {
+  font-family: "Poppins", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1c2a38;
+  margin: 0 0 4px;
+}
+.need-help a {
+  font-family: "Poppins", sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1c2a38;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: 0.2s ease;
+}
+.need-help a:hover {
+  color: #eda423;
+  opacity: 1;
+}
+/* =========================
+RESPONSIVE — LISTINGS PAGE
+========================= */
+@media (max-width: 900px) {
+  .listings-content {
+    grid-template-columns: 1fr;
+  }
+  .listings-results {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .amenities-sidebar {
+    order: -1;
+  }
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-divider {
+    width: 100%;
+    height: 1px;
+  }
+  .search-filter {
+    margin-left: 0;
+  }
+}
+@media (max-width: 640px) {
+  .listings-page {
+    padding: 30px 20px 60px;
+  }
+  .listings-greeting {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .greeting-illustration {
+    width: 100px;
+  }
+  .listings-results {
+    grid-template-columns: 1fr;
+  }
+}
+/* =========================
+LISTINGS MAIN WRAPPER
+========================= */
+.listings-main {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+/* =========================
+LISTING BOX (card)
+========================= */
+.listing-box {
+  display: block;
+  background: #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(28, 42, 56, 0.08);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.listing-box:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px rgba(28, 42, 56, 0.14);
+}
+.listing-box > img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+}
+.listing-box-info {
+  padding: 12px 14px 14px;
+}
+.listing-box-title {
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1c2a38;
+  margin: 0 0 6px;
+}
+.listing-box-location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.listing-box-location img {
+  width: 11px;
+  height: 11px;
+  min-width: 11px;
+  object-fit: contain;
+  display: block;
+}
+.listing-box-location span {
+  font-family: "Poppins", sans-serif;
+  font-size: 11px;
+  color: #1c2a38;
+  opacity: 0.6;
+}
+.listing-box-price {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1c2a38;
+}
+.listing-box-price .peso {
+  color: #eda423;
+  margin-right: 2px;
+}
+.listing-box-price .per {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.55;
+  margin-left: 2px;
+}
+/* =========================
+PAGINATION
+========================= */
+.listings-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.page-arrow,
+.page-num {
+  border: 1px solid #e6dcc8;
+  background: #ffffff;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1c2a38;
+  transition: 0.2s ease;
+}
+.page-arrow img {
+  width: 8px;
+  height: 8px;
+  object-fit: contain;
+  display: block;
+}
+.page-num:hover {
+  background: #f4ecdc;
+}
+.page-num.active {
+  background: #eda423;
+  border-color: #eda423;
+  color: #1c2a38;
+}
+.page-dots {
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  color: #1c2a38;
+  opacity: 0.5;
+  padding: 0 2px;
+}
+/* =========================
+RESPONSIVE — LISTING BOX
+========================= */
+@media (max-width: 640px) {
+  .listing-box > img {
+    height: 150px;
+  }
+}
+/* =========================================================
+   ROOMHIVE - HOW IT WORKS PAGE
+========================================================= */
+
+.how-header {
+  margin-top: 70px;
+  width: 100%;
+  min-height: 350px;
+  background: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 55px 7%;
+  gap: 40px;
+
+  overflow: hidden;
+}
+
+.how-header-text {
+  flex: 1;
+  max-width: 560px;
+}
+
+.how-header-text h1 {
+  margin: 0 0 14px;
+
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.how-header-text .eyebrow-line {
+  display: block;
+
+  width: 55px;
+  height: 4px;
+
+  background: #eda423;
+  margin-bottom: 18px;
+}
+
+.how-header-text p {
+  margin: 0;
+
+  max-width: 450px;
+
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+
+  opacity: 0.85;
+}
+
+.how-header-illustration {
+  flex: 0 0 430px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.how-header-illustration img {
+  width: 100%;
+  max-width: 430px;
+  height: auto;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   STEPS SECTION
+========================================================= */
+
+.steps-section {
+  width: 100%;
+  padding: 45px 5% 55px;
+
+  text-align: center;
+  background: #ffffff;
+}
+
+.hosts-section {
+  background: #ffffff;
+  padding-top: 45px;
+  padding-bottom: 60px;
+}
+
+.steps-eyebrow {
+  display: inline-block;
+
+  color: #eda423;
+  font-family: "Poppins", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+
+  line-height: 1.2;
+}
+
+.steps-subtitle {
+  margin: 7px 0 38px;
+
+  color: #1c2a38;
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+
+  opacity: 0.7;
+}
+
+/* =========================================================
+   STEPS CONTAINER
+========================================================= */
+
+.steps-container {
+  position: relative;
+
+  max-width: 1180px;
+  margin: 0 auto;
+
+  padding: 45px 35px 35px;
+
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 15px;
+
+  background: #fffdf9;
+
+  border: 1px solid #eee4d3;
+  border-radius: 18px;
+
+  box-shadow: 0 5px 18px rgba(28, 42, 56, 0.04);
+}
+
+/* DOTTED LINE */
+
+.steps-container::before {
+  content: "";
+
+  position: absolute;
+
+  top: 64px;
+  left: 95px;
+  right: 95px;
+
+  border-top: 2px dashed #eda423;
+
+  z-index: 0;
+}
+
+/* =========================================================
+   STEP CARD
+========================================================= */
+
+.step-card {
+  position: relative;
+  z-index: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  min-width: 0;
+}
+
+/* NUMBER */
+
+.step-number {
+  width: 42px;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 18px;
+
+  background: #eda423;
+  color: #ffffff;
+
+  border-radius: 50%;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+
+  box-shadow: 0 2px 6px rgba(237, 164, 35, 0.25);
+}
+
+/* ICON */
+
+.step-icon-box {
+  width: 82px;
+  height: 82px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 13px;
+
+  background: #ffffff;
+
+  border-radius: 15px;
+
+  box-shadow: 0 5px 15px rgba(28, 42, 56, 0.09);
+}
+
+.step-icon {
+  width: 50px;
+  height: 50px;
+
+  object-fit: contain;
+}
+
+/* TITLE */
+
+.step-card h4 {
+  margin: 0 0 7px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+
+  line-height: 1.3;
+}
+
+/* DESCRIPTION */
+
+.step-card p {
+  margin: 0;
+
+  max-width: 170px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  line-height: 1.55;
+
+  opacity: 0.68;
+}
+
+/* =========================================================
+   READY TO GET STARTED
+========================================================= */
+
+.ready-cta {
+  width: calc(100% - 10%);
+  max-width: 1180px;
+
+  min-height: 120px;
+
+  margin: 10px auto 55px;
+
+  padding: 25px 35px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 30px;
+
+  background: #1c2a38;
+
+  border-radius: 14px;
+
+  box-shadow: 0 7px 20px rgba(28, 42, 56, 0.12);
+}
+
+.ready-cta-left {
+  display: flex;
+  align-items: center;
+
+  gap: 17px;
+}
+
+.ready-cta-crown {
+  width: 55px;
+  height: 55px;
+
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.ready-cta-text h2 {
+  margin: 0 0 5px;
+
+  color: #ffffff;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.ready-cta-text p {
+  margin: 0;
+
+  color: #ffffff;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+
+  opacity: 0.78;
+}
+
+/* =========================================================
+   CTA BUTTONS
+========================================================= */
+
+.ready-cta-buttons {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+}
+
+.ready-cta-buttons .btn-primary,
+.ready-cta-buttons .btn-secondary {
+  height: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0 25px;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+
+  letter-spacing: 0.4px;
+
+  text-decoration: none;
+
+  border-radius: 4px;
+
+  transition: all 0.2s ease;
+}
+
+/* FIND A SPACE */
+
+.ready-cta-buttons .btn-primary {
+  background: #eda423;
+  color: #1c2a38;
+
+  border: 1px solid #eda423;
+}
+
+.ready-cta-buttons .btn-primary:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+/* LIST YOUR SPACE */
+
+.ready-cta-buttons .btn-secondary {
+  background: transparent;
+  color: #ffffff;
+
+  border: 1px solid #ffffff;
+}
+
+.ready-cta-buttons .btn-secondary:hover {
+  background: #ffffff;
+  color: #1c2a38;
+}
+
+/* =========================================================
+   RESPONSIVE - HOW IT WORKS - TABLET
+========================================================= */
+
+@media (max-width: 1000px) {
+  .how-header {
+    padding: 50px 5%;
+  }
+
+  .how-header-text h1 {
+    font-size: 44px;
+  }
+
+  .how-header-illustration {
+    flex-basis: 340px;
+  }
+
+  .steps-container {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 35px 15px;
+  }
+
+  .steps-container::before {
+    display: none;
+  }
+
+  .ready-cta {
+    width: 90%;
+  }
+}
+
+/* =========================================================
+   RESPONSIVE - HOW IT WORKS - MOBILE
+========================================================= */
+
+@media (max-width: 700px) {
+  .how-header {
+    margin-top: 70px;
+
+    flex-direction: column;
+
+    text-align: center;
+
+    padding: 45px 25px 35px;
+  }
+
+  .how-header-text {
+    max-width: 100%;
+  }
+
+  .how-header-text h1 {
+    font-size: 36px;
+  }
+
+  .how-header-text .eyebrow-line {
+    margin: 0 auto 18px;
+  }
+
+  .how-header-text p {
+    max-width: 100%;
+    font-size: 14px;
+  }
+
+  .how-header-illustration {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .how-header-illustration img {
+    max-width: 280px;
+  }
+
+  .steps-section {
+    padding: 40px 18px 45px;
+  }
+
+  .steps-eyebrow {
+    font-size: 24px;
+  }
+
+  .steps-subtitle {
+    font-size: 12px;
+    margin-bottom: 30px;
+  }
+
+  .steps-container {
+    grid-template-columns: 1fr;
+
+    padding: 35px 20px;
+
+    gap: 35px;
+
+    border-radius: 15px;
+  }
+
+  .step-card {
+    width: 100%;
+  }
+
+  .step-number {
+    width: 40px;
+    height: 40px;
+
+    margin-bottom: 15px;
+  }
+
+  .step-icon-box {
+    width: 75px;
+    height: 75px;
+  }
+
+  .step-icon {
+    width: 45px;
+    height: 45px;
+  }
+
+  .step-card h4 {
+    font-size: 14px;
+  }
+
+  .step-card p {
+    max-width: 260px;
+    font-size: 12px;
+  }
+
+  /* CTA */
+
+  .ready-cta {
+    width: calc(100% - 30px);
+
+    margin: 5px auto 40px;
+
+    padding: 28px 20px;
+
+    flex-direction: column;
+
+    text-align: center;
+  }
+
+  .ready-cta-left {
+    flex-direction: column;
+  }
+
+  .ready-cta-text h2 {
+    font-size: 19px;
+  }
+
+  .ready-cta-text p {
+    font-size: 12px;
+  }
+
+  .ready-cta-buttons {
+    width: 100%;
+
+    flex-direction: column;
+  }
+
+  .ready-cta-buttons .btn-primary,
+  .ready-cta-buttons .btn-secondary {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   ROOMHIVE - BECOME A HOST
+   DESIGNED FOR 1920 x 1020
+========================================================= */
+
+/* =========================================================
+   HOST PAGE
+========================================================= */
+
+.host-page {
+  width: 100%;
+  min-height: calc(100vh - 70px);
+
+  margin-top: 70px;
+
+  padding: 40px 40px 45px;
+
+  background: #f8f1e7;
+
+  overflow: hidden;
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.host-header {
+  width: 100%;
+  max-width: 1100px;
+
+  margin: 0 auto;
+
+  text-align: center;
+}
+
+.host-eyebrow {
+  display: block;
+
+  margin: 5px 0 4px;
+
+  color: #eda423;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  letter-spacing: 0.2px;
+}
+
+.host-header h1 {
+  margin: 0 0 25px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 28px;
+  font-weight: 700;
+
+  line-height: 1.2;
+}
+
+/* =========================================================
+   HOSTING STEPS
+========================================================= */
+
+.host-steps {
+  width: 100%;
+  max-width: 900px;
+
+  margin: 0 auto 28px;
+
+  display: grid;
+
+  grid-template-columns: repeat(4, 1fr);
+
+  gap: 0;
+}
+
+.host-step {
+  position: relative;
+
+  min-width: 0;
+
+  text-align: center;
+}
+
+/* =========================================================
+   STEP CIRCLE
+========================================================= */
+
+.step-circle {
+  width: 52px !important;
+  height: 52px !important;
+
+  margin: 0 auto 7px !important;
+
+  display: flex !important;
+
+  align-items: center;
+  justify-content: center;
+
+  position: relative;
+
+  z-index: 5;
+
+  background: #ffffff;
+
+  border: 2px solid #f4c66f;
+
+  border-radius: 50%;
+
+  overflow: hidden;
+}
+
+/* =========================================================
+   ACTIVE STEP (Step 1 - Create Account)
+   Highlighted in blue so the user knows which step they're on
+========================================================= */
+
+.host-steps .host-step:first-child .step-circle {
+  background: #1c2a38;
+
+  border-color: #1c2a38;
+
+  box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.15);
+}
+
+.host-steps .host-step:first-child .step-number {
+  background: #1c2a38;
+}
+
+.host-steps .host-step:first-child .step-circle img {
+  filter: brightness(0) invert(1);
+}
+
+/* =========================================================
+   IMPORTANT:
+   STEP IMAGES
+========================================================= */
+
+.host-page .host-steps .host-step .step-circle img {
+  width: 30px !important;
+  height: 30px !important;
+
+  max-width: 30px !important;
+  max-height: 30px !important;
+
+  min-width: 0 !important;
+  min-height: 0 !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  display: block !important;
+
+  object-fit: contain !important;
+
+  position: static !important;
+
+  transform: none !important;
+
+  border: 0 !important;
+
+  box-shadow: none !important;
+}
+
+/* =========================================================
+   CONNECTING LINE
+========================================================= */
+
+.step-line {
+  position: absolute;
+
+  top: 26px;
+
+  left: calc(50% + 26px);
+
+  width: calc(100% - 52px);
+
+  border-top: 1.5px dashed #f2c86f;
+
+  z-index: 1;
+
+  pointer-events: none;
+}
+
+/* =========================================================
+   STEP NUMBER
+========================================================= */
+
+.step-number {
+  width: 15px !important;
+  height: 15px !important;
+
+  margin: -1px auto 5px !important;
+
+  display: flex !important;
+
+  align-items: center;
+  justify-content: center;
+
+  position: relative;
+
+  z-index: 10;
+
+  background: #eda423;
+
+  color: #ffffff;
+
+  border-radius: 50%;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 7px;
+
+  font-weight: 700;
+
+  line-height: 1;
+}
+
+/* =========================================================
+   STEP TITLE
+========================================================= */
+
+.host-step h3 {
+  margin: 0 0 3px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 10px;
+
+  font-weight: 700;
+
+  line-height: 1.3;
+}
+
+/* =========================================================
+   STEP DESCRIPTION
+========================================================= */
+
+.host-step p {
+  margin: 0;
+
+  color: #4f5860;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 8px;
+
+  line-height: 1.45;
+}
+
+/* =========================================================
+   FORM CARD
+   (enlarged — was 22px 25px 20px / max-width 1100 / 9px radius)
+========================================================= */
+
+.host-form-card {
+  width: 100%;
+  max-width: 1100px;
+
+  margin: 0 auto 60px;
+
+  padding: 48px 60px 55px;
+
+  background: #ffffff;
+
+  border-radius: 14px;
+
+  box-shadow: 0 6px 28px rgba(28, 42, 56, 0.08);
+
+  position: relative;
+
+  z-index: 2;
+}
+
+/* =========================================================
+   FORM HEADING
+   (enlarged — was 15px / 9px)
+========================================================= */
+
+.form-heading {
+  margin-bottom: 30px;
+}
+
+.form-heading h2 {
+  margin: 0 0 6px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 26px;
+
+  font-weight: 700;
+
+  line-height: 1.3;
+}
+
+.form-heading p {
+  margin: 0;
+
+  color: #6d757c;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 14px;
+}
+
+/* =========================================================
+   FORM GRID
+   (enlarged — gap was 15px, margin was 14px)
+========================================================= */
+
+.form-grid {
+  width: 100%;
+
+  display: grid;
+
+  gap: 26px;
+
+  margin-bottom: 26px;
+}
+
+.three-columns {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* =========================================================
+   INPUT GROUP
+========================================================= */
+
+.input-group {
+  width: 100%;
+}
+
+.input-group label,
+.upload-section > label {
+  display: block;
+
+  margin-bottom: 9px;
+
+  color: #263441;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+/* =========================================================
+   INPUTS
+   (enlarged — height was 33px, font-size was 8px)
+========================================================= */
+
+.input-group input,
+.input-group select {
+  width: 100%;
+  height: 52px;
+
+  padding: 0 18px;
+
+  border: 1px solid #dedede;
+
+  border-radius: 8px;
+
+  background: #ffffff;
+
+  color: #263441;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 14px;
+
+  outline: none;
+
+  transition: 0.2s ease;
+}
+
+.input-group input::placeholder {
+  color: #a0a0a0;
+}
+
+/* =========================================================
+   SELECT
+========================================================= */
+
+.input-group select {
+  appearance: none;
+
+  -webkit-appearance: none;
+
+  background-image:
+    linear-gradient(45deg, transparent 50%, #777 50%),
+    linear-gradient(135deg, #777 50%, transparent 50%);
+
+  background-position:
+    calc(100% - 20px) 22px,
+    calc(100% - 15px) 22px;
+
+  background-size:
+    7px 7px,
+    7px 7px;
+
+  background-repeat: no-repeat;
+
+  padding-right: 40px;
+
+  cursor: pointer;
+}
+
+/* =========================================================
+   INPUT FOCUS
+========================================================= */
+
+.input-group input:focus,
+.input-group select:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.1);
+}
+
+/* =========================================================
+   LOCATION
+========================================================= */
+
+.input-with-icon {
+  position: relative;
+}
+
+.input-with-icon input {
+  padding-right: 42px;
+}
+
+.input-with-icon span {
+  position: absolute;
+
+  right: 16px;
+
+  top: 50%;
+
+  transform: translateY(-50%);
+
+  color: #a0a0a0;
+
+  font-size: 16px;
+
+  pointer-events: none;
+}
+
+/* =========================================================
+   UPLOAD ID
+   (enlarged — box was 325x52px, now full-width and taller)
+========================================================= */
+
+.upload-section {
+  width: 100%;
+
+  margin-top: 6px;
+}
+
+.upload-box {
+  width: 100%;
+  height: 130px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 20px;
+
+  border: 1.5px dashed #d9d9d9;
+
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.upload-box:hover {
+  border-color: #eda423;
+
+  background: #fffaf0;
+}
+
+/* =========================================================
+   UPLOAD ICON
+========================================================= */
+
+.upload-icon {
+  color: #293541;
+
+  font-size: 40px;
+
+  line-height: 1;
+}
+
+/* =========================================================
+   UPLOAD TEXT
+========================================================= */
+
+.upload-text {
+  display: flex;
+
+  flex-direction: column;
+
+  text-align: left;
+
+  gap: 4px;
+}
+
+.upload-text strong {
+  color: #39444e;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+.upload-text span {
+  color: #888f95;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 12px;
+}
+
+/* =========================================================
+   FORM ACTION
+========================================================= */
+
+.form-actions {
+  display: flex;
+
+  justify-content: flex-end;
+
+  margin-top: 20px;
+}
+
+/* =========================================================
+   NEXT BUTTON
+   (enlarged — was 130x35px, font-size 8px)
+========================================================= */
+
+.next-button {
+  min-width: 190px;
+
+  height: 54px;
+
+  padding: 0 32px;
+
+  border: none;
+
+  border-radius: 8px;
+
+  background: #eda423;
+
+  color: #ffffff;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.next-button:hover {
+  background: #d99117;
+
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 900px) {
+  .host-page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .host-header h1 {
+    font-size: 24px;
+  }
+
+  .host-steps {
+    max-width: 750px;
+  }
+
+  .host-form-card {
+    padding: 35px 30px 40px;
+  }
+}
+
+@media (max-width: 700px) {
+  .host-steps {
+    grid-template-columns: repeat(2, 1fr);
+
+    row-gap: 25px;
+  }
+
+  .step-line {
+    display: none;
+  }
+
+  .three-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-box {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .host-page {
+    padding: 20px 15px 30px;
+  }
+
+  .host-eyebrow {
+    font-size: 10px;
+  }
+
+  .host-header h1 {
+    font-size: 19px;
+  }
+
+  .host-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .host-form-card {
+    padding: 25px 20px 30px;
+  }
+}
+/* =========================================================
+   HIVE CLUB HERO
+========================================================= */
+
+.hive-hero {
+  position: relative;
+  width: 100%;
+  min-height: 152px;
+  margin-top: 70px;
+  overflow: hidden;
+
+  display: flex;
+  align-items: center;
+
+  background:
+    radial-gradient(
+      circle at 15% 30%,
+      rgba(237, 164, 35, 0.12) 0 2px,
+      transparent 3px
+    ),
+    radial-gradient(
+      circle at 42% 65%,
+      rgba(237, 164, 35, 0.12) 0 5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at 78% 30%,
+      rgba(237, 164, 35, 0.1) 0 4px,
+      transparent 5px
+    ),
+    #fffdf8;
+}
+
+/* subtle honeycomb-style background */
+.hero-pattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  background-image:
+    linear-gradient(
+      30deg,
+      rgba(237, 164, 35, 0.07) 12%,
+      transparent 12.5%,
+      transparent 87%,
+      rgba(237, 164, 35, 0.07) 87.5%,
+      rgba(237, 164, 35, 0.07)
+    ),
+    linear-gradient(
+      150deg,
+      rgba(237, 164, 35, 0.07) 12%,
+      transparent 12.5%,
+      transparent 87%,
+      rgba(237, 164, 35, 0.07) 87.5%,
+      rgba(237, 164, 35, 0.07)
+    ),
+    linear-gradient(
+      30deg,
+      rgba(237, 164, 35, 0.07) 12%,
+      transparent 12.5%,
+      transparent 87%,
+      rgba(237, 164, 35, 0.07) 87.5%,
+      rgba(237, 164, 35, 0.07)
+    ),
+    linear-gradient(
+      150deg,
+      rgba(237, 164, 35, 0.07) 12%,
+      transparent 12.5%,
+      transparent 87%,
+      rgba(237, 164, 35, 0.07) 87.5%,
+      rgba(237, 164, 35, 0.07)
+    );
+
+  background-size: 80px 140px;
+  background-position:
+    0 0,
+    0 0,
+    40px 70px,
+    40px 70px;
+
+  opacity: 0.45;
+}
+
+.hive-hero-content {
+  position: relative;
+  z-index: 2;
+
+  width: 46%;
+  padding: 17px 0 15px 38px;
+}
+
+.hive-hero-content h1 {
+  margin: 0 0 6px;
+
+  color: #171717;
+  font-family: "Poppins", sans-serif;
+  font-size: 25px;
+  line-height: 1.05;
+  font-weight: 700;
+}
+
+.hive-hero-content h1 span {
+  color: #eda423;
+}
+
+.hive-hero-content p {
+  max-width: 275px;
+  margin: 0 0 10px;
+
+  color: #555;
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.hive-hero .hero-buttons {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+}
+
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 20px;
+  padding: 0 12px;
+
+  border-radius: 3px;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+
+  text-decoration: none;
+  transition: 0.2s ease;
+}
+
+.hero-btn.primary {
+  background: #eda423;
+  color: white;
+  border: 1px solid #eda423;
+}
+
+.hero-btn.primary:hover {
+  background: #d89012;
+}
+
+.hero-btn.secondary {
+  background: white;
+  color: #eda423;
+  border: 1px solid #eda423;
+}
+
+.hero-btn.secondary:hover {
+  background: #eda423;
+  color: white;
+}
+
+/* =========================================================
+   MEMBERSHIP CARD
+========================================================= */
+
+.member-card-area {
+  position: relative;
+  z-index: 3;
+
+  width: 54%;
+  height: 145px;
+
+  display: flex;
+  align-items: center;
+
+  padding-left: 40px;
+}
+
+.member-card {
+  position: relative;
+
+  width: 180px;
+  height: 113px;
+
+  padding: 13px 17px;
+
+  border-radius: 10px;
+
+  background: linear-gradient(135deg, #162936, #0d1d29);
+
+  box-shadow:
+    8px 8px 0 #eda423,
+    0 7px 15px rgba(0, 0, 0, 0.18);
+
+  color: white;
+}
+
+.member-title {
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: #d6d6d6;
+  margin-bottom: 12px;
+}
+
+.member-logo {
+  width: 70px;
+  height: auto;
+  margin-bottom: 9px;
+
+  /* makes white logo visible on dark card */
+  filter: brightness(0) invert(1);
+}
+
+.member-id-label {
+  font-size: 5px;
+  color: #aeb7bd;
+  letter-spacing: 0.7px;
+}
+
+.member-id {
+  font-size: 6px;
+  letter-spacing: 1px;
+  margin-top: 2px;
+  color: #e9e9e9;
+}
+
+.gift-box {
+  position: absolute;
+
+  left: 180px;
+  bottom: 7px;
+
+  width: 48px;
+  height: 58px;
+}
+
+.gift-body {
+  position: absolute;
+  bottom: 0;
+  left: 4px;
+
+  width: 40px;
+  height: 36px;
+
+  background: #eda423;
+
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.18);
+}
+
+.gift-lid {
+  position: absolute;
+  top: 12px;
+  left: 0;
+
+  width: 48px;
+  height: 12px;
+
+  background: #f3aa25;
+
+  z-index: 2;
+}
+
+.gift-ribbon {
+  position: absolute;
+
+  left: 17px;
+  top: 0;
+
+  width: 8px;
+  height: 100%;
+
+  background: #1c2a38;
+}
+
+.gift-bow {
+  position: absolute;
+
+  top: 1px;
+  left: 15px;
+
+  width: 22px;
+  height: 15px;
+
+  z-index: 5;
+}
+
+.gift-bow span {
+  position: absolute;
+
+  width: 14px;
+  height: 9px;
+
+  border: 4px solid #1c2a38;
+  border-radius: 50%;
+}
+
+.gift-bow span:first-child {
+  left: -6px;
+  transform: rotate(25deg);
+}
+
+.gift-bow span:last-child {
+  right: -6px;
+  transform: rotate(-25deg);
+}
+
+/* =========================================================
+   MAIN CLUB CONTENT
+========================================================= */
+
+.club-main {
+  width: 100%;
+  max-width: 730px;
+
+  margin: 0 auto;
+
+  display: grid;
+  grid-template-columns: 1fr 205px;
+
+  gap: 20px;
+
+  padding: 8px 38px 5px;
+
+  align-items: start;
+}
+
+.club-left {
+  min-width: 0;
+}
+
+.section-heading {
+  text-align: center;
+  margin-bottom: 5px;
+}
+
+.section-heading h2 {
+  margin: 0;
+
+  color: #222;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.section-heading p {
+  margin: 1px 0 0;
+
+  color: #777;
+  font-size: 7px;
+}
+
+/* =========================================================
+   BENEFITS
+========================================================= */
+
+.benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.benefit-card {
+  min-height: 77px;
+
+  padding: 8px 5px;
+
+  background: white;
+
+  border: 1px solid #e8e8e8;
+  border-radius: 5px;
+
+  text-align: center;
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.benefit-icon {
+  width: 30px;
+  height: 30px;
+
+  margin: 0 auto 5px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #fff1d5;
+  color: #eda423;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.benefit-card h3 {
+  margin: 0 0 3px;
+
+  color: #222;
+  font-size: 6.5px;
+  font-weight: 700;
+}
+
+.benefit-card p {
+  margin: 0 auto;
+
+  max-width: 100px;
+
+  color: #777;
+  font-size: 5.5px;
+  line-height: 1.4;
+}
+
+/* =========================================================
+   TIER LEVELS
+========================================================= */
+
+.tier-heading {
+  margin: 7px 0 5px;
+
+  text-align: center;
+
+  color: #333;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.tier-card {
+  position: relative;
+
+  min-height: 76px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 7px;
+
+  background: white;
+
+  border: 1px solid #dedede;
+  border-radius: 5px;
+}
+
+.tier-card.bronze {
+  border-color: #ead5b7;
+}
+
+.tier-card.gold {
+  border-color: #f1c24f;
+}
+
+.tier-card.platinum {
+  border-color: #cbd6dd;
+}
+
+.tier-icon {
+  width: 34px;
+  height: 34px;
+
+  margin-right: 7px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 7px;
+
+  background: #f6ead7;
+
+  font-size: 20px;
+}
+
+.tier-card.gold .tier-icon {
+  background: #fff0c9;
+}
+
+.tier-card.platinum .tier-icon {
+  background: #e8f0f5;
+}
+
+.tier-info h3 {
+  margin: 0 0 1px;
+
+  color: #333;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.tier-info strong {
+  display: block;
+
+  margin-bottom: 3px;
+
+  color: #333;
+  font-size: 5.5px;
+}
+
+.tier-info ul {
+  padding: 0;
+  margin: 0;
+
+  list-style: none;
+}
+
+.tier-info li {
+  position: relative;
+
+  margin-bottom: 1px;
+  padding-left: 7px;
+
+  color: #777;
+  font-size: 4.8px;
+  line-height: 1.3;
+}
+
+.tier-info li::before {
+  content: "✓";
+
+  position: absolute;
+  left: 0;
+
+  color: #eda423;
+  font-weight: 700;
+}
+
+.current-badge {
+  position: absolute;
+
+  top: 3px;
+  right: 4px;
+
+  padding: 2px 4px;
+
+  background: #eda423;
+  color: white;
+
+  border-radius: 3px;
+
+  font-size: 4px;
+  font-weight: 700;
+}
+
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
+.club-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-card,
+.earn-card {
+  background: white;
+
+  border: 1px solid #e1e1e1;
+  border-radius: 5px;
+
+  padding: 9px;
+}
+
+.status-card h2,
+.earn-card h2 {
+  margin: 0 0 7px;
+
+  color: #333;
+
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.status-profile {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.status-medal {
+  width: 35px;
+  height: 35px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #eda423;
+
+  font-size: 17px;
+}
+
+.status-profile h3 {
+  margin: 0;
+
+  color: #eda423;
+  font-size: 7px;
+}
+
+.status-profile strong {
+  display: block;
+
+  margin-top: 1px;
+
+  color: #333;
+  font-size: 7px;
+}
+
+.status-profile p {
+  margin: 1px 0 0;
+
+  color: #777;
+  font-size: 4.5px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 5px;
+
+  margin-top: 8px;
+
+  background: #eee3d0;
+
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  width: 50%;
+
+  height: 100%;
+
+  background: #eda423;
+
+  border-radius: 5px;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+
+  margin-top: 3px;
+
+  font-size: 4.5px;
+  color: #777;
+}
+
+.rewards-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  height: 18px;
+
+  margin-top: 7px;
+
+  border: 1px solid #eda423;
+  border-radius: 3px;
+
+  color: #eda423;
+
+  text-decoration: none;
+
+  font-size: 5px;
+  font-weight: 700;
+}
+
+.rewards-button:hover {
+  background: #eda423;
+  color: white;
+}
+
+.earn-item {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 6px;
+}
+
+.earn-item:last-child {
+  margin-bottom: 0;
+}
+
+.earn-icon {
+  width: 17px;
+  height: 17px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #eda423;
+
+  font-size: 11px;
+}
+
+.earn-item strong {
+  display: block;
+
+  color: #333;
+  font-size: 5.5px;
+}
+
+.earn-item p {
+  margin: 1px 0 0;
+
+  color: #777;
+  font-size: 4.5px;
+}
+
+/* =========================================================
+   BOOKING CTA
+========================================================= */
+
+.booking-cta {
+  width: calc(100% - 76px);
+  max-width: 730px;
+
+  min-height: 24px;
+
+  margin: 4px auto;
+
+  padding: 3px 10px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: #ffebbf;
+
+  border-radius: 7px;
+}
+
+.booking-text {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.booking-icon {
+  color: #eda423;
+  font-size: 17px;
+}
+
+.booking-text h2 {
+  margin: 0;
+
+  color: #333;
+  font-size: 7px;
+}
+
+.booking-text p {
+  margin: 0;
+
+  color: #777;
+  font-size: 4.5px;
+}
+
+.booking-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 17px;
+
+  padding: 0 15px;
+
+  background: #1c2a38;
+  color: white;
+
+  border-radius: 3px;
+
+  text-decoration: none;
+
+  font-size: 5px;
+  font-weight: 700;
+}
+
+.booking-button:hover {
+  background: #eda423;
+  color: #1c2a38;
+}
+
+/* =========================================================
+   RESPONSIVE — HIVE CLUB
+========================================================= */
+
+@media (max-width: 900px) {
+  .club-main {
+    max-width: 95%;
+  }
+
+  .booking-cta {
+    width: 95%;
+  }
+}
+
+@media (max-width: 650px) {
+  .hive-hero {
+    margin-top: 60px;
+    min-height: 250px;
+
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hive-hero-content {
+    width: 100%;
+    padding: 25px;
+  }
+
+  .hive-hero-content h1 {
+    font-size: 25px;
+  }
+
+  .member-card-area {
+    width: 100%;
+    height: 120px;
+
+    padding-left: 30%;
+  }
+
+  .club-main {
+    grid-template-columns: 1fr;
+
+    max-width: 100%;
+    padding: 15px 20px;
+  }
+
+  .benefits-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tier-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-cta {
+    width: calc(100% - 40px);
+
+    flex-direction: column;
+    gap: 7px;
+
+    padding: 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  .benefits-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   NAVBAR / FOOTER RESPONSIVE — SITE-WIDE
+========================================================= */
+
+@media (max-width: 1000px) {
+  .navbar {
+    padding: 0 3%;
+  }
+
+  .nav-links {
+    gap: 14px;
+  }
+
+  .nav-links a {
+    font-size: 12px;
+  }
+
+  .nav-links .list-space {
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 700px) {
+  .navbar {
+    height: auto;
+
+    min-height: 65px;
+
+    padding: 10px 15px;
+
+    flex-direction: column;
+
+    gap: 8px;
+  }
+
+  .logo img {
+    width: 85px;
+  }
+
+  .nav-links {
+    width: 100%;
+
+    gap: 13px;
+
+    overflow-x: auto;
+
+    padding-bottom: 3px;
+
+    justify-content: flex-start;
+  }
+
+  .nav-links a {
+    font-size: 11px;
+  }
+
+  .footer-top {
+    width: calc(100% - 40px);
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 25px 20px;
+  }
+
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 450px) {
+  .footer-top {
+    grid-template-columns: 1fr;
+  }
+
+  .footer-brand {
+    grid-column: auto;
+  }
+}
+/* =========================================================
+   ROOMHIVE
+   MAIN STYLE.CSS
+   CONTACTS PAGE
+   REFERENCE SIZE: 1920 x 1020
+========================================================= */
+
+/* =========================================================
+   RESET
+========================================================= */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  width: 100%;
+  min-height: 100vh;
+
+  margin: 0;
+  padding: 0;
+
+  font-family: "Poppins", sans-serif;
+
+  color: #1c2a38;
+  background: #ffffff;
+}
+
+img {
+  max-width: 100%;
+}
+
+/* =========================================================
+   CONTACT HERO
+========================================================= */
+
+.contacts-hero {
+  position: relative;
+
+  width: 100%;
+  height: 300px;
+
+  margin-top: 70px;
+
+  display: flex;
+
+  overflow: hidden;
+
+  background: #fffaf0;
+}
+
+/* =========================================================
+   HERO CONTENT
+========================================================= */
+
+.contacts-hero-content {
+  position: relative;
+
+  z-index: 2;
+
+  width: 53%;
+
+  padding-left: 140px;
+  padding-right: 30px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.contacts-eyebrow {
+  margin-bottom: 5px;
+
+  color: #eda423;
+
+  font-size: 8px;
+  font-weight: 700;
+
+  letter-spacing: 1px;
+}
+
+.contacts-hero-content h1 {
+  margin: 0 0 8px;
+
+  color: #1c2a38;
+
+  font-size: 42px;
+  font-weight: 700;
+
+  line-height: 1.05;
+}
+
+.contacts-hero-content p {
+  margin: 0;
+
+  color: #1c2a38;
+
+  font-size: 10px;
+  font-weight: 400;
+
+  line-height: 1.55;
+}
+
+/*=========================================================
+   HERO IMAGE
+========================================================= */
+
+.contacts-hero-image {
+  position: absolute;
+
+  top: 0;
+  right: 0;
+
+  width: 52%;
+  height: 100%;
+
+  overflow: hidden;
+
+  z-index: 1;
+}
+
+.contacts-hero-image img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+
+  object-position: center;
+}
+
+/* =========================================================
+   CONTACT MAIN
+========================================================= */
+
+.contacts-main {
+  width: calc(100% - 280px);
+
+  max-width: 1400px;
+
+  margin: 25px auto 0;
+
+  display: grid;
+
+  grid-template-columns: 0.9fr 1.3fr;
+
+  gap: 22px;
+
+  align-items: stretch;
+}
+
+/* =========================================================
+   CONTACT INFORMATION CARD
+========================================================= */
+
+.contacts-information {
+  width: 100%;
+
+  padding: 18px 20px;
+
+  background: #ffffff;
+
+  border: 1px solid #eeeeee;
+
+  border-radius: 8px;
+
+  box-shadow: 0 3px 12px rgba(28, 42, 56, 0.05);
+}
+
+.contacts-information h2 {
+  margin: 0 0 2px;
+
+  color: #1c2a38;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  line-height: 1.2;
+}
+
+.contacts-small-text {
+  margin: 0 0 14px;
+
+  color: #777777;
+
+  font-size: 7px;
+  font-weight: 400;
+
+  line-height: 1.4;
+}
+
+/* =========================================================
+   CONTACT INFORMATION ITEM
+========================================================= */
+
+.contacts-info-item {
+  width: 100%;
+
+  display: flex;
+  align-items: flex-start;
+
+  gap: 10px;
+
+  margin-bottom: 12px;
+}
+
+.contacts-info-item:last-child {
+  margin-bottom: 0;
+}
+
+/* =========================================================
+   INFORMATION ICON
+========================================================= */
+
+.contacts-info-icon {
+  width: 28px;
+  height: 28px;
+
+  min-width: 28px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #fff3dc;
+
+  color: #eda423;
+
+  border-radius: 50%;
+
+  font-size: 12px;
+}
+
+.contacts-info-icon img {
+  width: 15px;
+  height: 15px;
+
+  display: block;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   INFORMATION TEXT
+========================================================= */
+
+.contacts-info-item h4 {
+  margin: 0 0 2px;
+
+  color: #1c2a38;
+
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.contacts-info-item p {
+  margin: 0 0 1px;
+
+  color: #1c2a38;
+
+  font-size: 7px;
+  font-weight: 500;
+
+  line-height: 1.4;
+}
+
+.contacts-info-item span {
+  color: #888888;
+
+  font-size: 6px;
+
+  line-height: 1.35;
+}
+
+/* =========================================================
+   SOCIAL MEDIA
+========================================================= */
+
+.contacts-socials {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  margin-top: 5px;
+}
+
+.contacts-socials a {
+  width: 17px;
+  height: 17px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #1c2a38;
+
+  color: #ffffff;
+
+  border-radius: 50%;
+
+  text-decoration: none;
+
+  font-size: 7px;
+  font-weight: 700;
+
+  transition: 0.2s ease;
+}
+
+.contacts-socials a:hover {
+  background: #eda423;
+
+  color: #1c2a38;
+}
+
+/* =========================================================
+   SEND MESSAGE CARD
+========================================================= */
+
+.contacts-form-wrapper {
+  width: 100%;
+
+  padding: 18px 20px;
+
+  background: #ffffff;
+
+  border: 1px solid #eeeeee;
+
+  border-radius: 8px;
+
+  box-shadow: 0 3px 12px rgba(28, 42, 56, 0.05);
+}
+
+.contacts-form-wrapper h2 {
+  margin: 0 0 2px;
+
+  color: #1c2a38;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  line-height: 1.2;
+}
+
+.contacts-form-wrapper .contacts-small-text {
+  margin-bottom: 12px;
+}
+
+/* =========================================================
+   FORM
+========================================================= */
+
+.contacts-form-wrapper form {
+  width: 100%;
+}
+
+/* TWO COLUMNS */
+
+.contacts-form-row {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 10px;
+
+  margin-bottom: 9px;
+}
+
+/* FORM GROUP */
+
+.contacts-form-group {
+  width: 100%;
+
+  margin-bottom: 9px;
+}
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+.contacts-form-group input,
+.contacts-form-group textarea {
+  width: 100%;
+
+  border: 1px solid #e1e1e1;
+
+  border-radius: 4px;
+
+  outline: none;
+
+  background: #ffffff;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 7px;
+
+  transition: 0.2s ease;
+}
+
+.contacts-form-group input {
+  height: 31px;
+
+  padding: 0 9px;
+}
+
+.contacts-form-group textarea {
+  height: 70px;
+
+  padding: 8px 9px;
+
+  resize: none;
+}
+
+/* PLACEHOLDER */
+
+.contacts-form-group input::placeholder,
+.contacts-form-group textarea::placeholder {
+  color: #999999;
+
+  opacity: 1;
+}
+
+/* FOCUS */
+
+.contacts-form-group input:focus,
+.contacts-form-group textarea:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.08);
+}
+
+/* =========================================================
+   SEND MESSAGE BUTTON
+========================================================= */
+
+.contacts-submit {
+  width: 100%;
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+  border: none;
+
+  border-radius: 4px;
+
+  background: #eda423;
+
+  color: #ffffff;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 7px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.contacts-submit span {
+  font-size: 8px;
+}
+
+.contacts-submit:hover {
+  background: #1c2a38;
+}
+
+/* =========================================================
+   NEED HELP SECTION
+========================================================= */
+
+.contacts-need-help {
+  width: calc(100% - 280px);
+
+  max-width: 1400px;
+
+  min-height: 118px;
+
+  margin: 16px auto 0;
+
+  display: flex;
+  align-items: center;
+
+  background: #ffffff;
+
+  border: 1px solid #eeeeee;
+
+  border-radius: 8px;
+
+  box-shadow: 0 3px 12px rgba(28, 42, 56, 0.04);
+
+  overflow: hidden;
+}
+
+/* =========================================================
+   NEED HELP IMAGE
+========================================================= */
+
+.contacts-help-image {
+  width: 26%;
+  height: 118px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+}
+
+.contacts-help-image img {
+  width: 95px;
+  height: 95px;
+
+  display: block;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   NEED HELP CONTENT
+========================================================= */
+
+.contacts-help-content {
+  width: 74%;
+
+  padding: 15px 20px;
+}
+
+.contacts-help-content h2 {
+  margin: 0 0 2px;
+
+  color: #1c2a38;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.contacts-help-content > p {
+  margin: 0 0 9px;
+
+  color: #777777;
+
+  font-size: 7px;
+
+  line-height: 1.4;
+}
+
+/* =========================================================
+   HELP LINKS
+========================================================= */
+
+.contacts-help-links {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns: repeat(3, 1fr);
+
+  gap: 6px;
+}
+
+.contacts-help-links a {
+  min-height: 25px;
+
+  padding: 0 7px;
+
+  display: flex;
+  align-items: center;
+
+  background: #ffffff;
+
+  border: 1px solid #eeeeee;
+
+  border-radius: 4px;
+
+  color: #1c2a38;
+
+  text-decoration: none;
+
+  font-size: 6px;
+  font-weight: 500;
+
+  white-space: nowrap;
+
+  transition: 0.2s ease;
+}
+
+.contacts-help-links a:hover {
+  background: #fffaf0;
+
+  border-color: #eda423;
+}
+
+/* HELP ICON */
+
+.contacts-help-links .help-icon {
+  margin-right: 5px;
+
+  color: #eda423;
+
+  font-size: 9px;
+}
+
+/* HELP ARROW */
+
+.contacts-help-links b {
+  margin-left: auto;
+
+  color: #999999;
+
+  font-size: 10px;
+}
+
+/* =========================================================
+   STILL HAVE QUESTIONS
+========================================================= */
+
+.contacts-support {
+  width: calc(100% - 280px);
+
+  max-width: 1400px;
+
+  height: 72px;
+
+  margin: 14px auto 0;
+
+  padding: 0 25px;
+
+  display: flex;
+  align-items: center;
+
+  background: #10202d;
+
+  border-radius: 7px;
+
+  overflow: hidden;
+}
+
+/* SUPPORT IMAGE */
+
+.contacts-support-icon {
+  width: 62px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+}
+
+.contacts-support-icon img {
+  width: 48px;
+  height: 48px;
+
+  display: block;
+
+  object-fit: contain;
+}
+
+/* SUPPORT TEXT */
+
+.contacts-support-text {
+  flex: 1;
+
+  padding-left: 10px;
+}
+
+.contacts-support-text h2 {
+  margin: 0 0 2px;
+
+  color: #ffffff;
+
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.contacts-support-text p {
+  margin: 0;
+
+  color: #ffffff;
+
+  font-size: 6.5px;
+
+  line-height: 1.4;
+
+  opacity: 0.75;
+}
+
+/* SUPPORT BUTTON */
+
+.contacts-support-button {
+  min-width: 130px;
+  height: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #eda423;
+
+  color: #ffffff;
+
+  border-radius: 4px;
+
+  text-decoration: none;
+
+  font-size: 7px;
+  font-weight: 600;
+
+  transition: 0.2s ease;
+}
+
+.contacts-support-button:hover {
+  background: #ffffff;
+
+  color: #1c2a38;
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.contacts-footer {
+  width: 100%;
+
+  margin-top: 15px;
+
+  padding: 18px 60px 8px;
+
+  background: #ffffff;
+
+  border-top: 1px solid #eeeeee;
+}
+
+/* =========================================================
+   FOOTER TOP
+========================================================= */
+
+.contacts-footer-top {
+  width: 100%;
+
+  max-width: 1400px;
+
+  margin: 0 auto 10px;
+
+  display: grid;
+
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr;
+
+  gap: 40px;
+}
+
+/* =========================================================
+   FOOTER BRAND
+========================================================= */
+
+.contacts-footer-brand {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+.contacts-footer-logo {
+  width: 75px;
+  height: auto;
+
+  display: block;
+}
+
+.contacts-footer-brand p {
+  max-width: 230px;
+
+  margin: 0;
+
+  color: #777777;
+
+  font-size: 6px;
+
+  line-height: 1.45;
+}
+
+/* =========================================================
+   FOOTER LINKS
+========================================================= */
+
+.contacts-footer-links {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+.contacts-footer-heading {
+  display: block;
+
+  margin-bottom: 2px;
+
+  color: #1c2a38;
+
+  font-size: 7px;
+  font-weight: 700;
+
+  letter-spacing: 0.7px;
+}
+
+.contacts-footer-links a {
+  width: fit-content;
+
+  color: #777777;
+
+  text-decoration: none;
+
+  font-size: 6px;
+
+  transition: 0.2s ease;
+}
+
+.contacts-footer-links a:hover {
+  color: #eda423;
+}
+
+.contacts-footer-links a.active {
+  color: #eda423;
+}
+
+/* =========================================================
+   GET THE APP
+========================================================= */
+
+.contacts-footer-app {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.contacts-app-badges {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  margin-bottom: 2px;
+}
+
+.contacts-app-badges img {
+  width: 58px;
+  height: auto;
+
+  display: block;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   FOOTER CONTACT INFORMATION
+========================================================= */
+
+.contacts-footer-contact {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+}
+
+.contacts-footer-contact img {
+  width: 11px;
+  height: 11px;
+
+  display: block;
+
+  object-fit: contain;
+}
+
+.contacts-footer-contact span {
+  color: #777777;
+
+  font-size: 6px;
+
+  line-height: 1.3;
+}
+
+/* =========================================================
+   FOOTER BOTTOM
+========================================================= */
+
+.contacts-footer-bottom {
+  width: 100%;
+
+  max-width: 1400px;
+
+  margin: 0 auto;
+
+  padding-top: 7px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  border-top: 1px solid #eeeeee;
+}
+
+.contacts-footer-bottom p {
+  margin: 0;
+
+  color: #999999;
+
+  font-size: 5.5px;
+}
+
+.contacts-footer-bottom > div {
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+}
+
+.contacts-footer-bottom a {
+  color: #999999;
+
+  text-decoration: none;
+
+  font-size: 5.5px;
+
+  transition: 0.2s ease;
+}
+
+.contacts-footer-bottom a:hover {
+  color: #eda423;
+}
+
+/* =========================================================
+   LARGE DESKTOP
+   1600px+
+========================================================= */
+
+@media (min-width: 1600px) {
+  .contacts-navbar {
+    padding-left: 70px;
+    padding-right: 70px;
+  }
+
+  .contacts-logo img {
+    width: 110px;
+  }
+
+  .contacts-nav-links {
+    gap: 32px;
+  }
+
+  .contacts-nav-links a {
+    font-size: 10px;
+  }
+
+  .contacts-main,
+  .contacts-need-help,
+  .contacts-support {
+    max-width: 1400px;
+  }
+}
+
+/* =========================================================
+   LAPTOP
+   1200px
+========================================================= */
+
+@media (max-width: 1200px) {
+  .contacts-navbar {
+    padding: 0 30px;
+  }
+
+  .contacts-nav-links {
+    gap: 18px;
+  }
+
+  .contacts-nav-links a {
+    font-size: 8px;
+  }
+
+  .contacts-hero-content {
+    padding-left: 70px;
+  }
+
+  .contacts-main,
+  .contacts-need-help,
+  .contacts-support {
+    width: calc(100% - 100px);
+  }
+
+  .contacts-footer {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .contacts-footer-top {
+    gap: 25px;
+  }
+}
+
+/* =========================================================
+   TABLET
+   900px
+========================================================= */
+
+@media (max-width: 900px) {
+  .contacts-navbar {
+    height: 65px;
+
+    padding: 0 20px;
+  }
+
+  .contacts-logo img {
+    width: 90px;
+  }
+
+  .contacts-nav-links {
+    gap: 12px;
+  }
+
+  .contacts-nav-links a {
+    font-size: 7px;
+  }
+
+  .contacts-nav-links .list-space {
+    height: 28px;
+
+    padding: 0 10px;
+  }
+
+  /* HERO */
+
+  .contacts-hero {
+    margin-top: 65px;
+
+    height: 270px;
+  }
+
+  .contacts-hero-content {
+    width: 55%;
+
+    padding-left: 45px;
+  }
+
+  .contacts-hero-content h1 {
+    font-size: 34px;
+  }
+
+  /* MAIN */
+
+  .contacts-main {
+    width: calc(100% - 60px);
+  }
+
+  /* HELP */
+
+  .contacts-need-help,
+  .contacts-support {
+    width: calc(100% - 60px);
+  }
+
+  /* FOOTER */
+
+  .contacts-footer {
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+
+  .contacts-footer-top {
+    grid-template-columns: 1.5fr 1fr 1fr;
+  }
+
+  .contacts-footer-app {
+    grid-column: 1 / -1;
+  }
+}
+
+/* =========================================================
+   MOBILE
+   700px
+========================================================= */
+
+@media (max-width: 700px) {
+  .contacts-navbar {
+    height: auto;
+    min-height: 60px;
+
+    padding: 8px 15px;
+
+    flex-direction: column;
+
+    gap: 6px;
+  }
+
+  .contacts-logo img {
+    width: 85px;
+  }
+
+  .contacts-nav-links {
+    width: 100%;
+
+    height: auto;
+
+    display: flex;
+
+    justify-content: flex-start;
+
+    overflow-x: auto;
+
+    gap: 14px;
+
+    padding-bottom: 3px;
+  }
+
+  .contacts-nav-links a {
+    height: auto;
+
+    font-size: 7px;
+  }
+
+  /* HERO */
+
+  .contacts-hero {
+    margin-top: 100px;
+
+    height: 300px;
+
+    display: block;
+  }
+
+  .contacts-hero-image {
+    width: 100%;
+    height: 100%;
+  }
+
+  .contacts-hero-content {
+    width: 100%;
+    height: 100%;
+
+    padding: 40px 25px;
+
+    justify-content: center;
+
+    background: rgba(255, 250, 240, 0.82);
+  }
+
+  .contacts-hero-content h1 {
+    font-size: 32px;
+  }
+
+  /* CONTACT MAIN */
+
+  .contacts-main {
+    width: calc(100% - 30px);
+
+    grid-template-columns: 1fr;
+
+    margin-top: 18px;
+  }
+
+  /* HELP */
+
+  .contacts-need-help {
+    width: calc(100% - 30px);
+
+    flex-direction: column;
+
+    height: auto;
+  }
+
+  .contacts-help-image {
+    width: 100%;
+
+    height: 100px;
+  }
+
+  .contacts-help-content {
+    width: 100%;
+
+    padding: 15px;
+  }
+
+  .contacts-help-links {
+    grid-template-columns: 1fr;
+  }
+
+  /* SUPPORT */
+
+  .contacts-support {
+    width: calc(100% - 30px);
+
+    height: auto;
+
+    padding: 15px;
+
+    gap: 8px;
+  }
+
+  .contacts-support-icon {
+    width: 50px;
+  }
+
+  .contacts-support-button {
+    min-width: 110px;
+  }
+
+  /* FOOTER */
+
+  .contacts-footer {
+    padding: 25px 20px 10px;
+  }
+
+  .contacts-footer-top {
+    grid-template-columns: 1fr 1fr;
+
+    gap: 22px 20px;
+  }
+
+  .contacts-footer-brand {
+    grid-column: 1 / -1;
+  }
+
+  .contacts-footer-app {
+    grid-column: 1 / -1;
+  }
+}
+
+/* =========================================================
+   SMALL MOBILE
+   450px
+========================================================= */
+
+@media (max-width: 450px) {
+  .contacts-form-row {
+    grid-template-columns: 1fr;
+
+    gap: 0;
+  }
+
+  .contacts-nav-links {
+    gap: 9px;
+  }
+
+  .contacts-nav-links a {
+    font-size: 6px;
+  }
+
+  .contacts-hero-content h1 {
+    font-size: 28px;
+  }
+
+  .contacts-footer-top {
+    grid-template-columns: 1fr;
+  }
+
+  .contacts-footer-brand,
+  .contacts-footer-app {
+    grid-column: auto;
+  }
+
+  .contacts-footer-bottom {
+    flex-direction: column;
+
+    align-items: flex-start;
+
+    gap: 7px;
+  }
+}
+/* =========================================================
+   ROOMHIVE LOGIN PAGE
+========================================================= */
+
+.login-page {
+  width: 100%;
+  min-height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #ffffff;
+
+  padding: 30px;
+}
+
+/* =========================================================
+   LOGIN CARD
+========================================================= */
+
+.login-card {
+  width: 338px;
+  min-height: 434px;
+
+  background: #ffffff;
+
+  border-radius: 14px;
+
+  padding: 15px 30px 28px;
+
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.login-logo {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 5px;
+}
+
+.login-logo img {
+  width: 105px;
+  height: auto;
+
+  display: block;
+}
+
+/* =========================================================
+   INPUT GROUP
+========================================================= */
+
+.login-input-group {
+  width: 100%;
+
+  margin-bottom: 7px;
+}
+
+/* =========================================================
+   LABEL
+========================================================= */
+
+.login-input-group label {
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  color: #111111;
+
+  font-size: 14px;
+  font-weight: 400;
+
+  cursor: text;
+}
+
+.login-input-group label img {
+  width: 18px;
+  height: 18px;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+.login-input-group input {
+  width: 100%;
+  height: 34px;
+
+  margin-top: 2px;
+
+  padding: 5px 10px;
+
+  background: #ffffff;
+
+  border: 1px solid #d9d9d9;
+  border-radius: 5px;
+
+  outline: none;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+
+  transition: 0.2s ease;
+}
+
+.login-input-group input:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 1px rgba(237, 164, 35, 0.15);
+}
+
+/* =========================================================
+   FORGOT PASSWORD
+========================================================= */
+
+.forgot-password {
+  width: 100%;
+
+  text-align: center;
+
+  margin-top: 9px;
+  margin-bottom: 11px;
+}
+
+.forgot-password a {
+  color: #1c2a38;
+
+  text-decoration: none;
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.forgot-password a:hover {
+  color: #eda423;
+}
+
+/* =========================================================
+   LOGIN BUTTON
+========================================================= */
+
+.login-button {
+  width: 100%;
+  height: 27px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: #eda423;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-bottom: 14px;
+
+  transition: 0.2s ease;
+}
+
+.login-button:hover {
+  background: #d99218;
+}
+
+.login-button:active {
+  transform: scale(0.99);
+}
+
+/* =========================================================
+   SOCIAL LOGIN BUTTONS
+========================================================= */
+
+.social-login {
+  position: relative;
+
+  width: 100%;
+  height: 28px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #ffffff;
+
+  border: 1px solid #999999;
+  border-radius: 5px;
+
+  color: #111111;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+
+  cursor: pointer;
+
+  margin-bottom: 10px;
+
+  transition: 0.2s ease;
+}
+
+.social-login:hover {
+  background: #f7f7f7;
+}
+
+/* =========================================================
+   SOCIAL ICON
+========================================================= */
+
+.social-login img {
+  position: absolute;
+
+  left: 44px;
+
+  width: 16px;
+  height: 16px;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   CREATE ACCOUNT
+========================================================= */
+
+.create-account {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  gap: 3px;
+
+  margin-top: 18px;
+
+  white-space: nowrap;
+
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.create-account a {
+  color: #eda423;
+
+  text-decoration: none;
+
+  font-weight: 400;
+}
+
+.create-account a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 500px) {
+  .login-page {
+    padding: 20px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 338px;
+  }
+}
+/* ========================================
+   ROOMHIVE - CREATE ACCOUNT
+   ======================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+}
+
+/* ========================================
+   CREATE ACCOUNT PAGE
+   ======================================== */
+
+.create-account-page {
+  min-height: 100vh;
+  background: #ffffff;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 30px;
+}
+
+/* ========================================
+   MAIN CONTAINER
+   ======================================== */
+
+.create-account-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ========================================
+   CREATE ACCOUNT CARD
+   ======================================== */
+
+.create-account-card {
+  width: 312px;
+  min-height: 502px;
+
+  background: #ffffff;
+
+  border-radius: 11px;
+
+  padding: 17px 25px 16px;
+
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+
+  position: relative;
+}
+
+/* ========================================
+   LOGO
+   ======================================== */
+
+.create-logo {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 2px;
+}
+
+.create-logo img {
+  width: 82px;
+  height: auto;
+  display: block;
+}
+
+/* ========================================
+   TITLE
+   ======================================== */
+
+.create-account-card h1 {
+  text-align: center;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  color: #1c2a38;
+
+  line-height: 1.3;
+
+  margin-top: 1px;
+  margin-bottom: 1px;
+}
+
+.create-subtitle {
+  text-align: center;
+
+  font-size: 7.5px;
+  font-weight: 400;
+
+  color: #777777;
+
+  margin-bottom: 8px;
+}
+
+/* ========================================
+   FORM
+   ======================================== */
+
+.form-group {
+  width: 100%;
+  margin-bottom: 7px;
+}
+
+/* ========================================
+   LABEL
+   ======================================== */
+
+.form-group label {
+  display: flex;
+  align-items: center;
+
+  font-size: 9px;
+  font-weight: 500;
+
+  color: #333333;
+
+  margin-bottom: 3px;
+}
+
+/* Label Icons */
+
+.form-group label img {
+  width: 14px;
+  height: 14px;
+
+  object-fit: contain;
+
+  margin-right: 6px;
+}
+
+/* ========================================
+   INPUT
+   ======================================== */
+
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
+  width: 100%;
+  height: 27px;
+
+  border: 1px solid #dddddd;
+  border-radius: 4px;
+
+  background: #ffffff;
+
+  padding: 0 9px;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 9px;
+
+  color: #333333;
+
+  outline: none;
+
+  transition: 0.2s ease;
+}
+
+/* Input Focus */
+
+.form-group input[type="text"]:focus,
+.form-group input[type="email"]:focus,
+.form-group input[type="password"]:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.1);
+}
+
+/* ========================================
+   PASSWORD CONTAINER
+   ======================================== */
+
+.password-container {
+  position: relative;
+  width: 100%;
+}
+
+.password-container input {
+  padding-right: 30px !important;
+}
+
+/* ========================================
+   SHOW PASSWORD
+   ======================================== */
+
+.show-password {
+  position: absolute;
+
+  right: 7px;
+  top: 50%;
+
+  transform: translateY(-50%);
+
+  border: none;
+  background: transparent;
+
+  padding: 0;
+
+  cursor: pointer;
+
+  color: #777777;
+
+  font-size: 11px;
+
+  width: 18px;
+  height: 18px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ========================================
+   PASSWORD HINT
+   ======================================== */
+
+.password-hint {
+  font-size: 6.5px;
+
+  color: #777777;
+
+  margin-top: 2px;
+}
+
+/* ========================================
+   TERMS
+   ======================================== */
+
+.terms-container {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 5px;
+
+  margin-top: 1px;
+  margin-bottom: 9px;
+}
+
+.terms-container input[type="checkbox"] {
+  width: 10px;
+  height: 10px;
+
+  margin-top: 1px;
+
+  accent-color: #eda423;
+
+  cursor: pointer;
+}
+
+.terms-container label {
+  font-size: 6.5px;
+  line-height: 1.4;
+
+  color: #666666;
+
+  cursor: pointer;
+}
+
+.terms-container a {
+  color: #eda423;
+
+  text-decoration: none;
+
+  font-weight: 500;
+}
+
+.terms-container a:hover {
+  text-decoration: underline;
+}
+
+/* ========================================
+   CREATE ACCOUNT BUTTON
+   ======================================== */
+
+.create-account-button {
+  width: 100%;
+  height: 22px;
+
+  border: none;
+  border-radius: 4px;
+
+  background: #eda423;
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 9px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.create-account-button:hover {
+  background: #d99118;
+
+  transform: translateY(-1px);
+}
+
+.create-account-button:active {
+  transform: translateY(0);
+}
+
+/* ========================================
+   OR DIVIDER
+   ======================================== */
+
+.or-divider {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  margin: 8px 0;
+}
+
+.or-divider span {
+  height: 1px;
+
+  background: #dddddd;
+
+  flex: 1;
+}
+
+.or-divider p {
+  font-size: 7px;
+
+  color: #777777;
+
+  font-weight: 400;
+}
+
+/* ========================================
+   SOCIAL LOGIN BUTTONS
+   ======================================== */
+
+.social-button {
+  width: 100%;
+  height: 25px;
+
+  background: #ffffff;
+  border: 1px solid #bdbdbd;
+  border-radius: 5px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 7px;
+
+  cursor: pointer;
+
+  font-family: "Poppins", sans-serif;
+
+  margin-bottom: 5px;
+
+  position: relative;
+
+  transition: 0.2s ease;
+}
+
+.social-button:hover {
+  background: #f8f8f8;
+  border-color: #999999;
+}
+
+/* Google and Apple icons */
+.social-button img {
+  position: static;
+
+  transform: none;
+
+  width: 14px;
+  height: 14px;
+
+  object-fit: contain;
+
+  flex-shrink: 0;
+}
+
+/* Text */
+.social-button span {
+  font-size: 8px;
+
+  color: #222222;
+
+  font-weight: 500;
+
+  line-height: 1;
+}
+
+/* ========================================
+   LOGIN TEXT
+   ======================================== */
+
+.login-text {
+  text-align: center;
+
+  font-size: 7.5px;
+
+  color: #333333;
+
+  margin-top: 7px;
+}
+
+.login-text a {
+  color: #eda423;
+
+  text-decoration: none;
+
+  font-weight: 500;
+}
+
+.login-text a:hover {
+  text-decoration: underline;
+}
+
+/* ========================================
+   FORM MESSAGES
+   ======================================== */
+
+.form-message {
+  width: 100%;
+
+  padding: 5px 7px;
+
+  border-radius: 4px;
+
+  font-size: 7px;
+
+  margin-bottom: 7px;
+
+  text-align: center;
+}
+
+.form-message.error {
+  background: #fff0f0;
+
+  border: 1px solid #f0b5b5;
+
+  color: #c0392b;
+}
+
+.form-message.success {
+  background: #effaf1;
+
+  border: 1px solid #b7dfbd;
+
+  color: #2e7d32;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 500px) {
+  .create-account-page {
+    padding: 20px 15px;
+  }
+
+  .create-account-card {
+    width: 100%;
+    max-width: 312px;
+  }
+}
+/* =========================
+   CLOSE BUTTON
+   ========================= */
+
+.close-button {
+  position: fixed;
+  top: 25px;
+  right: 35px;
+
+  width: 45px;
+  height: 45px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1;
+
+  color: #1c2a38;
+  text-decoration: none;
+
+  background: #ffffff;
+  border-radius: 50%;
+
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+
+  z-index: 1000;
+
+  transition: 0.2s ease;
+}
+
+.close-button:hover {
+  background: #eda423;
+  color: #ffffff;
+  transform: scale(1.08);
+}
+/* ========================================
+   ROOMHIVE - FORGOT PASSWORD
+   ======================================== */
+
+.forgot-password-page {
+  min-height: 100vh;
+
+  background: #ffffff;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 30px;
+}
+
+/* ========================================
+   CONTAINER
+   ======================================== */
+
+.forgot-password-container {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ========================================
+   CARD
+   ======================================== */
+
+.forgot-password-card {
+  width: 320px;
+  min-height: 488px;
+
+  background: #ffffff;
+
+  border-radius: 12px;
+
+  padding: 13px 28px 20px;
+
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+
+  position: relative;
+}
+
+/* ========================================
+   ROOMHIVE LOGO
+   ======================================== */
+
+.forgot-logo {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 2px;
+}
+
+.forgot-logo img {
+  width: 90px;
+  height: auto;
+
+  display: block;
+}
+
+/* ========================================
+   FORGOT PASSWORD ICON
+   ======================================== */
+
+.forgot-icon {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+
+.forgot-icon img {
+  width: 88px;
+  height: 88px;
+
+  object-fit: contain;
+
+  display: block;
+}
+
+/* ========================================
+   TITLE
+   ======================================== */
+
+.forgot-password-card h1 {
+  text-align: center;
+
+  color: #1c2a38;
+
+  font-size: 16px;
+  font-weight: 700;
+
+  line-height: 1.3;
+
+  margin: 0 0 3px;
+}
+
+/* ========================================
+   DESCRIPTION
+   ======================================== */
+
+.forgot-description {
+  text-align: center;
+
+  color: #777777;
+
+  font-size: 7.5px;
+  font-weight: 400;
+
+  line-height: 1.55;
+
+  margin-bottom: 13px;
+}
+
+/* ========================================
+   FORM GROUP
+   ======================================== */
+
+.forgot-form-group {
+  width: 100%;
+
+  margin-bottom: 11px;
+}
+
+/* ========================================
+   EMAIL LABEL
+   ======================================== */
+
+.forgot-form-group label {
+  display: flex;
+  align-items: center;
+
+  color: #222222;
+
+  font-size: 9px;
+  font-weight: 500;
+
+  margin-bottom: 4px;
+}
+
+/* Email Icon */
+
+.forgot-form-group label img {
+  width: 14px;
+  height: 14px;
+
+  object-fit: contain;
+
+  margin-right: 6px;
+}
+
+/* ========================================
+   EMAIL INPUT
+   ======================================== */
+
+.forgot-form-group input {
+  width: 100%;
+  height: 29px;
+
+  border: 1px solid #dddddd;
+
+  border-radius: 5px;
+
+  background: #ffffff;
+
+  padding: 0 9px;
+
+  outline: none;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 8px;
+
+  color: #333333;
+
+  transition: 0.2s ease;
+}
+
+/* Placeholder */
+
+.forgot-form-group input::placeholder {
+  color: #aaaaaa;
+}
+
+/* Focus */
+
+.forgot-form-group input:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.1);
+}
+
+/* ========================================
+   RESET BUTTON
+   ======================================== */
+
+.reset-button {
+  width: 100%;
+  height: 25px;
+
+  border: none;
+
+  border-radius: 5px;
+
+  background: #eda423;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 8.5px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.reset-button:hover {
+  background: #d99118;
+
+  transform: translateY(-1px);
+}
+
+.reset-button:active {
+  transform: translateY(0);
+}
+
+/* ========================================
+   OR DIVIDER
+   ======================================== */
+
+.forgot-divider {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  margin: 13px 0;
+}
+
+.forgot-divider span {
+  height: 1px;
+
+  background: #dddddd;
+
+  flex: 1;
+}
+
+.forgot-divider p {
+  color: #777777;
+
+  font-size: 7px;
+
+  font-weight: 400;
+}
+
+/* ========================================
+   BACK TO LOGIN
+   ======================================== */
+
+.back-login-button {
+  width: 100%;
+  height: 29px;
+
+  border: 1px solid #999999;
+
+  border-radius: 5px;
+
+  background: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+  text-decoration: none;
+
+  color: #222222;
+
+  font-family: "Poppins", sans-serif;
+
+  font-size: 8px;
+  font-weight: 500;
+
+  transition: 0.2s ease;
+}
+
+.back-login-button:hover {
+  background: #f8f8f8;
+
+  border-color: #777777;
+}
+
+/* Back Arrow */
+
+.back-arrow {
+  font-size: 12px;
+
+  line-height: 1;
+}
+
+/* ========================================
+   HELP BOX
+   ======================================== */
+
+.forgot-help-box {
+  width: 100%;
+
+  min-height: 61px;
+
+  background: #fff8ed;
+
+  border-radius: 8px;
+
+  margin-top: 16px;
+
+  padding: 9px 10px;
+
+  display: flex;
+  align-items: flex-start;
+
+  position: relative;
+}
+
+/* ========================================
+   HELP ICON
+   ======================================== */
+
+.help-icon {
+  width: 32px;
+  height: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-right: 7px;
+}
+
+.help-icon img {
+  width: 28px;
+  height: 28px;
+
+  object-fit: contain;
+}
+
+/* ========================================
+   HELP CONTENT
+   ======================================== */
+
+.help-content {
+  padding-top: 1px;
+}
+
+.help-content strong {
+  display: block;
+
+  color: #333333;
+
+  font-size: 7.5px;
+  font-weight: 700;
+
+  margin-bottom: 2px;
+}
+
+.help-content p {
+  color: #777777;
+
+  font-size: 6.5px;
+
+  line-height: 1.45;
+
+  margin: 0;
+}
+
+/* ========================================
+   CONTACT SUPPORT
+   ======================================== */
+
+.contact-support {
+  position: absolute;
+
+  right: 10px;
+  bottom: 8px;
+
+  color: #eda423;
+
+  font-size: 6px;
+  font-weight: 500;
+
+  text-decoration: none;
+}
+
+.contact-support:hover {
+  text-decoration: underline;
+}
+
+/* ========================================
+   ERROR / SUCCESS
+   ======================================== */
+
+.forgot-message {
+  width: 100%;
+
+  padding: 5px 7px;
+
+  border-radius: 4px;
+
+  text-align: center;
+
+  font-size: 7px;
+
+  margin-bottom: 8px;
+}
+
+.forgot-message.error {
+  background: #fff0f0;
+
+  border: 1px solid #f0b5b5;
+
+  color: #c0392b;
+}
+
+.forgot-message.success {
+  background: #effaf1;
+
+  border: 1px solid #b7dfbd;
+
+  color: #2e7d32;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 500px) {
+  .forgot-password-page {
+    padding: 20px 15px;
+  }
+
+  .forgot-password-card {
+    width: 100%;
+    max-width: 320px;
+  }
+}
+/* =========================================================
+   ROOMHIVE - BECOME A HOST (STEP 2)
+   ADD TO THE END OF style.css
+   ========================================================= */
+
+/* =========================================================
+   FULL WIDTH INPUT GROUP
+   (used for fields that span the whole form card width,
+   e.g. Title, Description, House Rules)
+========================================================= */
+
+.input-group.full-width {
+  margin-bottom: 26px;
+}
+
+/* =========================================================
+   TWO COLUMN FORM GRID
+========================================================= */
+
+.two-columns {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* =========================================================
+   SECTION DIVIDER
+   (separates "Basic Information" from "About Your Space")
+========================================================= */
+
+.form-section-divider {
+  width: 100%;
+  height: 1px;
+
+  margin: 8px 0 34px;
+
+  background: #eee4d3;
+}
+
+/* =========================================================
+   PRICE INPUT (peso icon addon)
+========================================================= */
+
+.price-input-group {
+  width: 100%;
+  height: 52px;
+
+  display: flex;
+  align-items: stretch;
+
+  border: 1px solid #dedede;
+  border-radius: 8px;
+
+  background: #ffffff;
+
+  overflow: hidden;
+
+  transition: 0.2s ease;
+}
+
+.price-input-group:focus-within {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.1);
+}
+
+.price-input-group .price-icon {
+  width: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  border-right: 1px solid #eeeeee;
+
+  background: #fbfbfb;
+
+  color: #eda423;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.price-input-group input {
+  flex: 1;
+
+  height: 100%;
+  min-width: 0;
+
+  padding: 0 16px;
+
+  border: none;
+  outline: none;
+
+  background: transparent;
+
+  color: #263441;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+}
+
+.price-input-group input::placeholder {
+  color: #a0a0a0;
+}
+
+/* Hide native number spinners so it matches the other inputs */
+.price-input-group input::-webkit-outer-spin-button,
+.price-input-group input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.price-input-group input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* =========================================================
+   FORM ACTIONS
+   (Back button on the left, Next Step on the right)
+========================================================= */
+
+.host-form-card .form-actions {
+  justify-content: space-between;
+}
+
+/* =========================================================
+   BACK BUTTON
+========================================================= */
+
+.back-button {
+  min-width: 130px;
+  height: 54px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0 28px;
+
+  border: 1.5px solid #1c2a38;
+  border-radius: 8px;
+
+  background: transparent;
+
+  color: #1c2a38;
+
+  text-decoration: none;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.back-button:hover {
+  background: #1c2a38;
+
+  color: #ffffff;
+}
+
+/* =========================================================
+   TEXTAREAS
+   (Description / House Rules)
+========================================================= */
+
+.input-group textarea {
+  width: 100%;
+  min-height: 110px;
+
+  padding: 16px 18px;
+
+  border: 1px solid #dedede;
+
+  border-radius: 8px;
+
+  background: #ffffff;
+
+  color: #263441;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+
+  outline: none;
+  resize: vertical;
+
+  transition: 0.2s ease;
+}
+
+.input-group textarea::placeholder {
+  color: #a0a0a0;
+}
+
+.input-group textarea:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.1);
+}
+
+/* =========================================================
+   HOST STEP TRACKER — ACTIVE / COMPLETED STATES
+   (drives the currently-active step regardless of which
+   step number it is, used from host-step2.php onward)
+========================================================= */
+
+.host-steps .host-step.active .step-circle {
+  background: #2f6fed;
+
+  border-color: #2f6fed;
+
+  box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.15);
+}
+
+.host-steps .host-step.active .step-number {
+  background: #2f6fed;
+}
+
+.host-steps .host-step.active .step-circle img {
+  filter: brightness(0) invert(1);
+}
+
+.host-steps .host-step.completed .step-circle {
+  background: #1c2a38;
+
+  border-color: #1c2a38;
+}
+
+.host-steps .host-step.completed .step-circle img {
+  filter: brightness(0) invert(1);
+}
+
+.host-steps .host-step.completed .step-number {
+  background: #1c2a38;
+}
+
+/* =========================================================
+   ROOMHIVE - BECOME A HOST (STEP 3)
+   UPLOAD PHOTOS
+   ========================================================= */
+
+/* =========================================================
+   SECTION LABEL
+   (Cover Photo / Additional Photos headers within the form)
+========================================================= */
+
+.photo-section-label {
+  margin-bottom: 14px;
+}
+
+.photo-section-label label {
+  display: block;
+
+  margin-bottom: 4px;
+
+  color: #263441;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.photo-section-label p {
+  margin: 0;
+
+  color: #888f95;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 12.5px;
+}
+
+.required-mark {
+  color: #e0523f;
+}
+
+/* =========================================================
+   COVER PHOTO
+========================================================= */
+
+.cover-photo-row {
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+
+  gap: 20px;
+
+  margin-bottom: 34px;
+}
+
+.cover-photo-box {
+  width: 100%;
+  min-height: 190px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1.5px dashed #d9d9d9;
+  border-radius: 10px;
+
+  background-color: #ffffff;
+  background-size: cover;
+  background-position: center;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.cover-photo-box:hover {
+  border-color: #eda423;
+
+  background-color: #fffaf0;
+}
+
+.cover-photo-box .cover-photo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  gap: 10px;
+
+  text-align: center;
+
+  padding: 20px;
+}
+
+.cover-photo-box.has-image {
+  border-style: solid;
+  border-color: #eee4d3;
+}
+
+.cover-photo-box.has-image .cover-photo-placeholder {
+  display: none;
+}
+
+.cover-photo-example {
+  position: relative;
+
+  width: 100%;
+  min-height: 190px;
+
+  border-radius: 10px;
+
+  overflow: hidden;
+}
+
+.cover-photo-example img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+
+  display: block;
+}
+
+.cover-photo-example .example-badge {
+  position: absolute;
+
+  top: 12px;
+  right: 12px;
+
+  padding: 5px 12px;
+
+  background: #ffffff;
+
+  border-radius: 5px;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+/* =========================================================
+   ADDITIONAL PHOTOS GRID
+========================================================= */
+
+.photo-grid {
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+
+  gap: 16px;
+
+  margin-bottom: 30px;
+}
+
+.photo-slot {
+  position: relative;
+
+  width: 100%;
+  aspect-ratio: 1 / 1;
+
+  border-radius: 10px;
+
+  overflow: hidden;
+}
+
+/* EMPTY SLOT TRIGGER */
+
+.photo-slot-trigger {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+  padding: 10px;
+
+  border: 1.5px dashed #d9d9d9;
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.photo-slot-trigger:hover {
+  border-color: #eda423;
+
+  background: #fffaf0;
+}
+
+.photo-slot-icon {
+  color: #293541;
+
+  font-size: 20px;
+
+  line-height: 1;
+}
+
+.photo-slot-text {
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+
+  text-align: center;
+}
+
+.photo-slot-text strong {
+  color: #39444e;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.photo-slot-text small {
+  color: #888f95;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 9px;
+}
+
+/* FILLED SLOT */
+
+.photo-slot.filled {
+  border: 1px solid #eee4d3;
+}
+
+.photo-slot.filled img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+
+  display: block;
+}
+
+.photo-slot-remove {
+  position: absolute;
+
+  top: 6px;
+  right: 6px;
+
+  width: 22px;
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: none;
+  border-radius: 50%;
+
+  background: #ffffff;
+
+  color: #e0523f;
+
+  font-size: 15px;
+  line-height: 1;
+
+  cursor: pointer;
+
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+
+  transition: 0.2s ease;
+}
+
+.photo-slot-remove:hover {
+  background: #e0523f;
+
+  color: #ffffff;
+}
+
+/* =========================================================
+   BACK / NEXT BUTTON ARROWS
+========================================================= */
+
+.back-button,
+.next-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+}
+
+.btn-arrow {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 900px) {
+  .photo-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .price-input-group {
+    height: 50px;
+  }
+
+  .cover-photo-row {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* =========================================================
+   ROOMHIVE - HOST STEP 4 / SUCCESS PAGE
+   ========================================================= */
+
+.space-success-page {
+  background: #fffaf6;
+  color: #102746;
+}
+
+.success-main {
+  min-height: 980px;
+  padding: 30px 48px 22px;
+  box-sizing: border-box;
+}
+
+/* =========================
+   HEADER
+========================= */
+
+.success-header {
+  text-align: center;
+}
+
+.success-eyebrow {
+  display: block;
+  margin-top: 0;
+  color: #f79300;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.success-header h1 {
+  margin: 4px 0 32px;
+  color: #102746;
+  font-size: 32px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+/* =========================
+   HOST STEPS
+   =========================
+   NOTE: style.css also defines bare (unscoped) .step-circle
+   and .step-number rules for the "Add Your Space" flow
+   (steps 1-3), and those force width/height/margin/display
+   with !important. Since this page reuses the same class
+   names for a different design (bigger circles, different
+   badge size), every rule below is scoped under
+   .space-success-page AND repeats !important on the
+   properties style.css also marks !important — that's the
+   only way to reliably win against another !important rule:
+   higher specificity + !important beats lower specificity +
+   !important, regardless of stylesheet load order.
+========================= */
+
+.space-success-page .host-steps {
+  width: min(100%, 1000px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: relative;
+}
+
+.space-success-page .host-step {
+  position: relative;
+  text-align: center;
+  min-width: 0;
+}
+
+.space-success-page .step-circle {
+  width: 82px !important;
+  height: 82px !important;
+  margin: 0 auto !important;
+
+  border: 2px solid #ffd6a4;
+  border-radius: 50%;
+  background: #fffdfb;
+
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.space-success-page .step-circle img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.space-success-page .host-step.completed .step-circle,
+.space-success-page .host-step.active .step-circle {
+  border-color: #ff9500;
+}
+
+.space-success-page .step-line {
+  position: absolute;
+  top: 40px;
+  left: calc(50% + 40px);
+  width: calc(100% - 80px);
+  border-top: 2px dashed #f5a23a;
+  z-index: 1;
+}
+
+.space-success-page .step-number {
+  width: 22px !important;
+  height: 22px !important;
+  margin: 4px auto 13px !important;
+  display: block !important;
+
+  border-radius: 50%;
+  background: #f79300;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  position: relative;
+  z-index: 3;
+}
+
+.space-success-page .host-step h3 {
+  margin: 0 0 6px;
+  color: #102746;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.space-success-page .host-step p {
+  width: 150px;
+  margin: 0 auto;
+  color: #1d3150;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.space-success-page .host-step.active .step-circle {
+  box-shadow: 0 0 0 4px rgba(247, 147, 0, 0.05);
+}
+
+/* =========================
+   SUCCESS CARD
+========================= */
+
+.success-card {
+  width: min(100%, 1025px);
+  min-height: 535px;
+  margin: 48px auto 0;
+  padding: 52px 30px 34px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #e8e1dc;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(20, 35, 55, 0.04);
+  text-align: center;
+}
+
+.success-icon-wrap {
+  width: 150px;
+  height: 150px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.success-icon {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+}
+
+.success-card h2 {
+  margin: 0 0 12px;
+  color: #111;
+  font-size: 29px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.success-message {
+  margin: 0 auto;
+  color: #172b4a;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.success-actions {
+  width: min(100%, 400px);
+  margin: 24px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.success-button {
+  min-height: 58px;
+  width: 100%;
+  border-radius: 8px;
+  padding: 0 22px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 17px;
+  text-decoration: none;
+  font-family: "Poppins", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.success-button.primary {
+  color: #fff;
+  background: linear-gradient(90deg, #ff9700, #ff8d00);
+  border: 1px solid #ff9700;
+}
+
+.success-button.secondary {
+  color: #f79300;
+  background: #fff;
+  border: 2px solid #f79300;
+}
+
+.success-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px rgba(247, 147, 0, 0.15);
+}
+
+.button-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.add-another-icon {
+  filter: none;
+}
+
+.success-footer-text {
+  margin: 22px 0 0;
+  color: #14294a;
+  font-size: 14px;
+}
+
+/* =========================
+   FOOTER
+========================= */
+
+.success-footer {
+  background: #fff;
+  border-top: 1px solid #e5e5e5;
+}
+
+.success-footer-top {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  padding: 34px 24px 25px;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr 1.2fr;
+  gap: 45px;
+  box-sizing: border-box;
+}
+
+.success-footer-logo {
+  width: 115px;
+  height: auto;
+  display: block;
+}
+
+.success-footer-contact {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.success-footer-contact div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1b2d49;
+  font-size: 12px;
+}
+
+.success-footer-contact img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.success-footer-links,
+.success-footer-app {
+  display: flex;
+  flex-direction: column;
+}
+
+.success-footer-links h3,
+.success-footer-app h3 {
+  margin: 6px 0 13px;
+  color: #111;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.success-footer-links a {
+  width: fit-content;
+  margin-bottom: 9px;
+  color: #667085;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.success-footer-links a:hover {
+  color: #f79300;
+}
+
+.app-badges {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.app-badges img {
+  width: 108px;
+  height: auto;
+  display: block;
+  border-radius: 5px;
+}
+
+.success-footer-bottom {
+  border-top: 0;
+  text-align: center;
+  padding: 8px 20px 28px;
+}
+
+.success-footer-bottom p {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 900px) {
+  .success-main {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .success-footer-top {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .success-main {
+    min-height: auto;
+    padding: 28px 14px 40px;
+  }
+
+  .success-header h1 {
+    font-size: 27px;
+    margin-bottom: 25px;
+  }
+
+  .space-success-page .host-steps {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 28px;
+  }
+
+  .space-success-page .step-line {
+    display: none;
+  }
+
+  .success-card {
+    margin-top: 35px;
+    padding: 38px 18px 30px;
+  }
+
+  .success-card h2 {
+    font-size: 24px;
+  }
+
+  .success-message {
+    font-size: 13px;
+  }
+
+  .success-button {
+    font-size: 15px;
+  }
+
+  .success-footer-top {
+    grid-template-columns: 1fr;
+    gap: 25px;
+  }
+}

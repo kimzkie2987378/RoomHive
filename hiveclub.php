@@ -1,0 +1,880 @@
+<?php
+session_start();
+
+$isLoggedIn = (
+    isset($_SESSION["logged_in"]) &&
+    $_SESSION["logged_in"] === true
+);
+
+// =====================================================
+// ROOMHIVE - HIVE CLUB
+// =====================================================
+
+// Current year for footer
+$currentYear = date("Y");
+
+// Navigation links
+$navigation = [
+    "HOME" => $isLoggedIn ? "usershome.php" : "index.php",
+    "LISTINGS" => "listing.php",
+    "HOW IT WORKS" => "howitworks.php",
+    "BECOME A HOST" => $isLoggedIn ? "becomeahost.php" : "loginform.php",
+    "HIVE CLUB" => "hiveclub.php",
+    "CONTACTS" => "contacts.php"
+];
+
+// Hive Club member information
+$memberId = "RH 2024 0001";
+$memberTier = "Gold Member";
+$memberPoints = 12450;
+$nextTierPoints = 25000;
+
+// Calculate progress toward next tier
+$progress = ($memberPoints / $nextTierPoints) * 100;
+
+// Prevent progress from exceeding 100%
+if ($progress > 100) {
+    $progress = 100;
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>RoomHive - Hive Club</title>
+
+    <!-- Poppins Font -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<!-- =====================================================
+     NAVIGATION BAR
+===================================================== -->
+
+<header class="navbar">
+
+    <!-- LOGO -->
+    <div class="logo">
+
+        <a href="<?php echo $isLoggedIn ? 'usershome.php' : 'index.php'; ?>">
+
+            <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
+
+        </a>
+
+    </div>
+
+    <!-- NAVIGATION -->
+    <nav class="nav-links">
+
+        <?php foreach ($navigation as $name => $link): ?>
+
+            <a
+                href="<?php echo htmlspecialchars($link); ?>"
+                class="<?php echo ($name === 'HIVE CLUB') ? 'active' : ''; ?>"
+            >
+
+                <?php echo htmlspecialchars($name); ?>
+
+            </a>
+
+        <?php endforeach; ?>
+
+
+        <?php if ($isLoggedIn): ?>
+
+            <!-- MY ACCOUNT DROPDOWN -->
+            <div class="account-dropdown">
+
+                <button
+                    type="button"
+                    class="my-account"
+                    id="accountDropdownToggle"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    onclick="toggleAccountMenu()"
+                >
+                    <span class="account-circle">
+                        <img src="images/MyAccountIcon.png" alt="My Account">
+                    </span>
+                    <span>MY ACCOUNT</span>
+                    <span class="dropdown-caret">&#9662;</span>
+                </button>
+
+                <div class="account-dropdown-menu" id="accountDropdownMenu">
+
+                    <a href="myaccount.php">
+                        My Account
+                    </a>
+
+                    <a href="logout.php">
+                        Logout
+                    </a>
+
+                </div>
+
+            </div>
+
+        <?php else: ?>
+
+            <!-- LIST YOUR SPACE -->
+
+            <a
+                href="loginform.php"
+                class="list-space"
+            >
+
+                LIST YOUR SPACE
+
+            </a>
+
+        <?php endif; ?>
+
+    </nav>
+
+</header>
+
+<?php if ($isLoggedIn): ?>
+<style>
+    .account-dropdown {
+        position: relative;
+    }
+
+    .account-dropdown .my-account {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font: inherit;
+        color: inherit;
+    }
+
+    .account-dropdown .dropdown-caret {
+        font-size: 0.7em;
+        transition: transform 0.15s ease;
+    }
+
+    .account-dropdown.open .dropdown-caret {
+        transform: rotate(180deg);
+    }
+
+    .account-dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        min-width: 160px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        overflow: hidden;
+        z-index: 100;
+        margin-top: 8px;
+    }
+
+    .account-dropdown.open .account-dropdown-menu {
+        display: block;
+    }
+
+    .account-dropdown-menu a {
+        display: block;
+        padding: 10px 16px;
+        text-decoration: none;
+        color: #333;
+        white-space: nowrap;
+    }
+
+    .account-dropdown-menu a:hover {
+        background: #f5f5f5;
+    }
+</style>
+
+<script>
+    function toggleAccountMenu() {
+        const dropdown = document.getElementById('accountDropdownToggle').closest('.account-dropdown');
+        const toggle = document.getElementById('accountDropdownToggle');
+        const isOpen = dropdown.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
+    document.addEventListener('click', function (event) {
+        const dropdown = document.querySelector('.account-dropdown');
+        if (dropdown && !dropdown.contains(event.target)) {
+            dropdown.classList.remove('open');
+            document.getElementById('accountDropdownToggle').setAttribute('aria-expanded', 'false');
+        }
+    });
+</script>
+<?php endif; ?>
+
+
+<!-- =====================================================
+     HIVE CLUB HERO
+===================================================== -->
+
+<section class="hive-hero">
+
+    <div class="hero-pattern"></div>
+
+    <!-- LEFT CONTENT -->
+    <div class="hive-hero-content">
+
+        <h1>
+            Welcome to<br>
+            <span>Hive Club!</span>
+        </h1>
+
+        <p>
+            Join our rewards club and enjoy exclusive perks,
+            discounts, and special offers every time you stay.
+        </p>
+
+        <div class="hero-buttons">
+
+            <a href="#membership" class="hero-btn primary">
+                JOIN HIVE CLUB
+            </a>
+
+            <a href="#how-earn" class="hero-btn secondary">
+                HOW IT WORKS
+            </a>
+
+        </div>
+
+    </div>
+
+
+    <!-- RIGHT MEMBERSHIP CARD -->
+    <div class="member-card-area">
+
+        <div class="member-card">
+
+            <div class="member-title">
+                HIVE CLUB MEMBER
+            </div>
+
+            <img
+                src="images/RoomHiveLogos.png"
+                class="member-logo"
+                alt="RoomHive"
+            >
+
+            <div class="member-id-label">
+                MEMBER ID
+            </div>
+
+            <div class="member-id">
+                <?php echo htmlspecialchars($memberId); ?>
+            </div>
+
+        </div>
+
+
+        <!-- GIFT -->
+        <div class="gift-box">
+
+            <div class="gift-lid"></div>
+
+            <div class="gift-body">
+                <div class="gift-ribbon"></div>
+            </div>
+
+            <div class="gift-bow">
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     MEMBER BENEFITS + SIDEBAR
+===================================================== -->
+
+<section class="club-main" id="membership">
+
+    <!-- LEFT SIDE -->
+    <div class="club-left">
+
+        <!-- MEMBER BENEFITS -->
+
+        <div class="section-heading">
+
+            <h2>Member Benefits</h2>
+
+            <p>
+                The more you book, the more you earn.
+            </p>
+
+        </div>
+
+
+        <div class="benefits-grid">
+
+            <!-- BENEFIT 1 -->
+            <div class="benefit-card">
+
+                <div class="benefit-icon">
+                    %
+                </div>
+
+                <h3>Exclusive Discounts</h3>
+
+                <p>
+                    Get up to 15% off on selected stays.
+                </p>
+
+            </div>
+
+
+            <!-- BENEFIT 2 -->
+            <div class="benefit-card">
+
+                <div class="benefit-icon">
+                    🎁
+                </div>
+
+                <h3>Special Offers</h3>
+
+                <p>
+                    Access members-only promotions and bundles.
+                </p>
+
+            </div>
+
+
+            <!-- BENEFIT 3 -->
+            <div class="benefit-card">
+
+                <div class="benefit-icon">
+                    ★
+                </div>
+
+                <h3>Earn Points</h3>
+
+                <p>
+                    Earn points for every booking and redeem easy rewards.
+                </p>
+
+            </div>
+
+
+            <!-- BENEFIT 4 -->
+            <div class="benefit-card">
+
+                <div class="benefit-icon">
+                    ▣
+                </div>
+
+                <h3>Early Access</h3>
+
+                <p>
+                    Be the first to know about new listings and deals.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             TIER LEVELS
+        ================================================== -->
+
+        <div class="tier-heading">
+            Tier Levels
+        </div>
+
+
+        <div class="tier-grid">
+
+            <!-- BRONZE -->
+            <div class="tier-card bronze">
+
+                <div class="tier-icon">
+                    🥉
+                </div>
+
+                <div class="tier-info">
+
+                    <h3>Bronze</h3>
+
+                    <strong>
+                        0 - 4,999 pts
+                    </strong>
+
+                    <ul>
+                        <li>5% off on stays</li>
+                        <li>Member-only offers</li>
+                    </ul>
+
+                </div>
+
+            </div>
+
+
+            <!-- GOLD -->
+            <div class="tier-card gold current">
+
+                <span class="current-badge">
+                    CURRENT TIER
+                </span>
+
+                <div class="tier-icon">
+                    🥇
+                </div>
+
+                <div class="tier-info">
+
+                    <h3>Gold</h3>
+
+                    <strong>
+                        5,000 - 24,999 pts
+                    </strong>
+
+                    <ul>
+                        <li>10% off on stays</li>
+                        <li>Priority customer support</li>
+                        <li>Early access to promos</li>
+                    </ul>
+
+                </div>
+
+            </div>
+
+
+            <!-- PLATINUM -->
+            <div class="tier-card platinum">
+
+                <div class="tier-icon">
+                    💎
+                </div>
+
+                <div class="tier-info">
+
+                    <h3>Platinum</h3>
+
+                    <strong>
+                        25,000+ pts
+                    </strong>
+
+                    <ul>
+                        <li>15% off on stays</li>
+                        <li>
+                            Free upgrades
+                            (subject to availability)
+                        </li>
+                        <li>VIP deals & exclusive perks</li>
+                    </ul>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =================================================
+         RIGHT SIDEBAR
+    ================================================== -->
+
+    <aside class="club-sidebar">
+
+        <!-- STATUS CARD -->
+
+        <div class="status-card">
+
+            <h2>
+                Your Hive Club Status
+            </h2>
+
+
+            <div class="status-profile">
+
+                <div class="status-medal">
+                    🥇
+                </div>
+
+                <div>
+
+                    <h3>
+                        <?php echo htmlspecialchars($memberTier); ?>
+                    </h3>
+
+                    <strong>
+                        <?php echo number_format($memberPoints); ?> Points
+                    </strong>
+
+                    <p>
+                        You're on your way to Platinum!
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- PROGRESS -->
+
+            <div class="progress-bar">
+
+                <div
+                    class="progress-fill"
+                    style="width: <?php echo $progress; ?>%;"
+                ></div>
+
+            </div>
+
+
+            <div class="progress-labels">
+
+                <span>
+                    Next Tier: Platinum
+                </span>
+
+                <span>
+                    <?php echo number_format($nextTierPoints); ?> pts
+                </span>
+
+            </div>
+
+
+            <a href="#" class="rewards-button">
+                VIEW MY REWARDS
+            </a>
+
+        </div>
+
+
+        <!-- HOW TO EARN -->
+
+        <div class="earn-card" id="how-earn">
+
+            <h2>
+                How to Earn Points
+            </h2>
+
+
+            <div class="earn-item">
+
+                <span class="earn-icon">
+                    ♙
+                </span>
+
+                <div>
+
+                    <strong>
+                        Book a stay
+                    </strong>
+
+                    <p>
+                        Earn 10 points per ₱100 spent
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="earn-item">
+
+                <span class="earn-icon">
+                    ☆
+                </span>
+
+                <div>
+
+                    <strong>
+                        Write a review
+                    </strong>
+
+                    <p>
+                        Earn 50 points
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="earn-item">
+
+                <span class="earn-icon">
+                    ♔
+                </span>
+
+                <div>
+
+                    <strong>
+                        Refer a friend
+                    </strong>
+
+                    <p>
+                        Earn 200 points
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="earn-item">
+
+                <span class="earn-icon">
+                    ◎
+                </span>
+
+                <div>
+
+                    <strong>
+                        Stay more, earn more!
+                    </strong>
+
+                    <p>
+                        Get bonus points for longer stays
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+</section>
+
+
+<!-- =====================================================
+     BOOKING CTA
+===================================================== -->
+
+<section class="booking-cta">
+
+    <div class="booking-text">
+
+        <span class="booking-icon">
+            ♛
+        </span>
+
+        <div>
+
+            <h2>
+                More stays. More points. More perks.
+            </h2>
+
+            <p>
+                Thank you for being part of the RoomHive community!
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <a href="listing.php" class="booking-button">
+        START BOOKING NOW
+    </a>
+
+</section>
+
+
+<!-- =====================================================
+     FOOTER
+===================================================== -->
+
+<footer class="site-footer">
+
+    <div class="footer-top">
+
+
+        <!-- FOOTER BRAND -->
+        <div class="footer-brand">
+
+            <a href="<?php echo $isLoggedIn ? 'usershome.php' : 'index.php'; ?>">
+
+                <img
+                    src="images/RoomHiveLogos.png"
+                    alt="RoomHive Logo"
+                    class="footer-logo"
+                >
+
+            </a>
+
+            <p class="footer-tagline">
+                Your trusted platform for finding and listing
+                quality living spaces — made simple, safe,
+                and stress-free.
+            </p>
+
+        </div>
+
+
+        <!-- LISTINGS -->
+        <div class="footer-links">
+
+            <span class="footer-heading">
+                LISTINGS
+            </span>
+
+            <a href="listing.php?type=shared-bedroom">
+                Shared Bedroom
+            </a>
+
+            <a href="listing.php?type=private-room">
+                Private Room
+            </a>
+
+            <a href="listing.php?type=entire-house">
+                Entire House
+            </a>
+
+            <a href="listing.php?type=boarding-house">
+                Boarding House
+            </a>
+
+            <a href="listing.php?type=studio-loft">
+                Studio Loft
+            </a>
+
+        </div>
+
+
+        <!-- QUICK LINKS -->
+        <div class="footer-links">
+
+            <span class="footer-heading">
+                QUICK LINKS
+            </span>
+
+            <a href="index.php">
+                About Us
+            </a>
+
+            <a href="howitworks.php">
+                How It Works
+            </a>
+
+            <a href="becomeahost.php">
+                Become a Host
+            </a>
+
+            <a href="hiveclub.php" class="active">
+                Hive Club
+            </a>
+
+            <a href="contacts.php">
+                Contacts
+            </a>
+
+        </div>
+
+
+        <!-- CONTACT -->
+        <div class="footer-contact">
+
+            <span class="footer-heading">
+                GET THE APP
+            </span>
+
+
+            <div class="footer-app-badges">
+
+                <img
+                    src="images/GooglePlay.jpg"
+                    alt="Get it on Google Play"
+                >
+
+                <img
+                    src="images/AppStore.jpg"
+                    alt="Download on the App Store"
+                >
+
+            </div>
+
+
+            <div class="footer-contact-line">
+
+                <img
+                    src="images/PhoneIcon.jpg"
+                    alt="Phone"
+                >
+
+                <span>
+                    +63 927 569 3574
+                </span>
+
+            </div>
+
+
+            <div class="footer-contact-line">
+
+                <img
+                    src="images/EmailIcon.jpg"
+                    alt="Email"
+                >
+
+                <span>
+                    hello@roomhive.ph
+                </span>
+
+            </div>
+
+
+            <div class="footer-contact-line">
+
+                <img
+                    src="images/GPSIcon.png"
+                    alt="Location"
+                >
+
+                <span>
+                    Bacolod City, Negros Occidental
+                </span>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- FOOTER BOTTOM -->
+
+    <div class="footer-bottom">
+
+        <p>
+            &copy;
+            <?php echo $currentYear; ?>
+            RoomHive.
+            All rights reserved.
+        </p>
+
+    </div>
+
+</footer>
+
+
+</body>
+</html>
