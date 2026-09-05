@@ -882,15 +882,15 @@ $selectedCategoryLabel =
         <?php if ($isLoggedIn): ?>
 
             <!-- MY ACCOUNT -->
-            <div class="account-dropdown">
+            <div class="account-dropdown js-account-dropdown">
 
-                <button
-                    type="button"
-                    class="my-account"
-                    id="accountDropdownToggle"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                >
+        <button
+        type="button"
+        class="my-account js-account-toggle"
+        id="accountDropdownToggle"
+        aria-haspopup="true"
+        aria-expanded="false"
+        >
 
                     <span class="account-circle">
 
@@ -1000,61 +1000,6 @@ $selectedCategoryLabel =
     background: #f5f5f5;
 }
 </style>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-
-    const dropdown =
-        document.querySelector('.account-dropdown');
-
-    const toggle =
-        document.getElementById('accountDropdownToggle');
-
-    if (!dropdown || !toggle) {
-        return;
-    }
-
-    toggle.addEventListener('click', function (event) {
-
-        event.stopPropagation();
-
-        const isOpen =
-            dropdown.classList.toggle('open');
-
-        toggle.setAttribute(
-            'aria-expanded',
-            isOpen ? 'true' : 'false'
-        );
-    });
-
-    document.addEventListener('click', function (event) {
-
-        if (!dropdown.contains(event.target)) {
-
-            dropdown.classList.remove('open');
-
-            toggle.setAttribute(
-                'aria-expanded',
-                'false'
-            );
-        }
-    });
-
-    document.addEventListener('keydown', function (event) {
-
-        if (event.key === 'Escape') {
-
-            dropdown.classList.remove('open');
-
-            toggle.setAttribute(
-                'aria-expanded',
-                'false'
-            );
-        }
-    });
-
-});
-</script>
 
 <?php endif; ?>
 

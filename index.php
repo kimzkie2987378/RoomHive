@@ -32,32 +32,32 @@ $navLinks = [
 // this page link correctly to listing.php?category=<slug> — these
 // slugs match the $categories keys used in listing.php.
 $listings = [
-    ['name' => 'STUDIO LOFT', 'image' => 'StudioLoft.png', 'slug' => 'studioloft'],
-    ['name' => 'SHARED ROOM', 'image' => 'SharedBedroom.png', 'slug' => 'sharedbedroom'],
-    ['name' => 'ENTIRE HOUSE', 'image' => 'EntireHouse.png', 'slug' => 'entirehouse'],
-    ['name' => 'PRIVATE ROOM', 'image' => 'PrivateRoom.png', 'slug' => 'privateroom'],
-    ['name' => 'BOARDING HOUSE', 'image' => 'BoardingHouse.png', 'slug' => 'boardinghouse'],
-    ['name' => 'APARTMENT', 'image' => 'Apartment.png', 'slug' => 'apartment'],
+    ['name' => 'STUDIO LOFT', 'image' => 'images/StudioLoft.png', 'slug' => 'studioloft'],
+    ['name' => 'SHARED ROOM', 'image' => 'images/SharedBedroom.png', 'slug' => 'sharedbedroom'],
+    ['name' => 'ENTIRE HOUSE', 'image' => 'images/EntireHouse.png', 'slug' => 'entirehouse'],
+    ['name' => 'PRIVATE ROOM', 'image' => 'images/PrivateRoom.png', 'slug' => 'privateroom'],
+    ['name' => 'BOARDING HOUSE', 'image' => 'images/BoardingHouse.png', 'slug' => 'boardinghouse'],
+    ['name' => 'APARTMENT', 'image' => 'images/Apartment.png', 'slug' => 'apartment'],
 ];
 
 $reasons = [
     [
-        'icon' => '247SupportsIcons.png',
+        'icon' => 'images/247SupportsIcons.png',
         'title' => '24/7 Support',
         'text' => 'Our team is on call around the clock for hosts and tenants.',
     ],
     [
-        'icon' => 'VerifiedListingsIcons.png',
+        'icon' => 'images/VerifiedListingsIcons.png',
         'title' => 'Verified Listings',
         'text' => 'Every listing is hand-reviewed and checked by our team before it goes live.',
     ],
     [
-        'icon' => 'SecurePaymentsIcon.png',
+        'icon' => 'images/SecurePaymentsIcon.png',
         'title' => 'Secure Payments',
         'text' => 'Your booking and deposits are protected end-to-end.',
     ],
     [
-        'icon' => 'NoHiddenFeesIcons.png',
+        'icon' => 'images/NoHiddenFeesIcons.png',
         'title' => 'No Hidden Fees',
         'text' => 'What you see is what you pay — no surprise charges, ever.',
     ],
@@ -97,11 +97,11 @@ $testimonials = [
 ];
 
 $ctaImages = [
-    'FirstImageLeft.jpg',
-    'SecondImageLeft.jpg',
-    'MiddleImage.avif',
-    'FirstImageRight.jpg',
-    'SecondImageRight.jpg',
+    'images/FirstImageLeft.jpg',
+    'images/SecondImageLeft.jpg',
+    'images/MiddleImage.avif',
+    'images/FirstImageRight.jpg',
+    'images/SecondImageRight.jpg',
 ];
 
 $footerCompanyLinks = [

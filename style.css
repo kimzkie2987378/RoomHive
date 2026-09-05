@@ -2778,7 +2778,7 @@ RESPONSIVE — LISTING BOX
 .hive-hero {
   position: relative;
   width: 100%;
-  min-height: 152px;
+  min-height: 480px;
   margin-top: 70px;
   overflow: hidden;
 
@@ -2788,18 +2788,18 @@ RESPONSIVE — LISTING BOX
   background:
     radial-gradient(
       circle at 15% 30%,
-      rgba(237, 164, 35, 0.12) 0 2px,
-      transparent 3px
+      rgba(237, 164, 35, 0.12) 0 3px,
+      transparent 4px
     ),
     radial-gradient(
       circle at 42% 65%,
-      rgba(237, 164, 35, 0.12) 0 5px,
-      transparent 6px
+      rgba(237, 164, 35, 0.12) 0 6px,
+      transparent 7px
     ),
     radial-gradient(
       circle at 78% 30%,
-      rgba(237, 164, 35, 0.1) 0 4px,
-      transparent 5px
+      rgba(237, 164, 35, 0.1) 0 5px,
+      transparent 6px
     ),
     #fffdf8;
 }
@@ -2844,12 +2844,12 @@ RESPONSIVE — LISTING BOX
       rgba(237, 164, 35, 0.07)
     );
 
-  background-size: 80px 140px;
+  background-size: 140px 240px;
   background-position:
     0 0,
     0 0,
-    40px 70px,
-    40px 70px;
+    70px 120px,
+    70px 120px;
 
   opacity: 0.45;
 }
@@ -2859,16 +2859,16 @@ RESPONSIVE — LISTING BOX
   z-index: 2;
 
   width: 46%;
-  padding: 17px 0 15px 38px;
+  padding: 60px 40px 60px 80px;
 }
 
 .hive-hero-content h1 {
-  margin: 0 0 6px;
+  margin: 0 0 16px;
 
   color: #171717;
   font-family: "Poppins", sans-serif;
-  font-size: 25px;
-  line-height: 1.05;
+  font-size: 46px;
+  line-height: 1.15;
   font-weight: 700;
 }
 
@@ -2877,17 +2877,17 @@ RESPONSIVE — LISTING BOX
 }
 
 .hive-hero-content p {
-  max-width: 275px;
-  margin: 0 0 10px;
+  max-width: 460px;
+  margin: 0 0 30px;
 
   color: #555;
-  font-size: 8px;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 .hive-hero .hero-buttons {
   display: flex;
-  gap: 10px;
+  gap: 14px;
   margin: 0;
 }
 
@@ -2896,14 +2896,15 @@ RESPONSIVE — LISTING BOX
   align-items: center;
   justify-content: center;
 
-  height: 20px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 30px;
 
-  border-radius: 3px;
+  border-radius: 5px;
 
   font-family: "Poppins", sans-serif;
-  font-size: 7px;
+  font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.3px;
 
   text-decoration: none;
   transition: 0.2s ease;
@@ -2939,92 +2940,110 @@ RESPONSIVE — LISTING BOX
   z-index: 3;
 
   width: 54%;
-  height: 145px;
+  height: 420px;
 
   display: flex;
   align-items: center;
 
-  padding-left: 40px;
+  padding-left: 60px;
+}
+
+.hive-fly-icon {
+  position: absolute;
+  top: 30px;
+  right: 60px;
+
+  width: 70px;
+  height: 70px;
+
+  z-index: 4;
+}
+
+.hive-fly-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .member-card {
   position: relative;
 
-  width: 180px;
-  height: 113px;
+  width: 320px;
+  height: 200px;
 
-  padding: 13px 17px;
+  padding: 26px 30px;
 
-  border-radius: 10px;
+  border-radius: 16px;
 
   background: linear-gradient(135deg, #162936, #0d1d29);
 
   box-shadow:
-    8px 8px 0 #eda423,
-    0 7px 15px rgba(0, 0, 0, 0.18);
+    14px 14px 0 #eda423,
+    0 12px 30px rgba(0, 0, 0, 0.18);
 
   color: white;
 }
 
 .member-title {
-  font-size: 7px;
-  letter-spacing: 1px;
+  font-size: 12px;
+  letter-spacing: 2px;
   color: #d6d6d6;
-  margin-bottom: 12px;
+  margin-bottom: 26px;
 }
 
 .member-logo {
-  width: 70px;
+  width: 120px;
   height: auto;
-  margin-bottom: 9px;
+  margin-bottom: 20px;
 
   /* makes white logo visible on dark card */
   filter: brightness(0) invert(1);
 }
 
 .member-id-label {
-  font-size: 5px;
+  font-size: 9px;
   color: #aeb7bd;
-  letter-spacing: 0.7px;
+  letter-spacing: 1px;
 }
 
 .member-id {
-  font-size: 6px;
-  letter-spacing: 1px;
-  margin-top: 2px;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  margin-top: 4px;
   color: #e9e9e9;
 }
 
 .gift-box {
   position: absolute;
 
-  left: 180px;
-  bottom: 7px;
+  left: 300px;
+  bottom: 15px;
 
-  width: 48px;
-  height: 58px;
+  width: 90px;
+  height: 108px;
 }
 
 .gift-body {
   position: absolute;
   bottom: 0;
-  left: 4px;
+  left: 7px;
 
-  width: 40px;
-  height: 36px;
+  width: 76px;
+  height: 68px;
 
   background: #eda423;
 
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
 }
 
 .gift-lid {
   position: absolute;
-  top: 12px;
+  top: 22px;
   left: 0;
 
-  width: 48px;
-  height: 12px;
+  width: 90px;
+  height: 22px;
 
   background: #f3aa25;
 
@@ -3034,10 +3053,10 @@ RESPONSIVE — LISTING BOX
 .gift-ribbon {
   position: absolute;
 
-  left: 17px;
+  left: 32px;
   top: 0;
 
-  width: 8px;
+  width: 14px;
   height: 100%;
 
   background: #1c2a38;
@@ -3046,11 +3065,11 @@ RESPONSIVE — LISTING BOX
 .gift-bow {
   position: absolute;
 
-  top: 1px;
-  left: 15px;
+  top: 2px;
+  left: 28px;
 
-  width: 22px;
-  height: 15px;
+  width: 40px;
+  height: 26px;
 
   z-index: 5;
 }
@@ -3058,20 +3077,20 @@ RESPONSIVE — LISTING BOX
 .gift-bow span {
   position: absolute;
 
-  width: 14px;
-  height: 9px;
+  width: 26px;
+  height: 16px;
 
-  border: 4px solid #1c2a38;
+  border: 7px solid #1c2a38;
   border-radius: 50%;
 }
 
 .gift-bow span:first-child {
-  left: -6px;
+  left: -11px;
   transform: rotate(25deg);
 }
 
 .gift-bow span:last-child {
-  right: -6px;
+  right: -11px;
   transform: rotate(-25deg);
 }
 
@@ -3081,16 +3100,16 @@ RESPONSIVE — LISTING BOX
 
 .club-main {
   width: 100%;
-  max-width: 730px;
+  max-width: 1200px;
 
   margin: 0 auto;
 
   display: grid;
-  grid-template-columns: 1fr 205px;
+  grid-template-columns: 1fr 340px;
 
-  gap: 20px;
+  gap: 40px;
 
-  padding: 8px 38px 5px;
+  padding: 70px 60px 20px;
 
   align-items: start;
 }
@@ -3101,22 +3120,22 @@ RESPONSIVE — LISTING BOX
 
 .section-heading {
   text-align: center;
-  margin-bottom: 5px;
+  margin-bottom: 30px;
 }
 
 .section-heading h2 {
   margin: 0;
 
-  color: #222;
-  font-size: 11px;
+  color: #1c2a38;
+  font-size: 30px;
   font-weight: 700;
 }
 
 .section-heading p {
-  margin: 1px 0 0;
+  margin: 6px 0 0;
 
   color: #777;
-  font-size: 7px;
+  font-size: 14px;
 }
 
 /* =========================================================
@@ -3126,29 +3145,29 @@ RESPONSIVE — LISTING BOX
 .benefits-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 20px;
 }
 
 .benefit-card {
-  min-height: 77px;
+  min-height: 175px;
 
-  padding: 8px 5px;
+  padding: 26px 18px;
 
   background: white;
 
   border: 1px solid #e8e8e8;
-  border-radius: 5px;
+  border-radius: 10px;
 
   text-align: center;
 
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 8px rgba(28, 42, 56, 0.04);
 }
 
 .benefit-icon {
-  width: 30px;
-  height: 30px;
+  width: 60px;
+  height: 60px;
 
-  margin: 0 auto 5px;
+  margin: 0 auto 16px;
 
   display: flex;
   align-items: center;
@@ -3158,27 +3177,31 @@ RESPONSIVE — LISTING BOX
 
   background: #fff1d5;
   color: #eda423;
+}
 
-  font-size: 14px;
-  font-weight: 700;
+.benefit-icon img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  display: block;
 }
 
 .benefit-card h3 {
-  margin: 0 0 3px;
+  margin: 0 0 8px;
 
   color: #222;
-  font-size: 6.5px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .benefit-card p {
   margin: 0 auto;
 
-  max-width: 100px;
+  max-width: 175px;
 
   color: #777;
-  font-size: 5.5px;
-  line-height: 1.4;
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 /* =========================================================
@@ -3186,35 +3209,35 @@ RESPONSIVE — LISTING BOX
 ========================================================= */
 
 .tier-heading {
-  margin: 7px 0 5px;
+  margin: 40px 0 18px;
 
   text-align: center;
 
   color: #333;
-  font-size: 8px;
+  font-size: 20px;
   font-weight: 700;
 }
 
 .tier-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
+  gap: 20px;
 }
 
 .tier-card {
   position: relative;
 
-  min-height: 76px;
+  min-height: 175px;
 
   display: flex;
   align-items: center;
 
-  padding: 7px;
+  padding: 20px;
 
   background: white;
 
   border: 1px solid #dedede;
-  border-radius: 5px;
+  border-radius: 10px;
 }
 
 .tier-card.bronze {
@@ -3230,10 +3253,10 @@ RESPONSIVE — LISTING BOX
 }
 
 .tier-icon {
-  width: 34px;
-  height: 34px;
+  width: 64px;
+  height: 64px;
 
-  margin-right: 7px;
+  margin-right: 16px;
 
   flex-shrink: 0;
 
@@ -3241,11 +3264,16 @@ RESPONSIVE — LISTING BOX
   align-items: center;
   justify-content: center;
 
-  border-radius: 7px;
+  border-radius: 12px;
 
   background: #f6ead7;
+}
 
-  font-size: 20px;
+.tier-icon img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  display: block;
 }
 
 .tier-card.gold .tier-icon {
@@ -3257,20 +3285,20 @@ RESPONSIVE — LISTING BOX
 }
 
 .tier-info h3 {
-  margin: 0 0 1px;
+  margin: 0 0 4px;
 
   color: #333;
-  font-size: 7px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .tier-info strong {
   display: block;
 
-  margin-bottom: 3px;
+  margin-bottom: 10px;
 
   color: #333;
-  font-size: 5.5px;
+  font-size: 13px;
 }
 
 .tier-info ul {
@@ -3283,12 +3311,12 @@ RESPONSIVE — LISTING BOX
 .tier-info li {
   position: relative;
 
-  margin-bottom: 1px;
-  padding-left: 7px;
+  margin-bottom: 4px;
+  padding-left: 16px;
 
   color: #777;
-  font-size: 4.8px;
-  line-height: 1.3;
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 .tier-info li::before {
@@ -3304,17 +3332,17 @@ RESPONSIVE — LISTING BOX
 .current-badge {
   position: absolute;
 
-  top: 3px;
-  right: 4px;
+  top: 12px;
+  right: 12px;
 
-  padding: 2px 4px;
+  padding: 4px 10px;
 
   background: #eda423;
   color: white;
 
-  border-radius: 3px;
+  border-radius: 6px;
 
-  font-size: 4px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -3325,7 +3353,7 @@ RESPONSIVE — LISTING BOX
 .club-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 20px;
 }
 
 .status-card,
@@ -3333,30 +3361,30 @@ RESPONSIVE — LISTING BOX
   background: white;
 
   border: 1px solid #e1e1e1;
-  border-radius: 5px;
+  border-radius: 10px;
 
-  padding: 9px;
+  padding: 24px;
 }
 
 .status-card h2,
 .earn-card h2 {
-  margin: 0 0 7px;
+  margin: 0 0 18px;
 
   color: #333;
 
-  font-size: 7px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .status-profile {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 14px;
 }
 
 .status-medal {
-  width: 35px;
-  height: 35px;
+  width: 56px;
+  height: 56px;
 
   flex-shrink: 0;
 
@@ -3367,62 +3395,67 @@ RESPONSIVE — LISTING BOX
   border-radius: 50%;
 
   background: #eda423;
+}
 
-  font-size: 17px;
+.status-medal img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  display: block;
 }
 
 .status-profile h3 {
   margin: 0;
 
   color: #eda423;
-  font-size: 7px;
+  font-size: 16px;
 }
 
 .status-profile strong {
   display: block;
 
-  margin-top: 1px;
+  margin-top: 3px;
 
   color: #333;
-  font-size: 7px;
+  font-size: 15px;
 }
 
 .status-profile p {
-  margin: 1px 0 0;
+  margin: 3px 0 0;
 
   color: #777;
-  font-size: 4.5px;
+  font-size: 11px;
 }
 
 .progress-bar {
   width: 100%;
-  height: 5px;
+  height: 8px;
 
-  margin-top: 8px;
+  margin-top: 18px;
 
   background: #eee3d0;
 
-  border-radius: 5px;
+  border-radius: 6px;
   overflow: hidden;
 }
 
 .progress-fill {
-  width: 50%;
+  width: 0%;
 
   height: 100%;
 
   background: #eda423;
 
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .progress-labels {
   display: flex;
   justify-content: space-between;
 
-  margin-top: 3px;
+  margin-top: 8px;
 
-  font-size: 4.5px;
+  font-size: 11px;
   color: #777;
 }
 
@@ -3432,18 +3465,18 @@ RESPONSIVE — LISTING BOX
   justify-content: center;
 
   width: 100%;
-  height: 18px;
+  height: 40px;
 
-  margin-top: 7px;
+  margin-top: 18px;
 
   border: 1px solid #eda423;
-  border-radius: 3px;
+  border-radius: 6px;
 
   color: #eda423;
 
   text-decoration: none;
 
-  font-size: 5px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -3456,9 +3489,9 @@ RESPONSIVE — LISTING BOX
   display: flex;
   align-items: center;
 
-  gap: 7px;
+  gap: 12px;
 
-  margin-bottom: 6px;
+  margin-bottom: 16px;
 }
 
 .earn-item:last-child {
@@ -3466,8 +3499,8 @@ RESPONSIVE — LISTING BOX
 }
 
 .earn-icon {
-  width: 17px;
-  height: 17px;
+  width: 34px;
+  height: 34px;
 
   flex-shrink: 0;
 
@@ -3475,23 +3508,26 @@ RESPONSIVE — LISTING BOX
   align-items: center;
   justify-content: center;
 
+  border-radius: 8px;
+
+  background: #fff1d5;
   color: #eda423;
 
-  font-size: 11px;
+  font-size: 15px;
 }
 
 .earn-item strong {
   display: block;
 
   color: #333;
-  font-size: 5.5px;
+  font-size: 13px;
 }
 
 .earn-item p {
-  margin: 1px 0 0;
+  margin: 3px 0 0;
 
   color: #777;
-  font-size: 4.5px;
+  font-size: 11px;
 }
 
 /* =========================================================
@@ -3499,14 +3535,12 @@ RESPONSIVE — LISTING BOX
 ========================================================= */
 
 .booking-cta {
-  width: calc(100% - 76px);
-  max-width: 730px;
+  width: 100%;
+  max-width: 1200px;
 
-  min-height: 24px;
+  margin: 30px auto 60px;
 
-  margin: 4px auto;
-
-  padding: 3px 10px;
+  padding: 22px 34px;
 
   display: flex;
   align-items: center;
@@ -3514,32 +3548,32 @@ RESPONSIVE — LISTING BOX
 
   background: #ffebbf;
 
-  border-radius: 7px;
+  border-radius: 12px;
 }
 
 .booking-text {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 16px;
 }
 
 .booking-icon {
   color: #eda423;
-  font-size: 17px;
+  font-size: 30px;
 }
 
 .booking-text h2 {
   margin: 0;
 
   color: #333;
-  font-size: 7px;
+  font-size: 18px;
 }
 
 .booking-text p {
-  margin: 0;
+  margin: 3px 0 0;
 
   color: #777;
-  font-size: 4.5px;
+  font-size: 12.5px;
 }
 
 .booking-button {
@@ -3547,19 +3581,21 @@ RESPONSIVE — LISTING BOX
   align-items: center;
   justify-content: center;
 
-  height: 17px;
+  height: 46px;
 
-  padding: 0 15px;
+  padding: 0 28px;
 
   background: #1c2a38;
   color: white;
 
-  border-radius: 3px;
+  border-radius: 6px;
 
   text-decoration: none;
 
-  font-size: 5px;
+  font-size: 13px;
   font-weight: 700;
+
+  white-space: nowrap;
 }
 
 .booking-button:hover {
@@ -3571,9 +3607,14 @@ RESPONSIVE — LISTING BOX
    RESPONSIVE — HIVE CLUB
 ========================================================= */
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .club-main {
+    grid-template-columns: 1fr;
     max-width: 95%;
+  }
+
+  .club-sidebar {
+    order: -1;
   }
 
   .booking-cta {
@@ -3581,36 +3622,37 @@ RESPONSIVE — LISTING BOX
   }
 }
 
-@media (max-width: 650px) {
+@media (max-width: 900px) {
   .hive-hero {
-    margin-top: 60px;
-    min-height: 250px;
-
     flex-direction: column;
-    align-items: flex-start;
+    min-height: auto;
+    padding-bottom: 30px;
   }
 
   .hive-hero-content {
     width: 100%;
-    padding: 25px;
-  }
-
-  .hive-hero-content h1 {
-    font-size: 25px;
+    padding: 50px 40px 25px;
   }
 
   .member-card-area {
     width: 100%;
-    height: 120px;
+    height: auto;
+    padding: 20px 40px 40px;
+    justify-content: center;
+  }
 
-    padding-left: 30%;
+  .hive-fly-icon {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .hive-hero-content h1 {
+    font-size: 34px;
   }
 
   .club-main {
-    grid-template-columns: 1fr;
-
-    max-width: 100%;
-    padding: 15px 20px;
+    padding: 50px 24px 10px;
   }
 
   .benefits-grid {
@@ -3622,18 +3664,34 @@ RESPONSIVE — LISTING BOX
   }
 
   .booking-cta {
-    width: calc(100% - 40px);
-
     flex-direction: column;
-    gap: 7px;
-
-    padding: 8px;
+    gap: 16px;
+    text-align: center;
+    padding: 24px;
   }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 480px) {
   .benefits-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hive-hero-content {
+    padding: 40px 24px 20px;
+  }
+
+  .hive-hero-content h1 {
+    font-size: 28px;
+  }
+
+  .member-card {
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .gift-box {
+    left: auto;
+    right: -10px;
   }
 }
 
@@ -3879,7 +3937,7 @@ img {
 .contacts-information {
   width: 100%;
 
-  padding: 18px 20px;
+  padding: 28px 30px;
 
   background: #ffffff;
 
@@ -3891,22 +3949,22 @@ img {
 }
 
 .contacts-information h2 {
-  margin: 0 0 2px;
+  margin: 0 0 4px;
 
   color: #1c2a38;
 
-  font-size: 14px;
+  font-size: 22px;
   font-weight: 700;
 
   line-height: 1.2;
 }
 
 .contacts-small-text {
-  margin: 0 0 14px;
+  margin: 0 0 20px;
 
   color: #777777;
 
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 400;
 
   line-height: 1.4;
@@ -3922,9 +3980,9 @@ img {
   display: flex;
   align-items: flex-start;
 
-  gap: 10px;
+  gap: 16px;
 
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
 .contacts-info-item:last-child {
@@ -3936,10 +3994,10 @@ img {
 ========================================================= */
 
 .contacts-info-icon {
-  width: 28px;
-  height: 28px;
+  width: 42px;
+  height: 42px;
 
-  min-width: 28px;
+  min-width: 42px;
 
   display: flex;
   align-items: center;
@@ -3951,12 +4009,12 @@ img {
 
   border-radius: 50%;
 
-  font-size: 12px;
+  font-size: 18px;
 }
 
 .contacts-info-icon img {
-  width: 15px;
-  height: 15px;
+  width: 22px;
+  height: 22px;
 
   display: block;
 
@@ -3968,20 +4026,20 @@ img {
 ========================================================= */
 
 .contacts-info-item h4 {
-  margin: 0 0 2px;
+  margin: 0 0 3px;
 
   color: #1c2a38;
 
-  font-size: 8px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .contacts-info-item p {
-  margin: 0 0 1px;
+  margin: 0 0 2px;
 
   color: #1c2a38;
 
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 500;
 
   line-height: 1.4;
@@ -3990,7 +4048,7 @@ img {
 .contacts-info-item span {
   color: #888888;
 
-  font-size: 6px;
+  font-size: 10.5px;
 
   line-height: 1.35;
 }
@@ -4003,14 +4061,14 @@ img {
   display: flex;
   align-items: center;
 
-  gap: 5px;
+  gap: 8px;
 
-  margin-top: 5px;
+  margin-top: 8px;
 }
 
 .contacts-socials a {
-  width: 17px;
-  height: 17px;
+  width: 28px;
+  height: 28px;
 
   display: flex;
   align-items: center;
@@ -4024,7 +4082,7 @@ img {
 
   text-decoration: none;
 
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 700;
 
   transition: 0.2s ease;
@@ -4043,7 +4101,7 @@ img {
 .contacts-form-wrapper {
   width: 100%;
 
-  padding: 18px 20px;
+  padding: 28px 30px;
 
   background: #ffffff;
 
@@ -4055,18 +4113,18 @@ img {
 }
 
 .contacts-form-wrapper h2 {
-  margin: 0 0 2px;
+  margin: 0 0 4px;
 
   color: #1c2a38;
 
-  font-size: 14px;
+  font-size: 22px;
   font-weight: 700;
 
   line-height: 1.2;
 }
 
 .contacts-form-wrapper .contacts-small-text {
-  margin-bottom: 12px;
+  margin-bottom: 18px;
 }
 
 /* =========================================================
@@ -4086,9 +4144,9 @@ img {
 
   grid-template-columns: 1fr 1fr;
 
-  gap: 10px;
+  gap: 16px;
 
-  margin-bottom: 9px;
+  margin-bottom: 15px;
 }
 
 /* FORM GROUP */
@@ -4096,7 +4154,7 @@ img {
 .contacts-form-group {
   width: 100%;
 
-  margin-bottom: 9px;
+  margin-bottom: 15px;
 }
 
 /* =========================================================
@@ -4109,7 +4167,7 @@ img {
 
   border: 1px solid #e1e1e1;
 
-  border-radius: 4px;
+  border-radius: 6px;
 
   outline: none;
 
@@ -4119,21 +4177,21 @@ img {
 
   font-family: "Poppins", sans-serif;
 
-  font-size: 7px;
+  font-size: 13px;
 
   transition: 0.2s ease;
 }
 
 .contacts-form-group input {
-  height: 31px;
+  height: 46px;
 
-  padding: 0 9px;
+  padding: 0 15px;
 }
 
 .contacts-form-group textarea {
-  height: 70px;
+  height: 120px;
 
-  padding: 8px 9px;
+  padding: 13px 15px;
 
   resize: none;
 }
@@ -4153,7 +4211,7 @@ img {
 .contacts-form-group textarea:focus {
   border-color: #eda423;
 
-  box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.08);
+  box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.08);
 }
 
 /* =========================================================
@@ -4162,17 +4220,17 @@ img {
 
 .contacts-submit {
   width: 100%;
-  height: 32px;
+  height: 48px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  gap: 6px;
+  gap: 8px;
 
   border: none;
 
-  border-radius: 4px;
+  border-radius: 6px;
 
   background: #eda423;
 
@@ -4180,7 +4238,7 @@ img {
 
   font-family: "Poppins", sans-serif;
 
-  font-size: 7px;
+  font-size: 13px;
   font-weight: 600;
 
   cursor: pointer;
@@ -4189,7 +4247,7 @@ img {
 }
 
 .contacts-submit span {
-  font-size: 8px;
+  font-size: 14px;
 }
 
 .contacts-submit:hover {
@@ -4205,9 +4263,9 @@ img {
 
   max-width: 1400px;
 
-  min-height: 118px;
+  min-height: 155px;
 
-  margin: 16px auto 0;
+  margin: 22px auto 0;
 
   display: flex;
   align-items: center;
@@ -4229,7 +4287,7 @@ img {
 
 .contacts-help-image {
   width: 26%;
-  height: 118px;
+  height: 155px;
 
   display: flex;
   align-items: center;
@@ -4239,8 +4297,8 @@ img {
 }
 
 .contacts-help-image img {
-  width: 95px;
-  height: 95px;
+  width: 125px;
+  height: 125px;
 
   display: block;
 
@@ -4254,24 +4312,24 @@ img {
 .contacts-help-content {
   width: 74%;
 
-  padding: 15px 20px;
+  padding: 22px 28px;
 }
 
 .contacts-help-content h2 {
-  margin: 0 0 2px;
+  margin: 0 0 4px;
 
   color: #1c2a38;
 
-  font-size: 14px;
+  font-size: 22px;
   font-weight: 700;
 }
 
 .contacts-help-content > p {
-  margin: 0 0 9px;
+  margin: 0 0 14px;
 
   color: #777777;
 
-  font-size: 7px;
+  font-size: 12px;
 
   line-height: 1.4;
 }
@@ -4287,13 +4345,13 @@ img {
 
   grid-template-columns: repeat(3, 1fr);
 
-  gap: 6px;
+  gap: 10px;
 }
 
 .contacts-help-links a {
-  min-height: 25px;
+  min-height: 40px;
 
-  padding: 0 7px;
+  padding: 0 14px;
 
   display: flex;
   align-items: center;
@@ -4302,13 +4360,13 @@ img {
 
   border: 1px solid #eeeeee;
 
-  border-radius: 4px;
+  border-radius: 6px;
 
   color: #1c2a38;
 
   text-decoration: none;
 
-  font-size: 6px;
+  font-size: 11px;
   font-weight: 500;
 
   white-space: nowrap;
@@ -4325,11 +4383,11 @@ img {
 /* HELP ICON */
 
 .contacts-help-links .help-icon {
-  margin-right: 5px;
+  margin-right: 8px;
 
   color: #eda423;
 
-  font-size: 9px;
+  font-size: 16px;
 }
 
 /* HELP ARROW */
@@ -4339,7 +4397,7 @@ img {
 
   color: #999999;
 
-  font-size: 10px;
+  font-size: 15px;
 }
 
 /* =========================================================
@@ -4351,18 +4409,18 @@ img {
 
   max-width: 1400px;
 
-  height: 72px;
+  height: 100px;
 
-  margin: 14px auto 0;
+  margin: 18px auto 0;
 
-  padding: 0 25px;
+  padding: 0 34px;
 
   display: flex;
   align-items: center;
 
   background: #10202d;
 
-  border-radius: 7px;
+  border-radius: 8px;
 
   overflow: hidden;
 }
@@ -4370,7 +4428,7 @@ img {
 /* SUPPORT IMAGE */
 
 .contacts-support-icon {
-  width: 62px;
+  width: 85px;
 
   display: flex;
   align-items: center;
@@ -4380,8 +4438,8 @@ img {
 }
 
 .contacts-support-icon img {
-  width: 48px;
-  height: 48px;
+  width: 62px;
+  height: 62px;
 
   display: block;
 
@@ -4393,15 +4451,15 @@ img {
 .contacts-support-text {
   flex: 1;
 
-  padding-left: 10px;
+  padding-left: 14px;
 }
 
 .contacts-support-text h2 {
-  margin: 0 0 2px;
+  margin: 0 0 3px;
 
   color: #ffffff;
 
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -4410,7 +4468,7 @@ img {
 
   color: #ffffff;
 
-  font-size: 6.5px;
+  font-size: 11px;
 
   line-height: 1.4;
 
@@ -4420,8 +4478,8 @@ img {
 /* SUPPORT BUTTON */
 
 .contacts-support-button {
-  min-width: 130px;
-  height: 30px;
+  min-width: 170px;
+  height: 42px;
 
   display: flex;
   align-items: center;
@@ -4431,11 +4489,11 @@ img {
 
   color: #ffffff;
 
-  border-radius: 4px;
+  border-radius: 5px;
 
   text-decoration: none;
 
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 600;
 
   transition: 0.2s ease;
@@ -4902,13 +4960,13 @@ img {
   .contacts-help-image {
     width: 100%;
 
-    height: 100px;
+    height: 130px;
   }
 
   .contacts-help-content {
     width: 100%;
 
-    padding: 15px;
+    padding: 18px;
   }
 
   .contacts-help-links {
@@ -4922,17 +4980,17 @@ img {
 
     height: auto;
 
-    padding: 15px;
+    padding: 18px;
 
-    gap: 8px;
+    gap: 10px;
   }
 
   .contacts-support-icon {
-    width: 50px;
+    width: 60px;
   }
 
   .contacts-support-button {
-    min-width: 110px;
+    min-width: 130px;
   }
 
   /* FOOTER */
@@ -7235,4 +7293,45 @@ body {
     grid-template-columns: 1fr;
     gap: 25px;
   }
+}
+
+.hive-hero .hero-buttons form {
+  margin: 0;
+}
+
+.hive-hero .hero-buttons button.hero-btn {
+  cursor: pointer;
+  font-family: "Poppins", sans-serif;
+}
+
+/* small confirmation banner shown after a successful
+   "stop subscribe" (?cancelled=1 in the URL) */
+
+.hive-notice {
+  width: 100%;
+  max-width: 1200px;
+
+  margin: 90px auto 0;
+  padding: 14px 22px;
+
+  background: #fff1d5;
+  border: 1px solid #f1c987;
+  border-radius: 10px;
+
+  color: #7a5410;
+  font-family: "Poppins", sans-serif;
+  font-size: 13.5px;
+  text-align: center;
+}
+
+/* shown in the sidebar status card for logged-in users who
+   have not joined Hive Club yet */
+
+.not-a-member-note {
+  margin: 0 0 18px;
+
+  color: #777;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
 }

@@ -1,63 +1,235 @@
 <?php
+
 session_start();
+
+require_once 'db_connect.php';
+
+
+// =====================================================
+// ROOMHIVE - HIVE CLUB
+// =====================================================
+
+
+// =====================================================
+// LOGIN STATUS
+// =====================================================
 
 $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
+
 // =====================================================
-// ROOMHIVE - HIVE CLUB
+// CURRENT YEAR
 // =====================================================
 
-// Current year for footer
 $currentYear = date("Y");
 
-// Navigation links
+
+// =====================================================
+// NAVIGATION
+// =====================================================
+
 $navigation = [
     "HOME" => $isLoggedIn ? "usershome.php" : "index.php",
     "LISTINGS" => "listing.php",
     "HOW IT WORKS" => "howitworks.php",
-    "BECOME A HOST" => $isLoggedIn ? "becomeahost.php" : "loginform.php",
+    "BECOME A HOST" => $isLoggedIn
+        ? "becomeahost.php"
+        : "loginform.php",
     "HIVE CLUB" => "hiveclub.php",
     "CONTACTS" => "contacts.php"
 ];
 
-// Hive Club member information
-$memberId = "RH 2024 0001";
-$memberTier = "Gold Member";
-$memberPoints = 12450;
-$nextTierPoints = 25000;
 
-// Calculate progress toward next tier
-$progress = ($memberPoints / $nextTierPoints) * 100;
+// =====================================================
+// DEFAULT MEMBER INFORMATION
+// =====================================================
 
-// Prevent progress from exceeding 100%
+$memberId = "RH " . date("Y") . " 0000";
+$memberTier = "Bronze Member";
+$memberPoints = 0;
+$memberStatus = "none";
+
+// True only once the user has actually joined Hive Club
+// (has a hive_members row with an active status). This is
+// what decides JOIN vs UPGRADE and HOW IT WORKS vs STOP
+// SUBSCRIBE in the hero below.
+$isHiveMember = false;
+
+
+// =====================================================
+// DEFAULT TIER INFORMATION
+// =====================================================
+
+$nextTier = "Gold";
+$nextTierPoints = 5000;
+
+$progress = 0;
+
+
+// =====================================================
+// GET LOGGED-IN USER ID
+// =====================================================
+
+$userId = $_SESSION["user_id"] ?? null;
+
+
+// Some login systems may use "id" instead.
+if (!$userId && isset($_SESSION["id"])) {
+    $userId = $_SESSION["id"];
+}
+
+
+// =====================================================
+// LOAD HIVE CLUB MEMBER
+// =====================================================
+//
+// NOTE: this used to auto-create a Bronze row for every
+// logged-in user the moment they visited this page, which
+// meant everyone was instantly "a member" and the JOIN /
+// UPGRADE distinction had no way to work. Membership rows
+// are now only created when someone actually completes the
+// join flow (via membership.php -> completepurchase.php),
+// so this block just reads whatever is there.
+// =====================================================
+
+if ($isLoggedIn && $userId) {
+
+    try {
+
+        $memberQuery = $pdo->prepare("
+            SELECT *
+            FROM hive_members
+            WHERE user_id = ?
+            LIMIT 1
+        ");
+
+        $memberQuery->execute([$userId]);
+
+        $member = $memberQuery->fetch();
+
+
+        if ($member) {
+
+            $memberId = $member["member_id"];
+
+            $memberTier = $member["tier"] . " Member";
+
+            $memberPoints = (int)$member["points"];
+
+            $memberStatus = $member["membership_status"];
+
+            $isHiveMember = ($memberStatus === "active");
+        }
+
+
+    } catch (PDOException $e) {
+
+        error_log(
+            "Hive Club database error: " .
+            $e->getMessage()
+        );
+
+    }
+
+}
+
+
+// =====================================================
+// DETERMINE NEXT TIER
+// =====================================================
+
+if ($memberPoints >= 25000) {
+
+    $nextTier = "Platinum";
+    $nextTierPoints = 25000;
+    $progress = 100;
+
+} elseif ($memberPoints >= 5000) {
+
+    $nextTier = "Platinum";
+    $nextTierPoints = 25000;
+
+    $progress = (
+        ($memberPoints - 5000) /
+        20000
+    ) * 100;
+
+} else {
+
+    $nextTier = "Gold";
+    $nextTierPoints = 5000;
+
+    $progress = (
+        $memberPoints /
+        5000
+    ) * 100;
+}
+
+
+// Prevent invalid progress
+
+if ($progress < 0) {
+    $progress = 0;
+}
+
 if ($progress > 100) {
     $progress = 100;
 }
+
+
+// =====================================================
+// JOIN / UPGRADE HIVE CLUB LINK
+// =====================================================
+//
+// Both JOIN and UPGRADE point to the same plan-picker page.
+// If the user isn't logged in yet, send them to login first
+// and bring them back to Hive Club afterward.
+
+$joinHiveClubLink = $isLoggedIn
+    ? "membership.php"
+    : "loginform.php?redirect=" .
+      urlencode("hiveclub.php");
+
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>RoomHive - Hive Club</title>
 
-    <!-- Poppins Font -->
+
+    <!-- Poppins -->
+
     <link
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
-    <!-- CSS -->
-    <link rel="stylesheet" href="style.css">
+
+    <!-- Main CSS -->
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
 </head>
 
+
 <body>
+
 
 <!-- =====================================================
      NAVIGATION BAR
@@ -66,24 +238,36 @@ if ($progress > 100) {
 <header class="navbar">
 
     <!-- LOGO -->
+
     <div class="logo">
 
-        <a href="<?php echo $isLoggedIn ? 'usershome.php' : 'index.php'; ?>">
+        <a
+            href="<?php echo $isLoggedIn
+                ? 'usershome.php'
+                : 'index.php'; ?>"
+        >
 
-            <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
+            <img
+                src="images/RoomHiveLogos.png"
+                alt="RoomHive Logo"
+            >
 
         </a>
 
     </div>
 
+
     <!-- NAVIGATION -->
+
     <nav class="nav-links">
 
         <?php foreach ($navigation as $name => $link): ?>
 
             <a
                 href="<?php echo htmlspecialchars($link); ?>"
-                class="<?php echo ($name === 'HIVE CLUB') ? 'active' : ''; ?>"
+                class="<?php echo (
+                    $name === 'HIVE CLUB'
+                ) ? 'active' : ''; ?>"
             >
 
                 <?php echo htmlspecialchars($name); ?>
@@ -95,7 +279,8 @@ if ($progress > 100) {
 
         <?php if ($isLoggedIn): ?>
 
-            <!-- MY ACCOUNT DROPDOWN -->
+            <!-- MY ACCOUNT -->
+
             <div class="account-dropdown">
 
                 <button
@@ -106,14 +291,29 @@ if ($progress > 100) {
                     aria-expanded="false"
                     onclick="toggleAccountMenu()"
                 >
+
                     <span class="account-circle">
-                        <img src="images/MyAccountIcon.png" alt="My Account">
+
+                        <img
+                            src="images/MyAccountIcon.png"
+                            alt="My Account"
+                        >
+
                     </span>
+
                     <span>MY ACCOUNT</span>
-                    <span class="dropdown-caret">&#9662;</span>
+
+                    <span class="dropdown-caret">
+                        &#9662;
+                    </span>
+
                 </button>
 
-                <div class="account-dropdown-menu" id="accountDropdownMenu">
+
+                <div
+                    class="account-dropdown-menu"
+                    id="accountDropdownMenu"
+                >
 
                     <a href="myaccount.php">
                         My Account
@@ -127,7 +327,9 @@ if ($progress > 100) {
 
             </div>
 
+
         <?php else: ?>
+
 
             <!-- LIST YOUR SPACE -->
 
@@ -135,10 +337,9 @@ if ($progress > 100) {
                 href="loginform.php"
                 class="list-space"
             >
-
                 LIST YOUR SPACE
-
             </a>
+
 
         <?php endif; ?>
 
@@ -146,80 +347,125 @@ if ($progress > 100) {
 
 </header>
 
+
 <?php if ($isLoggedIn): ?>
+
 <style>
-    .account-dropdown {
-        position: relative;
-    }
 
-    .account-dropdown .my-account {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
-    }
+.account-dropdown {
+    position: relative;
+}
 
-    .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
-        transition: transform 0.15s ease;
-    }
+.account-dropdown .my-account {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+}
 
-    .account-dropdown.open .dropdown-caret {
-        transform: rotate(180deg);
-    }
+.account-dropdown .dropdown-caret {
+    font-size: 0.7em;
+    transition: transform 0.15s ease;
+}
 
-    .account-dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 100;
-        margin-top: 8px;
-    }
+.account-dropdown.open .dropdown-caret {
+    transform: rotate(180deg);
+}
 
-    .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
+.account-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 160px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    overflow: hidden;
+    z-index: 100;
+    margin-top: 8px;
+}
 
-    .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: #333;
-        white-space: nowrap;
-    }
+.account-dropdown.open .account-dropdown-menu {
+    display: block;
+}
 
-    .account-dropdown-menu a:hover {
-        background: #f5f5f5;
-    }
+.account-dropdown-menu a {
+    display: block;
+    padding: 10px 16px;
+    text-decoration: none;
+    color: #333;
+    white-space: nowrap;
+}
+
+.account-dropdown-menu a:hover {
+    background: #f5f5f5;
+}
+
 </style>
 
+
 <script>
-    function toggleAccountMenu() {
-        const dropdown = document.getElementById('accountDropdownToggle').closest('.account-dropdown');
-        const toggle = document.getElementById('accountDropdownToggle');
-        const isOpen = dropdown.classList.toggle('open');
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+function toggleAccountMenu() {
+
+    const dropdown =
+        document
+        .getElementById("accountDropdownToggle")
+        .closest(".account-dropdown");
+
+    const toggle =
+        document.getElementById("accountDropdownToggle");
+
+    const isOpen =
+        dropdown.classList.toggle("open");
+
+    toggle.setAttribute(
+        "aria-expanded",
+        isOpen ? "true" : "false"
+    );
+}
+
+
+document.addEventListener("click", function(event) {
+
+    const dropdown =
+        document.querySelector(".account-dropdown");
+
+    if (
+        dropdown &&
+        !dropdown.contains(event.target)
+    ) {
+
+        dropdown.classList.remove("open");
+
+        document
+            .getElementById("accountDropdownToggle")
+            .setAttribute(
+                "aria-expanded",
+                "false"
+            );
     }
 
-    document.addEventListener('click', function (event) {
-        const dropdown = document.querySelector('.account-dropdown');
-        if (dropdown && !dropdown.contains(event.target)) {
-            dropdown.classList.remove('open');
-            document.getElementById('accountDropdownToggle').setAttribute('aria-expanded', 'false');
-        }
-    });
+});
+
 </script>
+
+<?php endif; ?>
+
+
+<?php if (isset($_GET["cancelled"])): ?>
+
+    <div class="hive-notice">
+        You've stopped your Hive Club subscription. You're
+        welcome to rejoin anytime!
+    </div>
+
 <?php endif; ?>
 
 
@@ -231,75 +477,107 @@ if ($progress > 100) {
 
     <div class="hero-pattern"></div>
 
-    <!-- LEFT CONTENT -->
+
+    <!-- LEFT -->
+
     <div class="hive-hero-content">
 
         <h1>
+
             Welcome to<br>
+
             <span>Hive Club!</span>
+
         </h1>
 
+
         <p>
+
             Join our rewards club and enjoy exclusive perks,
             discounts, and special offers every time you stay.
+
         </p>
+
 
         <div class="hero-buttons">
 
-            <a href="#membership" class="hero-btn primary">
-                JOIN HIVE CLUB
-            </a>
+            <?php if ($isHiveMember): ?>
 
-            <a href="#how-earn" class="hero-btn secondary">
-                HOW IT WORKS
-            </a>
+                <!-- ALREADY A MEMBER -->
+
+                <a
+                    href="membership.php"
+                    class="hero-btn primary"
+                >
+
+                    UPGRADE
+
+                </a>
+
+
+                <form
+                    method="POST"
+                    action="cancelmembership.php"
+                    class="stop-subscribe-form"
+                    onsubmit="return confirm(
+                        'Stop your Hive Club subscription? ' +
+                        'You will lose your current tier and perks.'
+                    );"
+                >
+
+                    <button
+                        type="submit"
+                        class="hero-btn secondary"
+                    >
+
+                        STOP SUBSCRIBE
+
+                    </button>
+
+                </form>
+
+
+            <?php else: ?>
+
+                <!-- NOT YET A MEMBER -->
+
+                <a
+                    href="<?php echo htmlspecialchars(
+                        $joinHiveClubLink
+                    ); ?>"
+                    class="hero-btn primary"
+                >
+
+                    JOIN HIVE CLUB
+
+                </a>
+
+
+                <a
+                    href="#how-earn"
+                    class="hero-btn secondary"
+                >
+
+                    HOW IT WORKS
+
+                </a>
+
+            <?php endif; ?>
 
         </div>
 
     </div>
 
 
-    <!-- RIGHT MEMBERSHIP CARD -->
+    <!-- MEMBER CARD -->
+
     <div class="member-card-area">
 
-        <div class="member-card">
-
-            <div class="member-title">
-                HIVE CLUB MEMBER
-            </div>
-
-            <img
-                src="images/RoomHiveLogos.png"
-                class="member-logo"
-                alt="RoomHive"
-            >
-
-            <div class="member-id-label">
-                MEMBER ID
-            </div>
-
-            <div class="member-id">
-                <?php echo htmlspecialchars($memberId); ?>
-            </div>
-
-        </div>
-
-
-        <!-- GIFT -->
-        <div class="gift-box">
-
-            <div class="gift-lid"></div>
-
-            <div class="gift-body">
-                <div class="gift-ribbon"></div>
-            </div>
-
-            <div class="gift-bow">
-                <span></span>
-                <span></span>
-            </div>
-
-        </div>
+        <img
+            src="images/HiveCardIcon-HiveClub.png"
+            class="member-card-image"
+            alt="Hive Club Member Card"
+        >
 
     </div>
 
@@ -307,15 +585,19 @@ if ($progress > 100) {
 
 
 <!-- =====================================================
-     MEMBER BENEFITS + SIDEBAR
+     MEMBER BENEFITS
 ===================================================== -->
 
-<section class="club-main" id="membership">
+<section
+    class="club-main"
+    id="membership"
+>
 
-    <!-- LEFT SIDE -->
+
+    <!-- LEFT -->
+
     <div class="club-left">
 
-        <!-- MEMBER BENEFITS -->
 
         <div class="section-heading">
 
@@ -328,16 +610,28 @@ if ($progress > 100) {
         </div>
 
 
-        <div class="benefits-grid">
+        <div
+            class="benefits-grid"
+            id="benefits"
+        >
+
 
             <!-- BENEFIT 1 -->
+
             <div class="benefit-card">
 
                 <div class="benefit-icon">
-                    %
+
+                    <img
+                        src="images/ExclusiveDiscountIcon-HiveClub.png"
+                        alt="Exclusive Discounts"
+                    >
+
                 </div>
 
-                <h3>Exclusive Discounts</h3>
+                <h3>
+                    Exclusive Discounts
+                </h3>
 
                 <p>
                     Get up to 15% off on selected stays.
@@ -347,13 +641,21 @@ if ($progress > 100) {
 
 
             <!-- BENEFIT 2 -->
+
             <div class="benefit-card">
 
                 <div class="benefit-icon">
-                    🎁
+
+                    <img
+                        src="images/SpecialOffersIcon-HiveClub.png"
+                        alt="Special Offers"
+                    >
+
                 </div>
 
-                <h3>Special Offers</h3>
+                <h3>
+                    Special Offers
+                </h3>
 
                 <p>
                     Access members-only promotions and bundles.
@@ -363,13 +665,21 @@ if ($progress > 100) {
 
 
             <!-- BENEFIT 3 -->
+
             <div class="benefit-card">
 
                 <div class="benefit-icon">
-                    ★
+
+                    <img
+                        src="images/EarnPointIcon-HiveClub.png"
+                        alt="Earn Points"
+                    >
+
                 </div>
 
-                <h3>Earn Points</h3>
+                <h3>
+                    Earn Points
+                </h3>
 
                 <p>
                     Earn points for every booking and redeem easy rewards.
@@ -379,13 +689,21 @@ if ($progress > 100) {
 
 
             <!-- BENEFIT 4 -->
+
             <div class="benefit-card">
 
                 <div class="benefit-icon">
-                    ▣
+
+                    <img
+                        src="images/EarlyAccessIcon-HiveClub.png"
+                        alt="Early Access"
+                    >
+
                 </div>
 
-                <h3>Early Access</h3>
+                <h3>
+                    Early Access
+                </h3>
 
                 <p>
                     Be the first to know about new listings and deals.
@@ -407,12 +725,38 @@ if ($progress > 100) {
 
         <div class="tier-grid">
 
+
             <!-- BRONZE -->
-            <div class="tier-card bronze">
+
+            <div
+                class="tier-card bronze
+                <?php echo (
+                    $memberTier === 'Bronze Member'
+                    && $isHiveMember
+                ) ? 'current' : ''; ?>"
+            >
+
+                <?php if (
+                    $memberTier === 'Bronze Member'
+                    && $isHiveMember
+                ): ?>
+
+                    <span class="current-badge">
+                        CURRENT TIER
+                    </span>
+
+                <?php endif; ?>
+
 
                 <div class="tier-icon">
-                    🥉
+
+                    <img
+                        src="images/BronzeIcon-HiveClub.png"
+                        alt="Bronze"
+                    >
+
                 </div>
+
 
                 <div class="tier-info">
 
@@ -423,8 +767,15 @@ if ($progress > 100) {
                     </strong>
 
                     <ul>
-                        <li>5% off on stays</li>
-                        <li>Member-only offers</li>
+
+                        <li>
+                            5% off on stays
+                        </li>
+
+                        <li>
+                            Member-only offers
+                        </li>
+
                     </ul>
 
                 </div>
@@ -433,15 +784,36 @@ if ($progress > 100) {
 
 
             <!-- GOLD -->
-            <div class="tier-card gold current">
 
-                <span class="current-badge">
-                    CURRENT TIER
-                </span>
+            <div
+                class="tier-card gold
+                <?php echo (
+                    $memberTier === 'Gold Member'
+                    && $isHiveMember
+                ) ? 'current' : ''; ?>"
+            >
+
+                <?php if (
+                    $memberTier === 'Gold Member'
+                    && $isHiveMember
+                ): ?>
+
+                    <span class="current-badge">
+                        CURRENT TIER
+                    </span>
+
+                <?php endif; ?>
+
 
                 <div class="tier-icon">
-                    🥇
+
+                    <img
+                        src="images/GoldIcon-HiveClub.png"
+                        alt="Gold"
+                    >
+
                 </div>
+
 
                 <div class="tier-info">
 
@@ -452,9 +824,19 @@ if ($progress > 100) {
                     </strong>
 
                     <ul>
-                        <li>10% off on stays</li>
-                        <li>Priority customer support</li>
-                        <li>Early access to promos</li>
+
+                        <li>
+                            10% off on stays
+                        </li>
+
+                        <li>
+                            Priority customer support
+                        </li>
+
+                        <li>
+                            Early access to promos
+                        </li>
+
                     </ul>
 
                 </div>
@@ -463,11 +845,36 @@ if ($progress > 100) {
 
 
             <!-- PLATINUM -->
-            <div class="tier-card platinum">
+
+            <div
+                class="tier-card platinum
+                <?php echo (
+                    $memberTier === 'Platinum Member'
+                    && $isHiveMember
+                ) ? 'current' : ''; ?>"
+            >
+
+                <?php if (
+                    $memberTier === 'Platinum Member'
+                    && $isHiveMember
+                ): ?>
+
+                    <span class="current-badge">
+                        CURRENT TIER
+                    </span>
+
+                <?php endif; ?>
+
 
                 <div class="tier-icon">
-                    💎
+
+                    <img
+                        src="images/PlatinumIcon-HiveClub.png"
+                        alt="Platinum"
+                    >
+
                 </div>
+
 
                 <div class="tier-info">
 
@@ -478,12 +885,20 @@ if ($progress > 100) {
                     </strong>
 
                     <ul>
-                        <li>15% off on stays</li>
+
+                        <li>
+                            15% off on stays
+                        </li>
+
                         <li>
                             Free upgrades
                             (subject to availability)
                         </li>
-                        <li>VIP deals & exclusive perks</li>
+
+                        <li>
+                            VIP deals &amp; exclusive perks
+                        </li>
+
                     </ul>
 
                 </div>
@@ -496,12 +911,13 @@ if ($progress > 100) {
 
 
     <!-- =================================================
-         RIGHT SIDEBAR
+         SIDEBAR
     ================================================== -->
 
     <aside class="club-sidebar">
 
-        <!-- STATUS CARD -->
+
+        <!-- STATUS -->
 
         <div class="status-card">
 
@@ -510,24 +926,70 @@ if ($progress > 100) {
             </h2>
 
 
+            <?php if ($isHiveMember): ?>
+
             <div class="status-profile">
 
                 <div class="status-medal">
-                    🥇
+
+                    <?php
+
+                    $statusIcon =
+                        "images/BronzeIcon-HiveClub.png";
+
+                    if ($memberTier === "Gold Member") {
+
+                        $statusIcon =
+                            "images/GoldIcon-HiveClub.png";
+
+                    } elseif (
+                        $memberTier === "Platinum Member"
+                    ) {
+
+                        $statusIcon =
+                            "images/PlatinumIcon-HiveClub.png";
+
+                    }
+
+                    ?>
+
+                    <img
+                        src="<?php echo $statusIcon; ?>"
+                        alt="<?php echo htmlspecialchars(
+                            $memberTier
+                        ); ?>"
+                    >
+
                 </div>
+
 
                 <div>
 
                     <h3>
-                        <?php echo htmlspecialchars($memberTier); ?>
+                        <?php echo htmlspecialchars(
+                            $memberTier
+                        ); ?>
                     </h3>
 
+
                     <strong>
-                        <?php echo number_format($memberPoints); ?> Points
+
+                        <?php echo number_format(
+                            $memberPoints
+                        ); ?>
+
+                        Points
+
                     </strong>
 
+
                     <p>
-                        You're on your way to Platinum!
+
+                        Member ID:
+                        <?php echo htmlspecialchars(
+                            $memberId
+                        ); ?>
+
                     </p>
 
                 </div>
@@ -541,7 +1003,8 @@ if ($progress > 100) {
 
                 <div
                     class="progress-fill"
-                    style="width: <?php echo $progress; ?>%;"
+                    style="width:
+                        <?php echo $progress; ?>%;"
                 ></div>
 
             </div>
@@ -550,26 +1013,69 @@ if ($progress > 100) {
             <div class="progress-labels">
 
                 <span>
-                    Next Tier: Platinum
+
+                    Next Tier:
+                    <?php echo $nextTier; ?>
+
                 </span>
 
+
                 <span>
-                    <?php echo number_format($nextTierPoints); ?> pts
+
+                    <?php echo number_format(
+                        $nextTierPoints
+                    ); ?>
+
+                    pts
+
                 </span>
 
             </div>
 
 
-            <a href="#" class="rewards-button">
+            <a
+                href="#benefits"
+                class="rewards-button"
+            >
+
                 VIEW MY REWARDS
+
             </a>
+
+            <?php else: ?>
+
+            <p class="not-a-member-note">
+
+                You haven't joined Hive Club yet. Join now to
+                start earning points and unlocking perks.
+
+            </p>
+
+
+            <a
+                href="<?php echo htmlspecialchars(
+                    $joinHiveClubLink
+                ); ?>"
+                class="rewards-button"
+            >
+
+                JOIN HIVE CLUB
+
+            </a>
+
+            <?php endif; ?>
 
         </div>
 
 
-        <!-- HOW TO EARN -->
+        <!-- =================================================
+             HOW TO EARN
+        ================================================== -->
 
-        <div class="earn-card" id="how-earn">
+        <div
+            class="earn-card"
+            id="how-earn"
+        >
 
             <h2>
                 How to Earn Points
@@ -693,8 +1199,13 @@ if ($progress > 100) {
     </div>
 
 
-    <a href="listing.php" class="booking-button">
+    <a
+        href="listing.php"
+        class="booking-button"
+    >
+
         START BOOKING NOW
+
     </a>
 
 </section>
@@ -709,10 +1220,15 @@ if ($progress > 100) {
     <div class="footer-top">
 
 
-        <!-- FOOTER BRAND -->
+        <!-- BRAND -->
+
         <div class="footer-brand">
 
-            <a href="<?php echo $isLoggedIn ? 'usershome.php' : 'index.php'; ?>">
+            <a
+                href="<?php echo $isLoggedIn
+                    ? 'usershome.php'
+                    : 'index.php'; ?>"
+            >
 
                 <img
                     src="images/RoomHiveLogos.png"
@@ -722,21 +1238,26 @@ if ($progress > 100) {
 
             </a>
 
+
             <p class="footer-tagline">
+
                 Your trusted platform for finding and listing
                 quality living spaces — made simple, safe,
                 and stress-free.
+
             </p>
 
         </div>
 
 
         <!-- LISTINGS -->
+
         <div class="footer-links">
 
             <span class="footer-heading">
                 LISTINGS
             </span>
+
 
             <a href="listing.php?type=shared-bedroom">
                 Shared Bedroom
@@ -762,11 +1283,13 @@ if ($progress > 100) {
 
 
         <!-- QUICK LINKS -->
+
         <div class="footer-links">
 
             <span class="footer-heading">
                 QUICK LINKS
             </span>
+
 
             <a href="index.php">
                 About Us
@@ -780,7 +1303,10 @@ if ($progress > 100) {
                 Become a Host
             </a>
 
-            <a href="hiveclub.php" class="active">
+            <a
+                href="hiveclub.php"
+                class="active"
+            >
                 Hive Club
             </a>
 
@@ -792,6 +1318,7 @@ if ($progress > 100) {
 
 
         <!-- CONTACT -->
+
         <div class="footer-contact">
 
             <span class="footer-heading">
@@ -859,16 +1386,16 @@ if ($progress > 100) {
 
     </div>
 
-
-    <!-- FOOTER BOTTOM -->
-
     <div class="footer-bottom">
 
         <p>
+
             &copy;
             <?php echo $currentYear; ?>
+
             RoomHive.
             All rights reserved.
+
         </p>
 
     </div>

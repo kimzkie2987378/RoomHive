@@ -1,773 +1,551 @@
 <?php
+/* =========================================================
+   ROOMHIVE — MY ACCOUNT
+   myaccount.php
+========================================================= */
+
 session_start();
-/*
- * =========================================================
- * ROOMHIVE - MY ACCOUNT (RENTER DASHBOARD)
- * =========================================================
- *
- * DEMO / PROTOTYPE VERSION - no database yet, same approach
- * as hostdashboard.php: everything lives in $_SESSION so the
- * whole page is testable today. Swap the $_SESSION reads/
- * writes for real queries once you have a database.
- *
- * This is the account page every logged-in user sees
- * ("My Account" in the navbar dropdown) whether or not
- * they are also a host. Hosts get an extra "Host Dashboard"
- * link alongside this one.
- */
 
-// ---------------------------------------------------------
-// AUTH CHECK
-// ---------------------------------------------------------
-
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+/* -----------------------------------------------------
+   AUTH GUARD
+   Redirect to login if nobody is signed in.
+   Replace with your real session/auth check.
+----------------------------------------------------- */
+if (!isset($_SESSION['user_id'])) {
     header("Location: loginform.php");
-    exit();
+    exit;
 }
 
-$userName  = $_SESSION['user_name'] ?? 'User';
-$userEmail = $_SESSION['user_email'] ?? '';
-$isHost    = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
-
-// Renter profile details (location / phone / bio). Falls back
-// to sensible placeholders until the user edits their profile.
-if (!isset($_SESSION['renter_profile']) || !is_array($_SESSION['renter_profile'])) {
-    $_SESSION['renter_profile'] = [
-        'location' => '',
-        'phone'    => '',
-        'bio'      => '',
-    ];
-}
-$renterProfile = $_SESSION['renter_profile'];
-
-if (!isset($_SESSION['renter_member_since'])) {
-    $_SESSION['renter_member_since'] = date('F Y');
-}
-$memberSince = $_SESSION['renter_member_since'];
-
-$avatarImage = $_SESSION['renter_avatar'] ?? 'DefaultAvatar.png';
-
-
-// ---------------------------------------------------------
-// BOOKINGS (session-backed for now)
-// ---------------------------------------------------------
-
-if (!isset($_SESSION['bookings']) || !is_array($_SESSION['bookings'])) {
-    $_SESSION['bookings'] = [];
-}
-
-$bookingFormError = '';
-
-// ----- Quick-add booking (stand-in for a real booking flow,
-//       which doesn't exist yet). Remove once listing.php can
-//       create real bookings, and push those into
-//       $_SESSION['bookings'] from there instead. -----
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_booking'])) {
-    $title    = trim($_POST['booking_title'] ?? '');
-    $location = trim($_POST['booking_location'] ?? '');
-    $dates    = trim($_POST['booking_dates'] ?? '');
-    $amount   = trim($_POST['booking_amount'] ?? '');
-    $status   = trim($_POST['booking_status'] ?? 'Upcoming');
-    $rating   = trim($_POST['booking_rating'] ?? '');
-
-    if ($title === '' || $location === '') {
-        $bookingFormError = 'Please enter at least a listing name and location.';
-    } else {
-        $_SESSION['bookings'][] = [
-            'id'       => uniqid('booking_'),
-            'title'    => $title,
-            'location' => $location,
-            'dates'    => $dates,
-            'amount'   => is_numeric($amount) ? (float)$amount : 0,
-            'status'   => $status !== '' ? $status : 'Upcoming',
-            'rating'   => ($rating !== '' && is_numeric($rating)) ? (float)$rating : null,
-            'image'    => 'ListingPlaceholder.png',
-        ];
-
-        header("Location: myaccount.php");
-        exit();
-    }
-}
-
-if (isset($_GET['remove_booking'])) {
-    $removeId = $_GET['remove_booking'];
-    $_SESSION['bookings'] = array_values(array_filter(
-        $_SESSION['bookings'],
-        fn($b) => $b['id'] !== $removeId
-    ));
-    header("Location: myaccount.php");
-    exit();
-}
-
-$bookings = $_SESSION['bookings'];
-
-// Most recent first for the "Recent Bookings" list
-$recentBookings = array_slice(array_reverse($bookings), 0, 3);
-
-
-// ---------------------------------------------------------
-// WISHLIST (session-backed for now)
-// ---------------------------------------------------------
-
-if (!isset($_SESSION['wishlist']) || !is_array($_SESSION['wishlist'])) {
-    $_SESSION['wishlist'] = [];
-}
-
-$wishlistFormError = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_wishlist'])) {
-    $wTitle    = trim($_POST['wishlist_title'] ?? '');
-    $wLocation = trim($_POST['wishlist_location'] ?? '');
-    $wPrice    = trim($_POST['wishlist_price'] ?? '');
-
-    if ($wTitle === '' || $wLocation === '') {
-        $wishlistFormError = 'Please enter at least a listing name and location.';
-    } else {
-        $_SESSION['wishlist'][] = [
-            'id'       => uniqid('wishlist_'),
-            'title'    => $wTitle,
-            'location' => $wLocation,
-            'price'    => is_numeric($wPrice) ? (float)$wPrice : 0,
-            'image'    => 'ListingPlaceholder.png',
-        ];
-
-        header("Location: myaccount.php");
-        exit();
-    }
-}
-
-if (isset($_GET['remove_wishlist'])) {
-    $removeId = $_GET['remove_wishlist'];
-    $_SESSION['wishlist'] = array_values(array_filter(
-        $_SESSION['wishlist'],
-        fn($w) => $w['id'] !== $removeId
-    ));
-    header("Location: myaccount.php");
-    exit();
-}
-
-$wishlist = $_SESSION['wishlist'];
-
-
-// ---------------------------------------------------------
-// PAYMENT METHODS (session-backed for now)
-// NOTE: only ever store the card brand + last 4 digits +
-// expiry for a demo like this - never a full card number.
-// ---------------------------------------------------------
-
-if (!isset($_SESSION['payment_methods']) || !is_array($_SESSION['payment_methods'])) {
-    $_SESSION['payment_methods'] = [];
-}
-
-$paymentFormError = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_payment'])) {
-    $brand   = trim($_POST['card_brand'] ?? '');
-    $last4   = trim($_POST['card_last4'] ?? '');
-    $expiry  = trim($_POST['card_expiry'] ?? '');
-
-    if ($brand === '' || !preg_match('/^\d{4}$/', $last4) || $expiry === '') {
-        $paymentFormError = 'Please choose a card type, enter the last 4 digits, and an expiry date.';
-    } else {
-        $_SESSION['payment_methods'][] = [
-            'id'     => uniqid('card_'),
-            'brand'  => $brand,
-            'last4'  => $last4,
-            'expiry' => $expiry,
-        ];
-
-        header("Location: myaccount.php");
-        exit();
-    }
-}
-
-if (isset($_GET['remove_payment'])) {
-    $removeId = $_GET['remove_payment'];
-    $_SESSION['payment_methods'] = array_values(array_filter(
-        $_SESSION['payment_methods'],
-        fn($p) => $p['id'] !== $removeId
-    ));
-    header("Location: myaccount.php");
-    exit();
-}
-
-$paymentMethods = $_SESSION['payment_methods'];
-
-
-// ---------------------------------------------------------
-// ACCOUNT SECURITY
-// ---------------------------------------------------------
-
-if (!isset($_SESSION['two_factor_enabled'])) {
-    $_SESSION['two_factor_enabled'] = false;
-}
-
-if (isset($_GET['toggle_2fa'])) {
-    $_SESSION['two_factor_enabled'] = !$_SESSION['two_factor_enabled'];
-    header("Location: myaccount.php");
-    exit();
-}
-
-$twoFactorEnabled = $_SESSION['two_factor_enabled'];
-
-
-// ---------------------------------------------------------
-// STATS
-// ---------------------------------------------------------
-
-$bookingsCount = count($bookings);
-$wishlistCount = count($wishlist);
-$totalSpent    = array_sum(array_column($bookings, 'amount'));
-
-$ratings = array_filter(array_column($bookings, 'rating'), fn($r) => $r !== null);
-$averageRating = count($ratings) > 0
-    ? round(array_sum($ratings) / count($ratings), 1)
-    : null;
-
-
-$navLinks = [
-    ['label' => 'HOME', 'href' => 'usershome.php'],
-    ['label' => 'LISTINGS', 'href' => 'listing.php'],
-    ['label' => 'HOW IT WORKS', 'href' => 'howitworks.php'],
-    ['label' => 'BECOME A HOST', 'href' => 'becomeahost.php'],
-    ['label' => 'HIVE CLUB', 'href' => 'hiveclub.php'],
-    ['label' => 'CONTACTS', 'href' => 'contacts.php'],
+/* -----------------------------------------------------
+   USER DATA
+   TODO: replace with a real query, e.g.
+   $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+   $stmt->execute([$_SESSION['user_id']]);
+   $user = $stmt->fetch();
+----------------------------------------------------- */
+$user = [
+    'name'          => 'Maria Santos',
+    'avatar'        => 'images/maria-santos-avatar.jpg',
+    'verified'      => true,
+    'location'      => 'Dumaguete City, Negros Oriental',
+    'email'         => 'mariasantos@email.com',
+    'phone'         => '0912 345 6789',
+    'member_since'  => 'April 2024',
+    'about'         => 'Hi! I love traveling and discovering new places. I enjoy peaceful stays and great host experiences.',
 ];
 
-// ---------------------------------------------------------
-// SIDEBAR NAVIGATION
-// ---------------------------------------------------------
-//
-// 'href'  - where the link goes. Items with a matching
-//           section on THIS page use an in-page anchor
-//           (#ma-...) so the link actually does something;
-//           smooth scrolling is already on via style.css's
-//           `html { scroll-behavior: smooth; }`.
-// 'built' - true  = a real, working link (in-page anchor or
-//                    its own page).
-//           false = not built yet. Rendered as a disabled
-//                    "Soon" item instead of a dead `#` link
-//                    so it doesn't look broken.
-// ---------------------------------------------------------
+$notification_count = 3;
 
-$sidebarLinks = [
-    ['label' => 'Overview',              'href' => 'myaccount.php', 'icon' => '&#8962;',   'active' => true, 'built' => true],
-    ['label' => 'My Bookings',           'href' => '#ma-bookings',  'icon' => '&#128197;', 'built' => true],
-    ['label' => 'Wishlist',              'href' => '#ma-wishlist',  'icon' => '&#9825;',   'built' => true],
-    ['label' => 'Reviews',               'href' => '#',             'icon' => '&#9733;',   'built' => false],
-    ['label' => 'Payments',              'href' => '#ma-payments',  'icon' => '&#128179;', 'built' => true],
-    ['label' => 'Messages',              'href' => '#',             'icon' => '&#9993;',   'built' => false],
-    ['label' => 'Profile & Account',     'href' => '#ma-profile',   'icon' => '&#128100;', 'built' => true],
-    ['label' => 'Notification Settings', 'href' => '#',             'icon' => '&#128276;', 'built' => false],
-    ['label' => 'Saved Searches',        'href' => '#',             'icon' => '&#128269;', 'built' => false],
-    ['label' => 'Help Center',           'href' => '#ma-help',      'icon' => '&#10067;',  'built' => true],
+/* -----------------------------------------------------
+   STATS ROW
+   TODO: replace with aggregate queries (COUNT/AVG/SUM)
+----------------------------------------------------- */
+$stats = [
+    ['icon' => 'bookingsicon-userprofile.png',    'value' => '12',        'label' => 'Bookings Total'],
+    ['icon' => 'wihlistedicon-userprofile.png',   'value' => '8',         'label' => 'Wishlisted Properties'],
+    ['icon' => 'averageratinsicon-userprofile.png','value' => '4.8',      'label' => 'Average Rating From Reviews'],
+    ['icon' => 'totalspenticon-userprofile.png',  'value' => '&#8369; 24,560', 'label' => 'Total Spent All Time'],
 ];
 
-$currentYear = date('Y');
+/* -----------------------------------------------------
+   RECENT BOOKINGS
+   TODO: replace with
+   SELECT * FROM bookings WHERE user_id = ? ORDER BY start_date DESC LIMIT 3
+----------------------------------------------------- */
+$bookings = [
+    [
+        'id'       => 1,
+        'title'    => 'Cozy Studio Apartment',
+        'location' => 'Dumaguete City, Negros Oriental',
+        'dates'    => 'May 15 – May 18, 2024',
+        'thumb'    => 'images/booking-cozy-studio.jpg',
+        'status'   => 'completed',
+        'total'    => '3,600',
+    ],
+    [
+        'id'       => 2,
+        'title'    => 'Beachfront Cottage',
+        'location' => 'Amlan, Negros Oriental',
+        'dates'    => 'Apr 2 – Apr 5, 2024',
+        'thumb'    => 'images/booking-beachfront-cottage.jpg',
+        'status'   => 'completed',
+        'total'    => '6,750',
+    ],
+    [
+        'id'       => 3,
+        'title'    => 'Modern 2BR House',
+        'location' => 'Sibulan, Negros Oriental',
+        'dates'    => 'Mar 10 – Mar 12, 2024',
+        'thumb'    => 'images/booking-modern-2br-house.jpg',
+        'status'   => 'cancelled',
+        'total'    => '4,200',
+    ],
+];
+
+$total_spent = '24,560';
+
+/* -----------------------------------------------------
+   PAYMENT METHODS
+   TODO: replace with SELECT * FROM payment_methods WHERE user_id = ?
+----------------------------------------------------- */
+$payment_methods = [
+    [
+        'icon'    => 'images/visaicon-userprofile.png',
+        'label'   => 'Visa',
+        'last4'   => '4242',
+        'expires' => '12/26',
+    ],
+    [
+        'icon'    => 'images/mastercardicon-userprofile.png',
+        'label'   => 'Mastercard',
+        'last4'   => '8881',
+        'expires' => '08/27',
+    ],
+];
+
+$two_factor_enabled = true;
+
+/* -----------------------------------------------------
+   WISHLIST
+   TODO: replace with
+   SELECT * FROM listings l
+   JOIN wishlist w ON w.listing_id = l.id
+   WHERE w.user_id = ?
+----------------------------------------------------- */
+$wishlist_total = 8;
+
+$wishlist = [
+    [
+        'id'       => 1,
+        'title'    => 'Mountain View Cabin',
+        'location' => 'Valencia, Negros Oriental',
+        'thumb'    => 'images/wishlist-mountain-view-cabin.jpg',
+        'price'    => '3,200',
+        'rating'   => '4.7',
+        'reviews'  => 32,
+        'saved'    => true,
+    ],
+    [
+        'id'       => 2,
+        'title'    => 'City Center Condo',
+        'location' => 'Dumaguete City',
+        'thumb'    => 'images/wishlist-city-center-condo.jpg',
+        'price'    => '2,800',
+        'rating'   => '4.6',
+        'reviews'  => 18,
+        'saved'    => true,
+    ],
+    [
+        'id'       => 3,
+        'title'    => 'Seaside Bungalow',
+        'location' => 'Bacong, Negros Oriental',
+        'thumb'    => 'images/wishlist-seaside-bungalow.jpg',
+        'price'    => '4,500',
+        'rating'   => '4.9',
+        'reviews'  => 27,
+        'saved'    => true,
+    ],
+    [
+        'id'       => 4,
+        'title'    => 'Private Resort Villa',
+        'location' => 'Zamboanguita, Negros Or.',
+        'thumb'    => 'images/wishlist-private-resort-villa.jpg',
+        'price'    => '7,800',
+        'rating'   => '4.8',
+        'reviews'  => 15,
+        'saved'    => true,
+    ],
+];
+
+/* Small helper so we're not repeating htmlspecialchars() everywhere */
+function h($value) {
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Account - RoomHive</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="host-dashboard.css" />
-    <link rel="stylesheet" href="myaccount.css" />
-  </head>
-  <body class="hd-body">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Account — RoomHive</title>
 
-    <!-- =========================
-         NAVBAR (shared look with the host dashboard)
-    ========================== -->
-    <nav class="hd-navbar">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="myaccount.css">
+</head>
+<body>
 
-        <a href="usershome.php" class="logo">
-            <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
+<!-- =========================================================
+     NAVBAR (uses existing style.css — not redefined here)
+========================================================= -->
+<header class="navbar">
+
+    <!-- LOGO -->
+    <a href="usershome.php" class="logo">
+        <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
+    </a>
+
+    <!-- NAVIGATION -->
+    <nav class="nav-links">
+
+        <a href="usershome.php">HOME</a>
+        <a href="listing.php">LISTINGS</a>
+        <a href="howitworks.php">HOW IT WORKS</a>
+        <a href="becomeahost.php">BECOME A HOST</a>
+        <a href="hiveclub.php">HIVE CLUB</a>
+        <a href="contacts.php">CONTACTS</a>
+
+        <a href="notifications.php" class="nav-bell">
+            <img src="images/bellicon.png" alt="Notifications">
+            <?php if ($notification_count > 0): ?>
+                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
+            <?php endif; ?>
         </a>
 
-        <div class="hd-nav-links">
-            <?php foreach ($navLinks as $link): ?>
-                <a href="<?php echo htmlspecialchars($link['href']); ?>">
-                    <?php echo htmlspecialchars($link['label']); ?>
-                </a>
-            <?php endforeach; ?>
-        </div>
+        <!-- MY ACCOUNT -->
+        <div class="account-dropdown js-account-dropdown">
 
-        <div class="hd-nav-right">
-
-            <button type="button" class="hd-bell" aria-label="Notifications">
-                &#128276;
+            <button
+                type="button"
+                class="my-account js-account-toggle"
+                id="accountDropdownToggle"
+                aria-haspopup="true"
+                aria-expanded="false"
+            >
+                <span class="account-circle">
+                    <img src="images/MyAccountIcon.png" alt="My Account">
+                </span>
+                <span>MY ACCOUNT</span>
+                <span class="dropdown-caret">&#9662;</span>
             </button>
 
-            <div class="hd-account-dropdown js-account-dropdown">
-                <button
-                    type="button"
-                    class="hd-account-toggle js-account-toggle"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                >
-                    <img src="<?php echo htmlspecialchars($avatarImage); ?>" alt="" class="hd-nav-avatar">
-                    <span><?php echo htmlspecialchars($userName); ?></span>
-                </button>
-
-                <div class="hd-account-menu">
-                    <?php if ($isHost): ?>
-                        <a href="hostdashboard.php">Host Dashboard</a>
-                    <?php endif; ?>
-                    <a href="myaccount.php">My Account</a>
-                    <a href="logout.php">Logout</a>
-                </div>
+            <div class="account-dropdown-menu" id="accountDropdownMenu">
+                <a href="myaccount.php">My Account</a>
+                <a href="logout.php">Logout</a>
             </div>
 
         </div>
 
     </nav>
 
-    <!-- =========================
-         WELCOME HERO
-    ========================== -->
-    <section class="hd-hero">
-        <img class="hd-hero-image" src="images/RenterDashboardHero.png" alt="" />
-        <div class="hd-hero-overlay"></div>
+</header>
 
-        <div class="hd-hero-content">
-            <p class="hd-hero-eyebrow">Welcome back,</p>
-            <h1><?php echo htmlspecialchars($userName); ?>!</h1>
-            <p class="hd-hero-sub">
-                Manage your bookings, favorites, and account settings all in one place.
-            </p>
+<!-- =========================================================
+     WELCOME BANNER
+========================================================= -->
+<section class="up-welcome">
+  <div class="up-welcome-text">
+    <p class="up-welcome-eyebrow">Welcome back,</p>
+    <h1><?php echo h($user['name']); ?>!</h1>
+    <span class="up-welcome-underline"></span>
+    <p class="up-welcome-sub">Manage your bookings, favorites, and account settings all in one place.</p>
+  </div>
+  <div class="up-welcome-image">
+    <img src="images/livingroomicon-userprofile.png" alt="">
+  </div>
+</section>
+
+<!-- =========================================================
+     MAIN DASHBOARD LAYOUT
+========================================================= -->
+<main class="up-dashboard">
+
+  <!-- SIDEBAR -->
+  <aside class="up-sidebar">
+    <a href="userprofile.php" class="up-side-link active">
+      <img src="images/overviewicon-userprofile.png" alt="">
+      Overview
+    </a>
+    <a href="mybookings.php" class="up-side-link">
+      <img src="images/bookingsicon-userprofile.png" alt="">
+      My Bookings
+    </a>
+    <a href="wishlist.php" class="up-side-link">
+      <img src="images/wihlistedicon-userprofile.png" alt="">
+      Wishlist
+    </a>
+    <a href="reviews.php" class="up-side-link">
+      <img src="images/averageratinsicon-userprofile.png" alt="">
+      Reviews
+    </a>
+    <a href="payments.php" class="up-side-link">
+      <img src="images/paymentsicon-userprofile.png" alt="">
+      Payments
+    </a>
+    <a href="messages.php" class="up-side-link">
+      <img src="images/messagesicon-userprofile.png" alt="">
+      Messages
+    </a>
+    <a href="editprofile.php" class="up-side-link">
+      <img src="images/profileaccounticon-userprofile.png" alt="">
+      Profile &amp; Account
+    </a>
+    <a href="notificationsettings.php" class="up-side-link">
+      <img src="images/notificationicon-userprofile.png" alt="">
+      Notification Settings
+    </a>
+    <a href="savedsearches.php" class="up-side-link">
+      <img src="images/savedsearchesicon-userprofile.png" alt="">
+      Saved Searches
+    </a>
+    <a href="helpcenter.php" class="up-side-link">
+      <img src="images/needhelpicon-userprofile.png" alt="">
+      Help Center
+    </a>
+    <a href="logout.php" class="up-side-link up-side-logout">
+      <img src="images/logouticon-userprofile.png" alt="">
+      Log Out
+    </a>
+  </aside>
+
+  <!-- CENTER + RIGHT COLUMNS -->
+  <div class="up-content">
+
+    <!-- PROFILE CARD -->
+    <section class="up-card up-profile-card">
+      <div class="up-profile-photo">
+        <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>">
+        <button type="button" class="up-photo-edit" id="photoButton" aria-label="Change profile photo">
+          <img src="images/cameraicon-userprofile.png" alt="">
+        </button>
+      </div>
+
+      <div class="up-profile-info">
+        <div class="up-profile-name-row">
+          <h2><?php echo h($user['name']); ?></h2>
+          <?php if ($user['verified']): ?>
+            <span class="up-badge-verified">
+              <img src="images/verifiedicon-userprofile.png" alt="">
+              Verified
+            </span>
+          <?php endif; ?>
         </div>
+
+        <ul class="up-profile-meta">
+          <li><img src="images/locationicon-userprofile.png" alt=""><?php echo h($user['location']); ?></li>
+          <li><img src="images/emailicon-userprofile.png" alt=""><?php echo h($user['email']); ?></li>
+          <li><img src="images/phoneicon-userprofile.png" alt=""><?php echo h($user['phone']); ?></li>
+          <li><img src="images/calendaricon-userprofile.png" alt="">Member since <?php echo h($user['member_since']); ?></li>
+        </ul>
+      </div>
+
+      <div class="up-profile-about">
+        <h3>About Me</h3>
+        <p><?php echo h($user['about']); ?></p>
+      </div>
+
+      <button type="button" class="up-btn-outline up-edit-profile" id="editProfileButton">Edit Profile</button>
     </section>
 
-    <!-- =========================
-         MAIN LAYOUT
-    ========================== -->
-    <div class="hd-layout">
+    <!-- STATS ROW -->
+    <section class="up-stats">
+      <?php foreach ($stats as $stat): ?>
+        <div class="up-stat-card">
+          <img src="images/<?php echo h($stat['icon']); ?>" alt="">
+          <div>
+            <strong><?php echo $stat['value']; /* contains an HTML entity, not user input */ ?></strong>
+            <span><?php echo h($stat['label']); ?></span>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </section>
 
-        <!-- SIDEBAR (reuses host dashboard sidebar styling) -->
-        <aside class="hd-sidebar">
-            <ul class="hd-sidebar-nav" id="maSidebarNav">
-                <?php foreach ($sidebarLinks as $link): ?>
-                    <li>
-                        <?php if (!empty($link['built'])): ?>
+    <!-- RECENT BOOKINGS + PAYMENT SUMMARY -->
+    <section class="up-two-col">
 
-                            <a
-                                href="<?php echo htmlspecialchars($link['href']); ?>"
-                                class="<?php echo !empty($link['active']) ? 'active' : ''; ?>"
-                                <?php if (substr($link['href'], 0, 1) === '#' && $link['href'] !== '#'): ?>
-                                    data-ma-nav-target="<?php echo htmlspecialchars(substr($link['href'], 1)); ?>"
-                                <?php endif; ?>
-                            >
-                                <span class="hd-sidebar-icon"><?php echo $link['icon']; ?></span>
-                                <?php echo htmlspecialchars($link['label']); ?>
-                            </a>
+      <div class="up-card up-bookings-card">
+        <div class="up-card-header">
+          <h3>Recent Bookings</h3>
+          <a href="mybookings.php" class="up-link-view-all">View All</a>
+        </div>
 
-                        <?php else: ?>
+        <?php foreach ($bookings as $booking): ?>
+          <a href="booking-details.php?id=<?php echo h($booking['id']); ?>" class="up-booking-row">
+            <img src="<?php echo h($booking['thumb']); ?>" alt="<?php echo h($booking['title']); ?>" class="up-booking-thumb">
+            <div class="up-booking-info">
+              <h4><?php echo h($booking['title']); ?></h4>
+              <p class="up-booking-location"><?php echo h($booking['location']); ?></p>
+              <p class="up-booking-dates"><img src="images/calendaricon-userprofile.png" alt=""><?php echo h($booking['dates']); ?></p>
+            </div>
+            <div class="up-booking-side">
+              <span class="up-status up-status-<?php echo h($booking['status']); ?>">
+                <?php echo h(ucfirst($booking['status'])); ?>
+              </span>
+              <strong>&#8369; <?php echo h($booking['total']); ?></strong>
+              <span>Total Paid</span>
+            </div>
+            <span class="up-booking-chevron">&#8250;</span>
+          </a>
+        <?php endforeach; ?>
 
-                            <a
-                                href="javascript:void(0)"
-                                class="ma-sidebar-soon"
-                                aria-disabled="true"
-                                title="<?php echo htmlspecialchars($link['label']); ?> - coming soon"
-                            >
-                                <span class="hd-sidebar-icon"><?php echo $link['icon']; ?></span>
-                                <?php echo htmlspecialchars($link['label']); ?>
-                                <span class="ma-soon-badge">Soon</span>
-                            </a>
+        <a href="mybookings.php" class="up-btn-outline up-view-all-bookings">VIEW ALL BOOKINGS</a>
+      </div>
 
-                        <?php endif; ?>
-                    </li>
-                <?php endforeach; ?>
-                <li>
-                    <a href="logout.php" class="hd-logout">
-                        <span class="hd-sidebar-icon">&#8618;</span>
-                        Log Out
-                    </a>
-                </li>
-            </ul>
-        </aside>
+      <div class="up-right-col">
 
-        <!-- MAIN CONTENT -->
-        <main class="hd-main">
+        <div class="up-card up-payment-summary">
+          <div class="up-card-header">
+            <h3>Payment Summary</h3>
+            <a href="payments.php" class="up-link-view-all">View All</a>
+          </div>
+          <div class="up-payment-summary-body">
+            <div>
+              <span class="up-muted">Total Spent</span>
+              <strong>&#8369; <?php echo h($total_spent); ?></strong>
+              <span class="up-muted">All Time</span>
+            </div>
+            <img src="images/totalspenticon-userprofile.png" alt="" class="up-payment-summary-icon">
+          </div>
+        </div>
 
-            <!-- PROFILE INFORMATION -->
-            <section class="hd-card" id="ma-profile">
-                <div class="hd-card-header">
-                    <h2>Profile Information</h2>
-                    <a href="#" class="hd-btn-outline">Edit Profile</a>
-                </div>
+        <div class="up-card up-payment-methods">
+          <div class="up-card-header">
+            <h3>Payment Methods</h3>
+            <a href="payments.php" class="up-link-view-all">Manage</a>
+          </div>
 
-                <div class="hd-profile-grid">
-                    <div class="hd-profile-photo">
-                        <img src="<?php echo htmlspecialchars($avatarImage); ?>" alt="">
-                        <span class="hd-photo-edit">&#128247;</span>
-                    </div>
+          <?php foreach ($payment_methods as $method): ?>
+            <div class="up-card-item">
+              <img src="<?php echo h($method['icon']); ?>" alt="<?php echo h($method['label']); ?>">
+              <div>
+                <strong>&#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; <?php echo h($method['last4']); ?></strong>
+                <span>Expires <?php echo h($method['expires']); ?></span>
+              </div>
+            </div>
+          <?php endforeach; ?>
 
-                    <div class="hd-profile-col">
-                        <div class="hd-field">
-                            <span class="hd-field-label">Full Name</span>
-                            <span class="hd-field-value"><?php echo htmlspecialchars($userName); ?></span>
-                        </div>
-                        <div class="hd-field">
-                            <span class="hd-field-label">Location</span>
-                            <span class="hd-field-value">&#9679; <?php echo htmlspecialchars($renterProfile['location'] ?: 'Not set yet'); ?></span>
-                        </div>
-                    </div>
+          <button type="button" class="up-btn-outline up-add-card">+ Add New Card</button>
+        </div>
 
-                    <div class="hd-profile-col">
-                        <div class="hd-field">
-                            <span class="hd-field-label">Email Address</span>
-                            <span class="hd-field-value"><?php echo htmlspecialchars($userEmail ?: '—'); ?></span>
-                        </div>
-                        <div class="hd-field">
-                            <span class="hd-field-label">Phone Number</span>
-                            <span class="hd-field-value"><?php echo htmlspecialchars($renterProfile['phone'] ?: 'Not set yet'); ?></span>
-                        </div>
-                    </div>
-                </div>
+        <div class="up-card up-account-security">
+          <div class="up-card-header">
+            <h3>Account Security</h3>
+            <span class="up-badge-secure">
+              <img src="images/lockicon-userprofile.png" alt="">
+              Secure
+            </span>
+          </div>
+          <div class="up-security-row">
+            <span>Two-Factor Authentication</span>
+            <span class="<?php echo $two_factor_enabled ? 'up-security-enabled' : 'up-security-disabled'; ?>">
+              <?php echo $two_factor_enabled ? 'Enabled' : 'Disabled'; ?>
+            </span>
+          </div>
+          <a href="security.php" class="up-btn-outline up-manage-security">Manage Security</a>
+        </div>
 
-                <div class="ma-about-me">
-                    <span class="hd-field-label">About Me</span>
-                    <p><?php echo htmlspecialchars($renterProfile['bio'] ?: 'Add a short bio so hosts get to know you a bit before you book.'); ?></p>
-                </div>
-            </section>
+        <div class="up-need-help">
+          <div class="up-need-help-text">
+            <h3>Need Help?</h3>
+            <p>Our support team is here to assist you 24/7.</p>
+            <a href="helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
+          </div>
+          <img src="images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
+        </div>
 
-            <!-- STATS -->
-            <section class="hd-card">
-                <div class="hd-stats-grid">
+      </div>
+    </section>
 
-                    <div class="hd-stat-tile">
-                        <span class="hd-stat-icon">&#128197;</span>
-                        <span class="hd-stat-label">Bookings</span>
-                        <span class="hd-stat-value"><?php echo $bookingsCount; ?></span>
-                        <span class="ma-stat-sub">Total</span>
-                    </div>
+    <!-- WISHLIST -->
+    <section class="up-card up-wishlist">
+      <div class="up-card-header">
+        <h3>Wishlist (<?php echo h($wishlist_total); ?>)</h3>
+        <a href="wishlist.php" class="up-link-view-all">View All</a>
+      </div>
 
-                    <div class="hd-stat-tile">
-                        <span class="hd-stat-icon">&#9825;</span>
-                        <span class="hd-stat-label">Wishlist</span>
-                        <span class="hd-stat-value"><?php echo $wishlistCount; ?></span>
-                        <span class="ma-stat-sub">Properties</span>
-                    </div>
+      <div class="up-wishlist-grid">
+        <?php foreach ($wishlist as $item): ?>
+          <a href="listing.php?id=<?php echo h($item['id']); ?>" class="listing-box" data-listing-id="<?php echo h($item['id']); ?>">
+            <div class="up-wishlist-thumb">
+              <img src="<?php echo h($item['thumb']); ?>" alt="<?php echo h($item['title']); ?>">
+              <button type="button"
+                      class="rh-save-btn<?php echo $item['saved'] ? ' saved' : ''; ?>"
+                      data-listing-id="<?php echo h($item['id']); ?>"
+                      aria-label="<?php echo $item['saved'] ? 'Remove from saved' : 'Save listing'; ?>">
+                &#9829;
+              </button>
+            </div>
+            <h4><?php echo h($item['title']); ?></h4>
+            <p class="up-wishlist-location"><?php echo h($item['location']); ?></p>
+            <div class="up-wishlist-meta">
+              <span class="up-wishlist-price">&#8369; <?php echo h($item['price']); ?> / night</span>
+              <span class="up-wishlist-rating">&#9733; <?php echo h($item['rating']); ?> (<?php echo h($item['reviews']); ?>)</span>
+            </div>
+          </a>
+        <?php endforeach; ?>
+      </div>
+    </section>
 
-                    <div class="hd-stat-tile">
-                        <span class="hd-stat-icon">&#9733;</span>
-                        <span class="hd-stat-label">Average Rating</span>
-                        <span class="hd-stat-value"><?php echo $averageRating !== null ? $averageRating : '—'; ?></span>
-                        <span class="ma-stat-sub">From Reviews</span>
-                    </div>
+  </div>
+</main>
 
-                    <div class="hd-stat-tile">
-                        <span class="hd-stat-icon">&#8369;</span>
-                        <span class="hd-stat-label">Total Spent</span>
-                        <span class="hd-stat-value">&#8369; <?php echo number_format($totalSpent); ?></span>
-                        <span class="ma-stat-sub">All Time</span>
-                    </div>
+<footer class="site-footer">
 
-                </div>
-            </section>
+    <div class="footer-top">
 
-            <!-- BOOKINGS + PAYMENTS SPLIT -->
-            <div class="ma-content-grid">
+        <!-- BRAND -->
+        <div class="footer-brand">
 
-                <!-- RECENT BOOKINGS -->
-                <section class="hd-card" id="ma-bookings">
-                    <div class="hd-card-header">
-                        <h2>Recent Bookings</h2>
-                        <a href="#" class="hd-btn-outline">View All</a>
-                    </div>
+            <a href="usershome.php">
+                <img src="images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
+            </a>
 
-                    <?php if (empty($recentBookings)): ?>
+            <p class="footer-tagline">
+                Find, stay, relax, at home. RoomHive helps you discover
+                comfortable stays across Negros Oriental.
+            </p>
 
-                        <div class="hd-empty-state">
-                            <p>You don't have any bookings yet. Once you book a stay it'll show up here.</p>
-                        </div>
-
-                    <?php else: ?>
-
-                        <div class="ma-booking-list">
-                            <?php foreach ($recentBookings as $booking): ?>
-                                <div class="ma-booking-row">
-
-                                    <img
-                                        src="<?php echo htmlspecialchars($booking['image']); ?>"
-                                        alt=""
-                                        class="ma-booking-thumb"
-                                    >
-
-                                    <div class="ma-booking-main">
-                                        <strong><?php echo htmlspecialchars($booking['title']); ?></strong>
-                                        <span><?php echo htmlspecialchars($booking['location']); ?></span>
-                                        <?php if ($booking['dates'] !== ''): ?>
-                                            <span class="ma-booking-dates"><?php echo htmlspecialchars($booking['dates']); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-
-                                    <span class="hd-status-pill hd-status-<?php echo strtolower(str_replace(' ', '-', $booking['status'])); ?>">
-                                        <?php echo htmlspecialchars($booking['status']); ?>
-                                    </span>
-
-                                    <div class="ma-booking-amount">
-                                        <span class="ma-metric-value">&#8369; <?php echo number_format($booking['amount']); ?></span>
-                                        <span class="ma-metric-label">Total Paid</span>
-                                    </div>
-
-                                    <a
-                                        href="myaccount.php?remove_booking=<?php echo urlencode($booking['id']); ?>"
-                                        class="ma-remove-link"
-                                        onclick="return confirm('Remove this booking?');"
-                                    >&times;</a>
-
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-
-                        <a href="#" class="hd-btn-outline ma-view-all-btn">VIEW ALL BOOKINGS</a>
-
-                    <?php endif; ?>
-
-                    <!-- QUICK ADD BOOKING (demo stand-in for a real booking flow) -->
-                    <details class="hd-quick-add">
-                        <summary>+ Add a booking (demo)</summary>
-
-                        <?php if ($bookingFormError !== ''): ?>
-                            <p class="hd-form-error"><?php echo htmlspecialchars($bookingFormError); ?></p>
-                        <?php endif; ?>
-
-                        <form method="POST" action="myaccount.php" class="hd-quick-add-form">
-                            <input type="hidden" name="add_booking" value="1">
-
-                            <div class="hd-quick-add-grid ma-booking-form-grid">
-                                <input type="text" name="booking_title" placeholder="Listing name" required>
-                                <input type="text" name="booking_location" placeholder="City, Province" required>
-                                <input type="text" name="booking_dates" placeholder="e.g. Mar 15 - Mar 18">
-                                <input type="number" name="booking_amount" placeholder="Amount paid (&#8369;)" min="0">
-                                <select name="booking_status">
-                                    <option value="Upcoming">Upcoming</option>
-                                    <option value="Completed">Completed</option>
-                                    <option value="Cancelled">Cancelled</option>
-                                </select>
-                                <input type="number" name="booking_rating" placeholder="Your rating (1-5)" min="1" max="5" step="0.1">
-                            </div>
-
-                            <button type="submit" class="hd-btn-primary">Save Booking</button>
-                        </form>
-                    </details>
-                </section>
-
-                <!-- RIGHT COLUMN: PAYMENTS / SECURITY -->
-                <div class="ma-side-stack">
-
-                    <section class="hd-card" id="ma-payments">
-                        <div class="hd-card-header">
-                            <h2>Payment Summary</h2>
-                            <a href="#" class="hd-btn-outline">View All</a>
-                        </div>
-                        <div class="ma-payment-summary">
-                            <span class="ma-payment-summary-label">Total Spent</span>
-                            <span class="ma-payment-summary-value">&#8369; <?php echo number_format($totalSpent); ?></span>
-                        </div>
-                    </section>
-
-                    <section class="hd-card">
-                        <div class="hd-card-header">
-                            <h2>Payment Methods</h2>
-                        </div>
-
-                        <?php if (empty($paymentMethods)): ?>
-                            <div class="hd-empty-state">
-                                <p>No cards saved yet.</p>
-                            </div>
-                        <?php else: ?>
-                            <div class="ma-card-list">
-                                <?php foreach ($paymentMethods as $card): ?>
-                                    <div class="ma-payment-card">
-                                        <span class="ma-card-brand"><?php echo htmlspecialchars($card['brand']); ?></span>
-                                        <span class="ma-card-number">&#8226;&#8226;&#8226;&#8226; <?php echo htmlspecialchars($card['last4']); ?></span>
-                                        <span class="ma-card-expiry"><?php echo htmlspecialchars($card['expiry']); ?></span>
-                                        <a
-                                            href="myaccount.php?remove_payment=<?php echo urlencode($card['id']); ?>"
-                                            class="ma-remove-link"
-                                            onclick="return confirm('Remove this card?');"
-                                        >&times;</a>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <details class="hd-quick-add">
-                            <summary>+ Add New Card</summary>
-
-                            <?php if ($paymentFormError !== ''): ?>
-                                <p class="hd-form-error"><?php echo htmlspecialchars($paymentFormError); ?></p>
-                            <?php endif; ?>
-
-                            <form method="POST" action="myaccount.php" class="hd-quick-add-form">
-                                <input type="hidden" name="add_payment" value="1">
-
-                                <div class="ma-payment-form-grid">
-                                    <select name="card_brand" required>
-                                        <option value="" disabled selected>Card type</option>
-                                        <option value="Visa">Visa</option>
-                                        <option value="Mastercard">Mastercard</option>
-                                        <option value="Amex">Amex</option>
-                                    </select>
-                                    <input type="text" name="card_last4" placeholder="Last 4 digits" maxlength="4" pattern="\d{4}" required>
-                                    <input type="text" name="card_expiry" placeholder="MM/YY" maxlength="5" required>
-                                </div>
-
-                                <button type="submit" class="hd-btn-primary">Save Card</button>
-                            </form>
-                        </details>
-                    </section>
-
-                    <section class="hd-card">
-                        <div class="hd-card-header">
-                            <h2>Account Security</h2>
-                        </div>
-                        <div class="ma-security-row">
-                            <div>
-                                <strong>Two-Factor Authentication</strong>
-                                <span class="ma-security-status <?php echo $twoFactorEnabled ? 'ma-enabled' : 'ma-disabled'; ?>">
-                                    <?php echo $twoFactorEnabled ? 'Enabled' : 'Disabled'; ?>
-                                </span>
-                            </div>
-                            <a href="myaccount.php?toggle_2fa=1" class="hd-btn-outline">
-                                <?php echo $twoFactorEnabled ? 'Disable' : 'Manage Security'; ?>
-                            </a>
-                        </div>
-                    </section>
-
-                </div>
-
+            <div class="footer-contact-line">
+                <img src="images/PhoneIcon.jpg" alt="">
+                <span>0927 569 3574</span>
             </div>
 
-            <!-- WISHLIST -->
-            <section class="hd-card" id="ma-wishlist">
-                <div class="hd-card-header">
-                    <h2>Wishlist (<?php echo $wishlistCount; ?>)</h2>
-                    <a href="#" class="hd-btn-outline">View All</a>
-                </div>
+            <div class="footer-contact-line">
+                <img src="images/EmailIcon.jpg" alt="">
+                <span>kimdivino55@gmail.com</span>
+            </div>
 
-                <?php if (empty($wishlist)): ?>
+            <div class="footer-contact-line">
+                <img src="images/GPSIcon.png" alt="">
+                <span>Dumaguete City, Negros Oriental, Philippines</span>
+            </div>
 
-                    <div class="hd-empty-state">
-                        <p>Save listings you like and they'll show up here.</p>
-                    </div>
+        </div>
 
-                <?php else: ?>
+        <!-- LISTINGS -->
+        <div class="footer-links">
+            <span class="footer-heading">LISTINGS</span>
+            <a href="listing.php?category=studioloft">Studios</a>
+            <a href="listing.php?category=sharedbedroom">Shared Rooms</a>
+            <a href="listing.php?category=entirehouse">Entire House</a>
+            <a href="listing.php">Featured Stays</a>
+        </div>
 
-                    <div class="ma-wishlist-grid">
-                        <?php foreach ($wishlist as $item): ?>
-                            <div class="ma-wishlist-card">
-                                <div class="ma-wishlist-image-wrap">
-                                    <img src="<?php echo htmlspecialchars($item['image']); ?>" alt="">
-                                    <a
-                                        href="myaccount.php?remove_wishlist=<?php echo urlencode($item['id']); ?>"
-                                        class="ma-wishlist-remove"
-                                        onclick="return confirm('Remove from wishlist?');"
-                                        aria-label="Remove from wishlist"
-                                    >&hearts;</a>
-                                </div>
-                                <strong><?php echo htmlspecialchars($item['title']); ?></strong>
-                                <span><?php echo htmlspecialchars($item['location']); ?></span>
-                                <span class="ma-wishlist-price">&#8369; <?php echo number_format($item['price']); ?> / night</span>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
+        <!-- QUICK LINKS -->
+        <div class="footer-links">
+            <span class="footer-heading">QUICK LINKS</span>
+            <a href="index.php">About Us</a>
+            <a href="contacts.php">Contact</a>
+            <a href="becomeahost.php">Become a Host</a>
+            <a href="hiveclub.php">Hive Club</a>
+        </div>
 
-                <?php endif; ?>
-
-                <!-- QUICK ADD WISHLIST -->
-                <details class="hd-quick-add">
-                    <summary>+ Add to wishlist (demo)</summary>
-
-                    <?php if ($wishlistFormError !== ''): ?>
-                        <p class="hd-form-error"><?php echo htmlspecialchars($wishlistFormError); ?></p>
-                    <?php endif; ?>
-
-                    <form method="POST" action="myaccount.php" class="hd-quick-add-form">
-                        <input type="hidden" name="add_wishlist" value="1">
-
-                        <div class="hd-quick-add-grid">
-                            <input type="text" name="wishlist_title" placeholder="Listing name" required>
-                            <input type="text" name="wishlist_location" placeholder="City, Province" required>
-                            <input type="number" name="wishlist_price" placeholder="Price per night (&#8369;)" min="0">
-                        </div>
-
-                        <button type="submit" class="hd-btn-primary">Add to Wishlist</button>
-                    </form>
-                </details>
-            </section>
-
-            <!-- NEED HELP -->
-            <section class="ma-help-banner" id="ma-help">
-                <img src="images/NeedHelpIllustration.png" alt="" class="ma-help-illustration">
-                <div class="ma-help-text">
-                    <h3>Need Help?</h3>
-                    <p>Our support team is here to assist you.</p>
-                </div>
-                <a href="contacts.php" class="hd-btn-primary">CONTACT SUPPORT</a>
-            </section>
-
-        </main>
+        <!-- GET THE APP -->
+        <div class="footer-contact">
+            <span class="footer-heading">GET THE APP</span>
+            <div class="footer-app-badges">
+                <img src="images/GooglePlay.jpg" alt="Get it on Google Play">
+                <img src="images/AppStore.jpg" alt="Download on the App Store">
+            </div>
+        </div>
 
     </div>
 
-    <!-- =========================
-         FOOTER
-    ========================== -->
-    <footer class="site-footer">
-        <div class="footer-top">
-            <div class="footer-brand">
-                <img src="images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
-                <div class="footer-contact-line">
-                    <img src="images/PhoneIcon.jpg" alt="Phone">
-                    <span>+639275693574</span>
-                </div>
-                <div class="footer-contact-line">
-                    <img src="images/EmailIcon.jpg" alt="Email">
-                    <span>RoomHive@gmail.com</span>
-                </div>
-            </div>
+    <div class="footer-bottom">
+        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
+    </div>
 
-            <div class="footer-links">
-                <span class="footer-heading">LISTINGS</span>
-                <a href="listing.php?type=studio-loft">Studios</a>
-                <a href="listing.php?type=shared-bedroom">Shared Rooms</a>
-                <a href="listing.php?type=entire-house">Entire House</a>
-                <a href="listing.php">Featured Stays</a>
-            </div>
+</footer>
 
-            <div class="footer-links">
-                <span class="footer-heading">QUICK LINKS</span>
-                <a href="index.php">About Us</a>
-                <a href="contacts.php">Contact</a>
-                <a href="becomeahost.php">Become A Host</a>
-                <a href="hiveclub.php">Hive Club</a>
-            </div>
-
-            <div class="footer-contact">
-                <span class="footer-heading">GET THE APP</span>
-                <div class="footer-app-badges">
-                    <img src="images/AppStore.jpg" alt="Download on the App Store">
-                    <img src="images/GooglePlay.jpg" alt="Get it on Google Play">
-                </div>
-            </div>
-        </div>
-
-        <div class="footer-bottom">
-            <p>&copy; <?php echo htmlspecialchars($currentYear); ?> RoomHive. All rights reserved.</p>
-        </div>
-    </footer>
-
-    <script src="javaScript.js"></script>
-    <script src="myaccount-nav.js"></script>
-
-  </body>
+<script src="javaScript.js"></script>
+</body>
 </html>

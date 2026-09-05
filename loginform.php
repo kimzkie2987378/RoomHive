@@ -6,6 +6,23 @@ require_once 'db_connect.php';
 $error = "";
 $success = "";
 
+/*
+ * =========================================================
+ * REDIRECT-AFTER-LOGIN
+ * =========================================================
+ * Pages can send people here as loginform.php?redirect=hiveclub.php
+ * so that once they log in, they land back where they started
+ * instead of always going to usershome.php.
+ *
+ * Only local pages on this whitelist are allowed — never trust
+ * $_GET/$_POST['redirect'] directly as a Location header, or it
+ * becomes an open-redirect hole.
+ */
+$allowedRedirects = ['hiveclub.php', 'membership.php'];
+
+// Whichever page sent the person here (from the link's ?redirect=...)
+$redirectParam = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $email = trim($_POST["email"] ?? "");
@@ -51,10 +68,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             /*
              * IMPORTANT:
-             * Successful login goes to usershome.php,
-             * NOT index.php.
+             * Successful login goes to usershome.php by default,
+             * unless a whitelisted ?redirect= was passed in (e.g.
+             * JOIN HIVE CLUB sends people to
+             * loginform.php?redirect=hiveclub.php).
              */
-            header("Location: usershome.php");
+            $redirectTo = in_array($redirectParam, $allowedRedirects, true)
+                ? $redirectParam
+                : "usershome.php";
+
+            header("Location: $redirectTo");
             exit();
 
         } else {
@@ -146,6 +169,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 action="loginform.php"
                 method="POST"
             >
+
+                <!-- Carries the ?redirect= target through the POST,
+                     so it's still known once the form is submitted. -->
+                <input
+                    type="hidden"
+                    name="redirect"
+                    value="<?php echo htmlspecialchars($redirectParam); ?>"
+                >
 
                 <!-- Email -->
                 <div class="login-input-group">

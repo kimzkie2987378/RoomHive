@@ -75,7 +75,27 @@ $navLinks = [
       'body'   => 'Verified listings and quick support meant I never had to worry about hidden costs or surprises on move-in day.',
       'author' => 'Miguel Santos',
     ],
-  ];
+    [
+      'quote'  => 'The verified listings gave me peace of mind.',
+      'body'   => 'I was nervous about renting sight-unseen, but every photo and detail on RoomHive matched reality. Highly recommend.',
+      'author' => 'Andrea Lopez',
+    ],
+    [
+      'quote'  => 'Customer support answered me at midnight.',
+      'body'   => 'I had a payment issue right before move-in and the RoomHive team sorted it out within minutes, even that late.',
+      'author' => 'Kevin Tan',
+    ],
+    [
+      'quote'  => 'No hidden fees, exactly as advertised.',
+      'body'   => 'What I saw on the listing page was what I paid — no surprise charges at checkout or on my first invoice.',
+      'author' => 'Grace Villanueva',
+    ],
+    [
+      'quote'  => 'Found my apartment in under a week.',
+      'body'   => 'The filters made it easy to narrow down listings by price and amenities, so I didn\'t waste time scrolling.',
+      'author' => 'Paolo Reyes',
+    ],
+];
 
   $ctaImages = [
     'FirstImageLeft.jpg',
