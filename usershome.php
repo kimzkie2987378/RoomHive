@@ -5,11 +5,11 @@ session_start();
  * ROOMHIVE USER HOME - AUTHENTICATION CHECK
  * =========================================================
  *
- * Only logged-in users can access userhome.php.
+ * Only logged-in users can access usershome.php.
  */
 
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header("Location: loginform.php");
+    header("Location: login.php");
     exit();
 }
 
@@ -18,51 +18,55 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
  */
 $userName = $_SESSION['user_name'] ?? 'User';
 
+// Current page (used to compute the "active" nav class dynamically,
+// the same pattern becomeahost.php uses)
+$currentPage = 'usershome.php';
+
 
   // =========================
   // PAGE DATA Users Home
   // =========================
 
 $navLinks = [
-    ['label' => 'HOME', 'href' => 'usershome.php', 'class' => 'active'],
-    ['label' => 'LISTINGS', 'href' => 'listing.php', 'class' => ''],
-    ['label' => 'HOW IT WORKS', 'href' => 'howitworks.php', 'class' => ''],
-    ['label' => 'BECOME A HOST', 'href' => 'becomeahost.php', 'class' => ''],
-    ['label' => 'HIVE CLUB', 'href' => 'hiveclub.php', 'class' => ''],
-    ['label' => 'CONTACTS', 'href' => 'contacts.php', 'class' => ''],
+    ['label' => 'HOME', 'href' => 'usershome.php'],
+    ['label' => 'LISTINGS', 'href' => 'listing.php'],
+    ['label' => 'HOW IT WORKS', 'href' => 'howitworks.php'],
+    ['label' => 'BECOME A HOST', 'href' => 'becomeahost.php'],
+    ['label' => 'HIVE CLUB', 'href' => 'hiveclub.php'],
+    ['label' => 'CONTACTS', 'href' => 'contacts.php'],
 ];
 
-  $listings = [
-    ['name' => 'STUDIO LOFT',     'image' => 'StudioLoft.png'],
-    ['name' => 'SHARED ROOM',     'image' => 'SharedBedroom.png'],
-    ['name' => 'ENTIRE HOUSE',    'image' => 'EntireHouse.png'],
-    ['name' => 'PRIVATE ROOM',    'image' => 'PrivateRoom.png'],
-    ['name' => 'BOARDING HOUSE',  'image' => 'BoardingHouse.png'],
-    ['name' => 'APARTMENT',       'image' => 'Apartment.png'],
-  ];
+$listings = [
+    ['name' => 'STUDIO LOFT',     'image' => 'images/StudioLoft.png',    'type' => 'studio-loft'],
+    ['name' => 'SHARED ROOM',     'image' => 'images/SharedBedroom.png', 'type' => 'shared-bedroom'],
+    ['name' => 'ENTIRE HOUSE',    'image' => 'images/EntireHouse.png',   'type' => 'entire-house'],
+    ['name' => 'PRIVATE ROOM',    'image' => 'images/PrivateRoom.png',   'type' => 'private-room'],
+    ['name' => 'BOARDING HOUSE',  'image' => 'images/BoardingHouse.png', 'type' => 'boarding-house'],
+    ['name' => 'APARTMENT',       'image' => 'images/Apartment.png',     'type' => 'apartment'],
+];
 
-  $reasons = [
+$reasons = [
     [
-      'icon'  => '247SupportsIcons.png',
+      'icon'  => 'images/247SupportsIcons.png',
       'title' => '24/7 Support',
       'text'  => 'Our team is on call around the clock for hosts and tenants.',
     ],
     [
-      'icon'  => 'VerifiedListingsIcons.png',
+      'icon'  => 'images/VerifiedListingsIcons.png',
       'title' => 'Verified Listings',
       'text'  => 'Every listing is hand-reviewed and checked by our team before it goes live.',
     ],
     [
-      'icon'  => 'SecurePaymentsIcon.png',
+      'icon'  => 'images/SecurePaymentsIcon.png',
       'title' => 'Secure Payments',
       'text'  => 'Your booking and deposits are protected end-to-end.',
     ],
     [
-      'icon'  => 'NoHiddenFeesIcons.png',
+      'icon'  => 'images/NoHiddenFeesIcons.png',
       'title' => 'No Hidden Fees',
       'text'  => 'What you see is what you pay --- no surprise charges, ever.',
     ],
-  ];
+];
 
   $testimonials = [
     [
@@ -98,16 +102,16 @@ $navLinks = [
 ];
 
   $ctaImages = [
-    'FirstImageLeft.jpg',
-    'SecondImageLeft.jpg',
-    'MiddleImage.avif',
-    'FirstImageRight.jpg',
-    'SecondImageRight.jpg',
-  ];
+    'images/FirstImageLeft.jpg',
+    'images/SecondImageLeft.jpg',
+    'images/MiddleImage.avif',
+    'images/FirstImageRight.jpg',
+    'images/SecondImageRight.jpg',
+];
 
   $footerCompanyLinks = [
-    ['label' => 'Home', 'href' => 'index.php'],
-    ['label' => 'Listings', 'href' => 'listings.php'],
+    ['label' => 'Home', 'href' => 'usershome.php'],
+    ['label' => 'Listings', 'href' => 'listing.php'],
     ['label' => 'How It Works', 'href' => 'howitworks.php'],
     ['label' => 'Contacts', 'href' => 'contacts.php'],
   ];
@@ -155,7 +159,7 @@ $navLinks = [
         <?php foreach ($navLinks as $link): ?>
             <a
                 href="<?php echo htmlspecialchars($link['href']); ?>"
-                class="<?php echo htmlspecialchars($link['class']); ?>"
+                class="<?php echo ($link['href'] === $currentPage) ? 'active' : ''; ?>"
             >
                 <?php echo htmlspecialchars($link['label']); ?>
             </a>
@@ -171,20 +175,20 @@ $navLinks = [
                 aria-expanded="false"
             >
                 <img src="images/MyAccountIcon.png" alt="My Account">
-                <span>MY ACCOUNT</span>
+                <span>MY PROFILE</span>
                 <span class="dropdown-caret">&#9662;</span>
             </button>
 
             <div class="account-dropdown-menu">
 
                 <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
-                    <a href="hostdashboard.php">
-                        Host Dashboard
+                    <a href="hostprofile.php">
+                        Host Profile
                     </a>
                 <?php endif; ?>
 
-                <a href="myaccount.php">
-                    My Account
+                <a href="userprofile.php">
+                    My Profile
                 </a>
 
                 <a href="logout.php">
@@ -279,8 +283,8 @@ $navLinks = [
           for you to move in today.
         </p>
         <div class="hero-buttons">
-          <button class="btn-primary">LIST YOUR SPACE</button>
-          <button class="btn-secondary">VIEW LISTING</button>
+          <a href="becomeahost.php" class="btn-primary">LIST YOUR SPACE</a>
+          <a href="listing.php" class="btn-secondary">VIEW LISTING</a>
         </div>
       </div>
     </section>
@@ -303,7 +307,7 @@ $navLinks = [
         </div>
       </div>
       <!-- JOIN BUTTON -->
-      <a href="#" class="join-button">JOIN NOW</a>
+      <a href="hiveclub.php" class="join-button">JOIN NOW</a>
     </section>
 
     <!-- =========================
@@ -314,7 +318,7 @@ $navLinks = [
       <h2 class="listings-title">Check Out Our Top Listing!</h2>
       <div class="listings-grid">
         <?php foreach ($listings as $listing): ?>
-          <a href="#" class="listing-card">
+          <a href="listing.php?type=<?php echo urlencode($listing['type']); ?>" class="listing-card">
             <img src="<?php echo htmlspecialchars($listing['image']); ?>" alt="<?php echo htmlspecialchars($listing['name']); ?>" />
             <div class="listing-info">
               <span class="listing-name"><?php echo htmlspecialchars($listing['name']); ?></span>
@@ -342,7 +346,7 @@ $navLinks = [
           faucibus pulvinar elementum integer enim neque volutpat. Nibh tellus
           molestie nunc non blandit massa.
         </p>
-        <a href="#" class="about-button">MORE ABOUT US</a>
+        <a href="howitworks.php" class="about-button">MORE ABOUT US</a>
       </div>
       <div class="about-image">
         <img src="images/3rdPageImage.png" alt="RoomHive team handing over keys" />
@@ -394,7 +398,7 @@ $navLinks = [
           </button>
           <div class="testimonials-dots">
             <?php for ($i = 0; $i < count($testimonials); $i++): ?>
-              <span class="dot<?php echo ($i === count($testimonials) - 1) ? ' active' : ''; ?>"></span>
+              <span class="dot<?php echo ($i === 0) ? ' active' : ''; ?>"></span>
             <?php endfor; ?>
           </div>
           <button class="nav-arrow" aria-label="Next testimonial">
@@ -437,7 +441,7 @@ $navLinks = [
       <div class="cta-box">
         <span class="cta-eyebrow">READY TO MOVE?</span>
         <h2 class="cta-title">Find A Place You'll Love To Call Home</h2>
-        <a href="#" class="cta-button">VIEW LISTINGS</a>
+        <a href="listing.php" class="cta-button">VIEW LISTINGS</a>
       </div>
     </section>
 
@@ -452,7 +456,7 @@ $navLinks = [
           Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua.
         </p>
-        <a href="#" class="dual-cta-button hive-button">JOIN NOW</a>
+        <a href="hiveclub.php" class="dual-cta-button hive-button">JOIN NOW</a>
       </div>
       <div class="dual-cta-panel host-panel">
         <img src="images/HouseIcon.png" alt="Become a Host" class="dual-cta-icon" />

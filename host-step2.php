@@ -6,6 +6,7 @@
    ========================================================= */
 
 session_start();
+require_once 'db_connect.php';
 
 /*
  * =========================================================
@@ -32,7 +33,7 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
  * before reaching this page.
  */
 
-if (!isset($_SESSION["host_application"])) {
+if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_id"])) {
 
     header("Location: becomeahost.php");
     exit();
@@ -181,6 +182,58 @@ $capacityOptions = [
 
 
 // =========================================================
+// PARKING LOT OPTIONS
+// (mirrors the "Parking Lot" row on the listing detail page)
+// =========================================================
+
+$parkingOptions = [
+    "Yes" => "Yes, parking available",
+    "No"  => "No parking available"
+];
+
+
+// =========================================================
+// AMENITIES
+// (same keys/icons used on listing-detail.php, so whatever
+// the host selects here shows up there exactly as-is)
+// =========================================================
+
+$amenityOptions = [
+
+    "wifi" => [
+        "label" => "Wi-fi",
+        "icon" => "images/wifiicon.png"
+    ],
+
+    "aircon" => [
+        "label" => "Aircon",
+        "icon" => "images/airconicon.png"
+    ],
+
+    "pet-friendly" => [
+        "label" => "Pet Friendly",
+        "icon" => "images/petsicon.png"
+    ],
+
+    "free-water" => [
+        "label" => "Free Water",
+        "icon" => "images/watericon.png"
+    ],
+
+    "free-electricity" => [
+        "label" => "Free Electricity",
+        "icon" => "images/elcetricityicon.png"
+    ],
+
+    "security" => [
+        "label" => "24/7 Security",
+        "icon" => "images/SecurityIcon.png"
+    ]
+
+];
+
+
+// =========================================================
 // QUICK LINKS
 // =========================================================
 
@@ -219,8 +272,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $exactAddress = trim($_POST["exact_address"] ?? "");
     $price = trim($_POST["price"] ?? "");
     $capacity = trim($_POST["capacity"] ?? "");
+    $bedrooms = trim($_POST["bedrooms"] ?? "");
+    $bathrooms = trim($_POST["bathrooms"] ?? "");
+    $sizeSqm = trim($_POST["size_sqm"] ?? "");
+    $floor = trim($_POST["floor"] ?? "");
+    $parking = trim($_POST["parking"] ?? "");
     $description = trim($_POST["description"] ?? "");
     $houseRules = trim($_POST["house_rules"] ?? "");
+
+    // Amenities checklist — keep only keys we actually offer
+    $selectedAmenities = $_POST["amenities"] ?? [];
+
+    if (!is_array($selectedAmenities)) {
+        $selectedAmenities = [$selectedAmenities];
+    }
+
+    $selectedAmenities = array_values(
+        array_intersect($selectedAmenities, array_keys($amenityOptions))
+    );
 
 
     // =====================================================
@@ -262,6 +331,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
 
+    if ($bedrooms === "" || !is_numeric($bedrooms) || (int) $bedrooms <= 0) {
+        $errors[] = "Please enter the number of bedrooms.";
+    }
+
+
+    if ($bathrooms === "" || !is_numeric($bathrooms) || (int) $bathrooms <= 0) {
+        $errors[] = "Please enter the number of bathrooms.";
+    }
+
+
+    if ($sizeSqm === "" || !is_numeric($sizeSqm) || (float) $sizeSqm <= 0) {
+        $errors[] = "Please enter the size of your space in square meters.";
+    }
+
+
+    if ($floor === "") {
+        $errors[] = "Please enter which floor your space is on.";
+    }
+
+
+    if ($parking === "" || !array_key_exists($parking, $parkingOptions)) {
+        $errors[] = "Please let renters know if parking is available.";
+    }
+
+
     if ($description === "") {
         $errors[] = "Please describe your space.";
     }
@@ -274,32 +368,61 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (empty($errors)) {
 
         /*
-         * At this stage you can:
-         *
-         * 1. Save the information to MySQL.
-         * 2. Attach this data to the host application record
-         *    created in step 1.
-         * 3. Move to the next registration step.
-         *
-         * For now, the form will continue to the next page.
+         * Insert the new space into the real `listings` table,
+         * attached to the host_applications row created in
+         * Step 1. Starts as 'draft' — becomes 'pending' once
+         * host-step4.php finalizes the application.
          */
 
+        $stmt = $pdo->prepare(
+            "INSERT INTO listings
+                (host_application_id, user_id, title, category, property_type, location,
+                 exact_address, price, capacity, bedrooms, bathrooms, size_sqm, floor,
+                 parking, amenities, description, house_rules, status)
+             VALUES
+                (:host_application_id, :user_id, :title, :category, :property_type, :location,
+                 :exact_address, :price, :capacity, :bedrooms, :bathrooms, :size_sqm, :floor,
+                 :parking, :amenities, :description, :house_rules, 'draft')"
+        );
+
+        $stmt->execute([
+            'host_application_id' => $_SESSION['host_application_id'],
+            'user_id'             => $_SESSION['user_id'],
+            'title'               => $title,
+            'category'            => $category,
+            'property_type'       => $propertyType,
+            'location'            => $location,
+            'exact_address'       => $exactAddress,
+            'price'               => $price,
+            'capacity'            => $capacity,
+            'bedrooms'            => $bedrooms,
+            'bathrooms'           => $bathrooms,
+            'size_sqm'            => $sizeSqm,
+            'floor'               => $floor,
+            'parking'             => $parking,
+            'amenities'           => json_encode($selectedAmenities),
+            'description'         => $description,
+            'house_rules'         => $houseRules,
+        ]);
+
+        $_SESSION['host_application']['listing_id'] = $pdo->lastInsertId();
+
+        // Keep a few fields in session too, in case any later
+        // step wants to read them without hitting the DB.
         $_SESSION["host_application"]["title"] = $title;
-
         $_SESSION["host_application"]["category"] = $category;
-
         $_SESSION["host_application"]["property_type"] = $propertyType;
-
         $_SESSION["host_application"]["location"] = $location;
-
         $_SESSION["host_application"]["exact_address"] = $exactAddress;
-
         $_SESSION["host_application"]["price"] = $price;
-
         $_SESSION["host_application"]["capacity"] = $capacity;
-
+        $_SESSION["host_application"]["bedrooms"] = $bedrooms;
+        $_SESSION["host_application"]["bathrooms"] = $bathrooms;
+        $_SESSION["host_application"]["size_sqm"] = $sizeSqm;
+        $_SESSION["host_application"]["floor"] = $floor;
+        $_SESSION["host_application"]["parking"] = $parking;
+        $_SESSION["host_application"]["amenities"] = $selectedAmenities;
         $_SESSION["host_application"]["description"] = $description;
-
         $_SESSION["host_application"]["house_rules"] = $houseRules;
 
 
@@ -316,6 +439,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 // Convenience helper for re-populating the form after a
 // failed submission without losing what the user typed.
 $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
+
+// Convenience helper for re-checking an amenity checkbox
+// after a failed submission.
+$amenityChecked = fn(string $key): string =>
+    in_array($key, $_POST["amenities"] ?? [], true) ? "checked" : "";
 
 ?>
 
@@ -417,14 +545,20 @@ $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
                     <span class="account-circle">
                         <img src="images/MyAccountIcon.png" alt="My Account">
                     </span>
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
 
-                    <a href="myaccount.php">
-                        My Account
+                    <?php if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true): ?>
+                        <a href="hostprofile.php">
+                            Host Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="userprofile.php">
+                        My Profile
                     </a>
 
                     <a href="logout.php">
@@ -978,6 +1112,290 @@ $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
 
 
             <!-- =================================================
+                 SPACE DETAILS
+                 (feeds the "Property Details" card shown on the
+                 listing detail page — same icons: bedicon,
+                 showericon, sizeicon, flooricon, caricon)
+            ================================================== -->
+
+            <div class="form-section-divider"></div>
+
+
+            <div class="form-heading">
+
+                <h2>
+
+                    Space Details
+
+                </h2>
+
+
+                <p>
+
+                    These show up on your listing's property details card.
+
+                </p>
+
+            </div>
+
+
+
+            <!-- BEDROOMS / BATHROOMS / SIZE -->
+
+            <div class="form-grid three-columns">
+
+
+                <!-- BEDROOMS -->
+
+                <div class="input-group">
+
+                    <label for="bedrooms">
+
+                        Bedrooms
+
+                    </label>
+
+
+                    <div class="icon-input-group">
+
+                        <span class="icon-input-icon">
+                            <img src="images/bedicon.png" alt="">
+                        </span>
+
+                        <input
+                            type="number"
+                            id="bedrooms"
+                            name="bedrooms"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 2"
+                            value="<?php echo $old("bedrooms"); ?>"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- BATHROOMS -->
+
+                <div class="input-group">
+
+                    <label for="bathrooms">
+
+                        Bathrooms
+
+                    </label>
+
+
+                    <div class="icon-input-group">
+
+                        <span class="icon-input-icon">
+                            <img src="images/showericon.png" alt="">
+                        </span>
+
+                        <input
+                            type="number"
+                            id="bathrooms"
+                            name="bathrooms"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 1"
+                            value="<?php echo $old("bathrooms"); ?>"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- SIZE -->
+
+                <div class="input-group">
+
+                    <label for="size_sqm">
+
+                        Size
+
+                    </label>
+
+
+                    <div class="icon-input-group">
+
+                        <span class="icon-input-icon">
+                            <img src="images/sizeicon.png" alt="">
+                        </span>
+
+                        <input
+                            type="number"
+                            id="size_sqm"
+                            name="size_sqm"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 28"
+                            value="<?php echo $old("size_sqm"); ?>"
+                            required
+                        >
+
+                        <span class="icon-input-suffix">
+                            m&sup2;
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- FLOOR / PARKING LOT -->
+
+            <div class="form-grid two-columns">
+
+
+                <!-- FLOOR -->
+
+                <div class="input-group">
+
+                    <label for="floor">
+
+                        Floor
+
+                    </label>
+
+
+                    <div class="icon-input-group">
+
+                        <span class="icon-input-icon">
+                            <img src="images/flooricon.png" alt="">
+                        </span>
+
+                        <input
+                            type="text"
+                            id="floor"
+                            name="floor"
+                            inputmode="numeric"
+                            placeholder="e.g. 6"
+                            value="<?php echo $old("floor"); ?>"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- PARKING LOT -->
+
+                <div class="input-group">
+
+                    <label for="parking">
+
+                        Parking Lot
+
+                    </label>
+
+
+                    <div class="icon-input-group">
+
+                        <span class="icon-input-icon">
+                            <img src="images/caricon.png" alt="">
+                        </span>
+
+                        <select
+                            id="parking"
+                            name="parking"
+                            required
+                        >
+
+                            <option
+                                value=""
+                                disabled
+                                <?php echo empty($_POST["parking"]) ? "selected" : ""; ?>
+                            >
+
+                                Is parking available?
+
+                            </option>
+
+
+                            <?php foreach ($parkingOptions as $value => $label): ?>
+
+                                <option
+                                    value="<?php echo htmlspecialchars($value); ?>"
+                                    <?php echo (($_POST["parking"] ?? "") === $value) ? "selected" : ""; ?>
+                                >
+
+                                    <?php echo htmlspecialchars($label); ?>
+
+                                </option>
+
+                            <?php endforeach; ?>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =================================================
+                 AMENITIES
+                 (feeds the "Amenities" row on the listing detail
+                 page — same icons/keys, so nothing gets
+                 re-mapped later)
+            ================================================== -->
+
+            <div class="input-group full-width">
+
+                <label>
+
+                    Amenities
+
+                </label>
+
+
+                <div class="amenities-grid">
+
+                    <?php foreach ($amenityOptions as $key => $data): ?>
+
+                        <label class="amenity-checkbox">
+
+                            <input
+                                type="checkbox"
+                                name="amenities[]"
+                                value="<?php echo htmlspecialchars($key); ?>"
+                                <?php echo $amenityChecked($key); ?>
+                            >
+
+                            <span class="amenity-checkbox-icon">
+                                <img src="<?php echo htmlspecialchars($data["icon"]); ?>" alt="">
+                            </span>
+
+                            <span class="amenity-checkbox-label">
+                                <?php echo htmlspecialchars($data["label"]); ?>
+                            </span>
+
+                        </label>
+
+                    <?php endforeach; ?>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =================================================
                  ABOUT YOUR SPACE
             ================================================== -->
 
@@ -1318,6 +1736,58 @@ $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
 
 </footer>
 
+
+<!-- =========================================================
+     FLOOR AUTO-FORMAT
+     Lets the host type a plain number (e.g. 6) and turns it
+     into an ordinal label (e.g. "6th Floor") once they leave
+     the field. Reverts to the raw number on focus so it's
+     easy to edit again.
+========================================================= -->
+
+<script>
+(function () {
+    const floorInput = document.getElementById('floor');
+    if (!floorInput) return;
+
+    function toOrdinal(num) {
+        const n = parseInt(num, 10);
+        if (isNaN(n)) return '';
+
+        if (n === 0) return 'Ground Floor';
+
+        const rem100 = n % 100;
+        const rem10 = n % 10;
+
+        let suffix = 'th';
+        if (rem100 < 11 || rem100 > 13) {
+            if (rem10 === 1) suffix = 'st';
+            else if (rem10 === 2) suffix = 'nd';
+            else if (rem10 === 3) suffix = 'rd';
+        }
+
+        return n + suffix + ' Floor';
+    }
+
+    // When the user focuses the field, show just the raw number
+    // so it's easy to edit.
+    floorInput.addEventListener('focus', function () {
+        const digits = floorInput.value.match(/\d+/);
+        floorInput.value = digits ? digits[0] : '';
+    });
+
+    // Only allow digits while typing.
+    floorInput.addEventListener('input', function () {
+        floorInput.value = floorInput.value.replace(/[^\d]/g, '');
+    });
+
+    // When the user leaves the field, format it as "6th Floor".
+    floorInput.addEventListener('blur', function () {
+        if (floorInput.value.trim() === '') return;
+        floorInput.value = toOrdinal(floorInput.value);
+    });
+})();
+</script>
 
 </body>
 

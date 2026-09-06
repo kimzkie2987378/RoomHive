@@ -1,0 +1,628 @@
+/* =========================
+   listing-detail.css
+   Styles scoped to listing-detail.php only.
+   Nav bar / footer look and feel come from style.css,
+   same as listing.php.
+========================== */
+
+.listing-detail-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  font-family: "Poppins", sans-serif;
+  color: #333;
+}
+
+/* =========================
+   TOP BAR
+========================== */
+
+.rd-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.rd-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.rd-back-link:hover {
+  color: #f7941d;
+}
+
+.rd-topbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.rd-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  color: #444;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.rd-action-btn:hover {
+  border-color: #f7941d;
+  color: #f7941d;
+}
+
+.rd-action-btn.active {
+  background: #fff4e8;
+  border-color: #f7941d;
+  color: #f7941d;
+}
+
+/* =========================
+   LAYOUT
+========================== */
+
+.rd-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .rd-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================
+   GALLERY
+========================== */
+
+.rd-gallery-main {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #f2f2f2;
+  aspect-ratio: 16 / 10;
+  min-height: 340px;
+  max-height: 560px;
+  cursor: grab;
+}
+
+.rd-gallery-main:active {
+  cursor: grabbing;
+}
+
+.rd-gallery-main:focus {
+  outline: 2px solid #f7941d;
+  outline-offset: 2px;
+}
+
+.rd-gallery-main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .rd-gallery-main {
+    aspect-ratio: 4 / 3;
+    min-height: 260px;
+  }
+}
+
+.rd-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  font-size: 1.05rem;
+  color: #444;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.rd-gallery-arrow:hover {
+  background: #f7941d;
+  color: #fff;
+  transform: translateY(-50%) scale(1.06);
+}
+
+.rd-gallery-prev {
+  left: 16px;
+}
+
+.rd-gallery-next {
+  right: 16px;
+}
+
+.rd-gallery-count {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.78rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+/* THUMBNAIL STRIP + SLIDE BUTTONS */
+
+.rd-gallery-thumbs-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rd-gallery-thumbs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  flex: 1;
+}
+
+.rd-gallery-thumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.rd-thumb {
+  width: 104px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 10px;
+  cursor: pointer;
+  opacity: 0.6;
+  border: 2px solid transparent;
+  transition:
+    opacity 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.rd-thumb:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+}
+
+.rd-thumb.active {
+  opacity: 1;
+  border-color: #f7941d;
+}
+
+.rd-thumbs-arrow {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.rd-thumbs-arrow:hover {
+  border-color: #f7941d;
+  color: #f7941d;
+}
+
+/* =========================
+   TITLE / SUBLINE
+========================== */
+
+.rd-title {
+  font-size: 1.6rem;
+  margin: 22px 0 6px;
+  color: #222;
+}
+
+.rd-subline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.rd-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rd-location img {
+  width: 16px;
+  height: 16px;
+}
+
+.rd-rating {
+  font-weight: 600;
+  color: #333;
+}
+
+/* =========================
+   AMENITIES ROW
+========================== */
+
+.rd-amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 18px 0;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 22px;
+}
+
+.rd-amenity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #555;
+  min-width: 70px;
+}
+
+.rd-amenity img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* =========================
+   ABOUT
+========================== */
+
+.rd-about {
+  margin-bottom: 28px;
+}
+
+.rd-about h2,
+.rd-host h2 {
+  font-size: 1.15rem;
+  margin-bottom: 10px;
+  color: #222;
+}
+
+.rd-about-text {
+  color: #555;
+  line-height: 1.6;
+  font-size: 0.92rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rd-about-text.rd-expanded {
+  -webkit-line-clamp: unset;
+  display: block;
+  overflow: visible;
+}
+
+.rd-show-more {
+  background: none;
+  border: none;
+  color: #f7941d;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+/* =========================
+   HOST CARD
+========================== */
+
+.rd-host-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  padding: 18px;
+  flex-wrap: wrap;
+}
+
+.rd-host-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.rd-host-info {
+  flex: 1;
+  min-width: 180px;
+}
+
+.rd-host-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.rd-host-info p {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #777;
+}
+
+.rd-superhost-badge {
+  background: #eafaf0;
+  color: #2f9e5c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.rd-host-profile-btn {
+  border: 1px solid #f7941d;
+  color: #f7941d;
+  text-decoration: none;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rd-host-profile-btn:hover {
+  background: #f7941d;
+  color: #fff;
+}
+
+/* =========================
+   SIDEBAR — SHARED CARD STYLE
+========================== */
+
+.rd-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+/* BOOKING CARD */
+
+.rd-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.rd-peso {
+  color: #f7941d;
+}
+
+.rd-per {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #999;
+}
+
+.rd-dates label,
+.rd-guests label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+
+.rd-dates-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.rd-date-field {
+  flex: 1;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.rd-date-field span {
+  display: block;
+  font-size: 0.7rem;
+  color: #999;
+}
+
+.rd-date-field input {
+  border: none;
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 2px 0;
+  background: transparent;
+}
+
+.rd-date-field input:focus {
+  outline: none;
+}
+
+.rd-date-sep {
+  color: #ccc;
+}
+
+.rd-guests {
+  margin-bottom: 18px;
+}
+
+.rd-guests select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: #333;
+}
+
+.rd-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
+.rd-btn-primary {
+  background: #f7941d;
+  color: #fff;
+  border: none;
+}
+
+.rd-btn-primary:hover {
+  background: #e6850f;
+}
+
+.rd-btn-outline {
+  background: #fff;
+  color: #f7941d;
+  border: 1px solid #f7941d;
+}
+
+.rd-btn-outline:hover {
+  background: #fff4e8;
+}
+
+.rd-charge-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #999;
+  margin: 6px 0 0;
+}
+
+/* PROPERTY DETAILS CARD */
+
+.rd-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 0.85rem;
+}
+
+.rd-detail-row:last-child {
+  border-bottom: none;
+}
+
+.rd-detail-row img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.rd-detail-row span {
+  flex: 1;
+  color: #777;
+}
+
+.rd-detail-row strong {
+  color: #222;
+}
+
+/* LOCATION CARD */
+
+.rd-location-card h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+  color: #222;
+}
+
+.rd-location-card p {
+  font-size: 0.85rem;
+  color: #777;
+  margin: 0 0 12px;
+}
+
+.rd-map-placeholder {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f2f2f2;
+  aspect-ratio: 16 / 10;
+  margin-bottom: 14px;
+}
+
+.rd-map-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rd-map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  font-size: 1.6rem;
+  color: #e0505a;
+}
+
+.rd-map-btn {
+  margin-bottom: 0;
+}

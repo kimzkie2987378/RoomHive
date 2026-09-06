@@ -1,10 +1,12 @@
 <?php
+
 /* =========================================================
    ROOMHIVE - BECOME A HOST (STEP 4)
    SPACE ADDED SUCCESSFULLY
    ========================================================= */
 
 session_start();
+require_once 'db_connect.php';
 
 /* Only logged-in users can access this page. */
 if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
@@ -12,10 +14,12 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
     exit();
 }
 
-/* Step 1, Step 2 and Step 3 must be completed first. */
+/* Step 2 and Step 3 must be completed first — listing_id is
+   set by host-step2.php's INSERT, and cover_photo is set by
+   host-step3.php, so both being present proves the earlier
+   steps actually ran. */
 if (
-    !isset($_SESSION["host_application"]) ||
-    !isset($_SESSION["host_application"]["title"]) ||
+    !isset($_SESSION["host_application"]["listing_id"]) ||
     !isset($_SESSION["host_application"]["cover_photo"])
 ) {
     header("Location: becomeahost.php");
@@ -23,7 +27,7 @@ if (
 }
 
 $isLoggedIn = true;
-$currentPage = "becomeahost.php";
+$currentPage = "hostprofile.php";
 $currentStep = 4;
 $userName = $_SESSION["user_name"] ?? "User";
 
@@ -62,30 +66,25 @@ $hostSteps = [
 ];
 
 /* ---------------------------------------------------------
-   FINISH THE SPACE SETUP ONCE
-   This makes the new space available in the host profile.
+   FINALIZE THE LISTING (runs once)
+   Flips the real `listings` row from 'draft' to 'pending' so
+   it shows up in hostprofile.php's listings query and (once
+   an admin approves it) in listing.php too. Also marks the
+   account as a host. Guarded by "finalized" so refreshing
+   this page doesn't re-run the update.
 --------------------------------------------------------- */
-if (!isset($_SESSION["host_listings"]) || !is_array($_SESSION["host_listings"])) {
-    $_SESSION["host_listings"] = [];
-}
-
 if (empty($_SESSION["host_application"]["finalized"])) {
-    $app = $_SESSION["host_application"];
 
-    $_SESSION["host_listings"][] = [
-        "id" => uniqid("listing_"),
-        "title" => $app["title"] ?? "My Space",
-        "location" => $app["location"] ?? "",
-        "price" => $app["price"] ?? "",
-        "image" => $app["cover_photo"] ?? "images/ListingPlaceholder.png",
-        "bookings" => 0,
-        "occupancy" => 0,
-        "earnings" => 0,
-        "status" => "Active"
-    ];
+    $listingId = $_SESSION["host_application"]["listing_id"];
 
-    $_SESSION["host_application"]["finalized"] = true;
+    $pdo->prepare("UPDATE listings SET status = 'pending' WHERE id = :id")
+        ->execute(['id' => $listingId]);
+
+    $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
+        ->execute(['id' => $_SESSION['user_id']]);
+
     $_SESSION["is_host"] = true;
+    $_SESSION["host_application"]["finalized"] = true;
 }
 
 /* ---------------------------------------------------------
@@ -144,14 +143,14 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
         <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
-   <nav class="nav-links">
-    <?php foreach ($navigation as $name => $link): ?>
-        <a href="<?php echo htmlspecialchars($link); ?>"
-           class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>">
-            <?php echo htmlspecialchars($name); ?>
-        </a>
-    <?php endforeach; ?>
-</nav>
+    <nav class="nav-links">
+
+        <?php foreach ($navigation as $name => $link): ?>
+            <a href="<?php echo htmlspecialchars($link); ?>"
+               class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>">
+                <?php echo htmlspecialchars($name); ?>
+            </a>
+        <?php endforeach; ?>
 
         <?php if ($isLoggedIn): ?>
             <div class="account-dropdown">
@@ -165,18 +164,22 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
                     <span class="account-circle">
                         <img src="images/MyAccountIcon.png" alt="My Account">
                     </span>
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
-                    <a href="myaccount.php">My Account</a>
+                    <?php if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true): ?>
+                        <a href="hostprofile.php">Host Profile</a>
+                    <?php endif; ?>
+                    <a href="userprofile.php">My Profile</a>
                     <a href="logout.php">Logout</a>
                 </div>
             </div>
         <?php else: ?>
             <a href="becomeahost.php" class="list-space">LIST YOUR SPACE</a>
         <?php endif; ?>
+
     </nav>
 
 </header>
@@ -239,6 +242,28 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
         background: #f5f5f5;
     }
 </style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const toggle = document.getElementById('accountDropdownToggle');
+        const dropdown = toggle ? toggle.closest('.account-dropdown') : null;
+
+        if (!toggle || !dropdown) {
+            return;
+        }
+
+        toggle.addEventListener('click', function () {
+            const isOpen = dropdown.classList.toggle('open');
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!dropdown.contains(event.target)) {
+                dropdown.classList.remove('open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    });
+</script>
 <?php endif; ?>
 
 <main class="success-main">
@@ -295,19 +320,19 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
         <h2>Space Add Successfully!</h2>
 
         <p class="success-message">
-            Your space has been added and is now live.<br>
+            Your space has been added and is now awaiting approval.<br>
             You can manage your listing, update details,<br>
-            and start receiving bookings.
+            and start receiving bookings once it's live.
         </p>
 
         <div class="success-actions">
 
-            <a href="hostdashboard.php" class="success-button primary">
+            <a href="hostprofile.php" class="success-button primary">
                 <img src="images/AddYourSpaceIcon-BecomeAHost.png" alt="" class="button-icon">
                 <span>GO TO HOST PROFILE</span>
             </a>
 
-            <a href="host-step2.php?add_another=1" class="success-button secondary">
+            <a href="becomeahost.php" class="success-button secondary">
                 <img src="images/AddAnotherButtonIcon.png" alt="" class="button-icon add-another-icon">
                 <span>ADD ANOTHER SPACE</span>
             </a>

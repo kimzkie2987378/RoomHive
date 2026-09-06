@@ -301,7 +301,7 @@ $joinHiveClubLink = $isLoggedIn
 
                     </span>
 
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
 
                     <span class="dropdown-caret">
                         &#9662;
@@ -315,8 +315,14 @@ $joinHiveClubLink = $isLoggedIn
                     id="accountDropdownMenu"
                 >
 
-                    <a href="myaccount.php">
-                        My Account
+                    <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
+                        <a href="hostprofile.php">
+                            Host Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="userprofile.php">
+                        My Profile
                     </a>
 
                     <a href="logout.php">

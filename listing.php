@@ -3,6 +3,7 @@
    listing.php
 ========================== */
 session_start();
+require_once 'db_connect.php';
 
 /* =========================
    NEGROS ORIENTAL LOCATION DATA
@@ -24,7 +25,8 @@ $isLoggedIn = (
 $userName = $_SESSION['user_name'] ?? 'Guest';
 
 /* =========================
-   LISTINGS DATA
+   LISTINGS DATA (category tiles at top of page — unrelated
+   to the real $allListings query below, kept as-is)
 ========================== */
 $listings = [
     [
@@ -61,147 +63,46 @@ $listings = [
 
 /* =========================
    ALL LISTINGS
+   Pulled from the real `listings` table (joined against
+   listing_photos for the cover image). Only approved
+   listings with no active booking show up here — the
+   moment a listing gets booked, it disappears from this
+   page automatically.
 ========================== */
-$allListings = [
-    [
-        'id'             => 1,
-        'title'          => 'Studio For Rent',
-        'image'          => 'images/StudioForRent.png',
-        'location'       => 'dumaguete',
-        'location_label' => 'Dumaguete City',
-        'category'       => 'studioloft',
-        'price'          => 5000,
-        'amenities'      => ['wifi', 'aircon'],
-        'bedrooms'       => 1,
-        'rating'         => 4.8,
-        'reviews'        => 24,
-        'verified'       => true,
-        'date_added'     => '2026-08-28',
-    ],
-    [
-        'id'             => 2,
-        'title'          => 'Private Room',
-        'image'          => 'images/PrivateRoom.png',
-        'location'       => 'sibulan',
-        'location_label' => 'Sibulan',
-        'category'       => 'privateroom',
-        'price'          => 3500,
-        'amenities'      => ['wifi', 'free-water'],
-        'bedrooms'       => 1,
-        'rating'         => 4.5,
-        'reviews'        => 11,
-        'verified'       => true,
-        'date_added'     => '2026-07-15',
-    ],
-    [
-        'id'             => 3,
-        'title'          => 'Shared Bedroom',
-        'image'          => 'images/SharedBedroom.png',
-        'location'       => 'bais',
-        'location_label' => 'City of Bais',
-        'category'       => 'sharedbedroom',
-        'price'          => 2800,
-        'amenities'      => ['wifi'],
-        'bedrooms'       => 1,
-        'rating'         => 4.2,
-        'reviews'        => 6,
+
+$listingsStmt = $pdo->query(
+    "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
+            l.bedrooms, l.amenities, l.created_at,
+            p.photo_path AS cover_photo
+     FROM listings l
+     LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+     WHERE l.status = 'approved'
+       AND NOT EXISTS (
+           SELECT 1 FROM bookings b
+           WHERE b.listing_id = l.id
+             AND b.status IN ('pending', 'confirmed')
+       )
+     ORDER BY l.created_at DESC"
+);
+
+$allListings = array_map(function ($row) {
+    return [
+        'id'             => (int) $row['id'],
+        'title'          => $row['title'],
+        'image'          => $row['cover_photo'] ?? 'images/ListingPlaceholder.png',
+        'location'       => $row['location'],
+        'location_label' => $row['location'],
+        'category'       => $row['category'],
+        'price'          => (float) $row['price'],
+        'bedrooms'       => (int) $row['bedrooms'],
+        'amenities'      => json_decode($row['amenities'] ?? '[]', true) ?? [],
+        'rating'         => 0,
+        'reviews'        => 0,
         'verified'       => false,
-        'date_added'     => '2026-06-02',
-    ],
-    [
-        'id'             => 4,
-        'title'          => 'Cozy Apartment',
-        'image'          => 'images/Apartment.png',
-        'location'       => 'dumaguete',
-        'location_label' => 'Dumaguete City',
-        'category'       => 'apartment',
-        'price'          => 6200,
-        'amenities'      => ['wifi', 'parking', 'aircon'],
-        'bedrooms'       => 2,
-        'rating'         => 4.9,
-        'reviews'        => 38,
-        'verified'       => true,
-        'date_added'     => '2026-08-30',
-    ],
-    [
-        'id'             => 5,
-        'title'          => 'Boarding House Room',
-        'image'          => 'images/BoardingHouse.png',
-        'location'       => 'valencia',
-        'location_label' => 'Valencia',
-        'category'       => 'boardinghouse',
-        'price'          => 4000,
-        'amenities'      => ['wifi', 'free-electricity'],
-        'bedrooms'       => 1,
-        'rating'         => 4.0,
-        'reviews'        => 9,
-        'verified'       => false,
-        'date_added'     => '2026-05-20',
-    ],
-    [
-        'id'             => 6,
-        'title'          => 'Entire House',
-        'image'          => 'images/EntireHouse.png',
-        'location'       => 'tanjay',
-        'location_label' => 'City of Tanjay',
-        'category'       => 'entirehouse',
-        'price'          => 12000,
-        'amenities'      => ['wifi', 'parking', 'pet-friendly'],
-        'bedrooms'       => 4,
-        'rating'         => 4.7,
-        'reviews'        => 15,
-        'verified'       => true,
-        'date_added'     => '2026-08-20',
-    ],
-    [
-        'id'             => 7,
-        'title'          => 'Shaira Dumaguete Apartment For Rent',
-        'image'          => 'images/ShairaDumagureApartmentForRent.jpg',
-        'detail_url'     => 'ShairaDumagureApartmentForRent.php',
-        'location'       => 'dumaguete',
-        'location_label' => 'Dumaguete City',
-        'category'       => 'apartment',
-        'price'          => 6500,
-        'amenities'      => ['wifi', 'aircon', 'parking'],
-        'bedrooms'       => 2,
-        'rating'         => 4.6,
-        'reviews'        => 12,
-        'verified'       => true,
-        'date_added'     => '2026-09-01',
-    ],
-    [
-        'id'             => 8,
-        'title'          => 'Casiple Studio For Rent',
-        'image'          => 'images/CasipleStudioForRentDauin.jpg',
-        'detail_url'     => 'CasipleStudioForRentDauin.php',
-        'location'       => 'dauin',
-        'location_label' => 'Dauin',
-        'category'       => 'studioloft',
-        'price'          => 4500,
-        'amenities'      => ['wifi'],
-        'bedrooms'       => 1,
-        'rating'         => 4.4,
-        'reviews'        => 8,
-        'verified'       => false,
-        'date_added'     => '2026-08-25',
-    ],
-    [
-        'id'             => 9,
-        'title'          => 'Domingo House For Rent',
-        'image'          => 'images/DomingoHouseForRent.jpg',
-        'detail_url'     => 'DomingoHouseForRent.php',
-        'location'       => 'dumaguete',
-        'location_label' => 'Dumaguete City',
-        'category'       => 'entirehouse',
-        'price'          => 9000,
-        'amenities'      => ['wifi', 'parking', 'pet-friendly'],
-        'bedrooms'       => 3,
-        'rating'         => 4.3,
-        'reviews'        => 5,
-        'verified'       => false,
-        'date_added'     => '2026-08-15',
-    ],
-];
+        'date_added'     => $row['created_at'],
+    ];
+}, $listingsStmt->fetchAll());
 
 /* =========================
    LOCATIONS
@@ -274,9 +175,25 @@ if ($priceMin > $priceMax) {
 
 /* =========================
    AMENITIES INPUT
+   ---------------------------------------------------
+   FIX: unchecked checkboxes are never sent by the
+   browser, so "amenities[]" being absent from $_GET
+   is ambiguous — it could mean "fresh page load" OR
+   "user unchecked/cleared every amenity". Both forms
+   that touch amenities send a hidden
+   "amenities_submitted" flag, so we can tell those two
+   cases apart:
+     - flag NOT present  -> first visit, use the
+                             default ('wifi' preselected)
+     - flag present       -> trust exactly what was sent,
+                             even if that's nothing at all
 ========================== */
 
-$selectedAmenities = $_GET['amenities'] ?? ['wifi'];
+if (isset($_GET['amenities_submitted'])) {
+    $selectedAmenities = $_GET['amenities'] ?? [];
+} else {
+    $selectedAmenities = ['wifi'];
+}
 
 if (!is_array($selectedAmenities)) {
     $selectedAmenities = [$selectedAmenities];
@@ -305,7 +222,15 @@ $filteredListings = array_filter(
         $selectedAmenities
     ) {
 
-        /* LOCATION */
+        /* LOCATION
+           NOTE: listings.location is free text typed by the
+           host on host-step2.php, while $selectedLocation is
+           a city SLUG from the filter dropdown. These won't
+           match with strict equality once real hosts start
+           typing their own location text — switch host-step2.php's
+           Location field to a <select> of the same slugs, or
+           change this to a stripos() partial match, to make
+           the location filter actually work end-to-end. */
         if (
             $selectedLocation !== '' &&
             $listing['location'] !== $selectedLocation
@@ -416,7 +341,13 @@ foreach ($selectedAmenities as $amenity) {
 
     $activeFilters[] = [
         'label' => $amenityOptions[$amenity],
-        'url'   => roomhive_url(['amenities' => $remainingAmenities ?: null]),
+        /* Always keep amenities_submitted=1 so an empty
+           remaining list is respected as "cleared" rather
+           than falling back to the wifi default. */
+        'url'   => roomhive_url([
+            'amenities'           => $remainingAmenities ?: null,
+            'amenities_submitted' => 1,
+        ]),
     ];
 }
 
@@ -884,13 +815,13 @@ $selectedCategoryLabel =
             <!-- MY ACCOUNT -->
             <div class="account-dropdown js-account-dropdown">
 
-        <button
-        type="button"
-        class="my-account js-account-toggle"
-        id="accountDropdownToggle"
-        aria-haspopup="true"
-        aria-expanded="false"
-        >
+                <button
+                    type="button"
+                    class="my-account js-account-toggle"
+                    id="accountDropdownToggle"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                >
 
                     <span class="account-circle">
 
@@ -901,7 +832,7 @@ $selectedCategoryLabel =
 
                     </span>
 
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
 
                     <span class="dropdown-caret">
                         &#9662;
@@ -914,8 +845,14 @@ $selectedCategoryLabel =
                     id="accountDropdownMenu"
                 >
 
-                    <a href="myaccount.php">
-                        My Account
+                    <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
+                        <a href="hostprofile.php">
+                            Host Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="userprofile.php">
+                        My Profile
                     </a>
 
                     <a href="logout.php">
@@ -1034,8 +971,11 @@ $selectedCategoryLabel =
          EXPLORE MORE SPACES
          (horizontally scrollable strip of every listing,
          independent of the filters/pagination below —
-         scroll or use the arrows to browse them all)
+         scroll or use the arrows to browse them all.
+         Hidden entirely when there are no listings yet.)
     ========================== -->
+
+    <?php if (!empty($allListings)): ?>
 
     <section class="rh-carousel-section">
 
@@ -1099,6 +1039,8 @@ $selectedCategoryLabel =
         </div>
 
     </section>
+
+    <?php endif; ?>
 
     <!-- =========================
          FILTER BAR
@@ -1309,7 +1251,12 @@ $selectedCategoryLabel =
 
         </div>
 
-        <!-- PRESERVE AMENITIES -->
+        <!-- PRESERVE AMENITIES STATE
+             (marker flag first, then the actual selected
+             amenities — see the AMENITIES INPUT block above
+             for why the flag matters) -->
+
+        <input type="hidden" name="amenities_submitted" value="1">
 
         <?php foreach ($selectedAmenities as $amenity): ?>
 
@@ -1711,6 +1658,12 @@ $selectedCategoryLabel =
                         'UTF-8'
                     ) ?>"
                 >
+
+                <!-- MARKER: tells PHP this form was actually
+                     submitted, so zero checked boxes means
+                     "cleared", not "use the wifi default" -->
+
+                <input type="hidden" name="amenities_submitted" value="1">
 
                 <?php foreach (
                     $amenityOptions

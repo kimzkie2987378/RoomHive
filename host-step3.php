@@ -6,6 +6,7 @@
    ========================================================= */
 
 session_start();
+require_once 'db_connect.php';
 
 /*
  * =========================================================
@@ -34,7 +35,8 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
 
 if (
     !isset($_SESSION["host_application"]) ||
-    !isset($_SESSION["host_application"]["title"])
+    !isset($_SESSION["host_application"]["title"]) ||
+    !isset($_SESSION["host_application"]["listing_id"])
 ) {
 
     header("Location: becomeahost.php");
@@ -286,12 +288,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (empty($errors)) {
 
         /*
-         * At this stage you can:
-         *
-         * 1. Save the uploaded photos permanently.
-         * 2. Attach the photo paths to the host application.
-         * 3. Move to the next registration step.
+         * Save the uploaded photos to disk and record them in
+         * the listing_photos table, attached to the listing
+         * created in host-step2.php.
          */
+
+        $listingId = $_SESSION["host_application"]["listing_id"];
 
         $coverUploadDirectory = "uploads/listing_photos/cover/";
 
@@ -331,6 +333,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if (move_uploaded_file($coverFile["tmp_name"], $coverPath)) {
 
+            $pdo->prepare(
+                "INSERT INTO listing_photos (listing_id, photo_path, photo_type, sort_order)
+                 VALUES (:listing_id, :photo_path, 'cover', 0)"
+            )->execute([
+                'listing_id' => $listingId,
+                'photo_path' => $coverPath,
+            ]);
+
             $_SESSION["host_application"]["cover_photo"] = $coverPath;
 
         }
@@ -339,6 +349,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         // ---- Additional photos ----
 
         $savedAdditionalPaths = [];
+
+        $sortOrder = 1;
 
         foreach ($additionalFiles as $file) {
 
@@ -359,7 +371,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             if (move_uploaded_file($file["tmp_name"], $path)) {
 
+                $pdo->prepare(
+                    "INSERT INTO listing_photos (listing_id, photo_path, photo_type, sort_order)
+                     VALUES (:listing_id, :photo_path, 'additional', :sort_order)"
+                )->execute([
+                    'listing_id' => $listingId,
+                    'photo_path' => $path,
+                    'sort_order' => $sortOrder,
+                ]);
+
                 $savedAdditionalPaths[] = $path;
+
+                $sortOrder++;
 
             }
 
@@ -414,6 +437,74 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         rel="stylesheet"
         href="style.css"
     >
+
+
+    <!-- =====================================================
+         PHOTO PREVIEW STYLES
+         (You can move these into style.css instead)
+    ====================================================== -->
+
+    <style>
+
+        .cover-photo-box {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cover-photo-preview {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-slot {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .photo-slot-preview {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .photo-slot-remove {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 2;
+        }
+
+        .cover-photo-remove {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 2;
+        }
+
+    </style>
 
 </head>
 
@@ -477,14 +568,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <span class="account-circle">
                         <img src="images/MyAccountIcon.png" alt="My Account">
                     </span>
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
 
-                    <a href="myaccount.php">
-                        My Account
+                    <?php if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true): ?>
+                        <a href="hostprofile.php">
+                            Host Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="userprofile.php">
+                        My Profile
                     </a>
 
                     <a href="logout.php">
@@ -790,7 +887,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     id="coverPhotoBox"
                 >
 
-                    <div class="cover-photo-placeholder">
+                    <div class="cover-photo-placeholder" id="coverPhotoPlaceholder">
 
                         <div class="upload-icon">
 
@@ -817,6 +914,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         </div>
 
                     </div>
+
+
+                    <img
+                        src=""
+                        alt="Cover photo preview"
+                        class="cover-photo-preview"
+                        id="coverPhotoPreview"
+                        hidden
+                    >
+
+
+                    <button
+                        type="button"
+                        class="cover-photo-remove"
+                        id="coverPhotoRemove"
+                        hidden
+                    >
+                        &times;
+                    </button>
 
                 </label>
 
@@ -906,22 +1022,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                         </button>
 
+
+                        <img
+                            class="photo-slot-preview"
+                            alt="Photo preview"
+                            hidden
+                        >
+
+
+                        <button
+                            type="button"
+                            class="photo-slot-remove"
+                            hidden
+                        >
+                            &times;
+                        </button>
+
+
+                        <input
+                            type="file"
+                            name="additional_photos[]"
+                            accept=".jpg,.jpeg,.png"
+                            class="photo-slot-input"
+                            hidden
+                        >
+
                     </div>
 
                 <?php endfor; ?>
 
             </div>
-
-
-            <input
-                type="file"
-                id="additionalPhotosInput"
-                name="additional_photos[]"
-                accept=".jpg,.jpeg,.png"
-                multiple
-                hidden
-            >
-
 
 
             <!-- =================================================
@@ -1206,7 +1336,133 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 ========================================================= -->
 
 <script src="host-step3.js"></script>
+<script>
+    /* =========================================================
+   ROOMHIVE - BECOME A HOST (STEP 3)
+   PHOTO UPLOAD + LIVE PREVIEWS
+   ========================================================= */
 
+document.addEventListener('DOMContentLoaded', function () {
+
+    /* =====================================================
+       COVER PHOTO PREVIEW
+       ===================================================== */
+
+    const coverInput = document.getElementById('cover_photo');
+    const coverPlaceholder = document.getElementById('coverPhotoPlaceholder');
+    const coverPreview = document.getElementById('coverPhotoPreview');
+    const coverRemoveBtn = document.getElementById('coverPhotoRemove');
+
+    if (coverInput) {
+
+        coverInput.addEventListener('change', function () {
+
+            const file = coverInput.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+
+                coverPreview.src = event.target.result;
+                coverPreview.hidden = false;
+                coverPlaceholder.hidden = true;
+                coverRemoveBtn.hidden = false;
+
+            };
+
+            reader.readAsDataURL(file);
+
+        });
+
+    }
+
+
+    if (coverRemoveBtn) {
+
+        coverRemoveBtn.addEventListener('click', function (event) {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            coverInput.value = '';
+            coverPreview.hidden = true;
+            coverPreview.src = '';
+            coverPlaceholder.hidden = false;
+            coverRemoveBtn.hidden = true;
+
+        });
+
+    }
+
+
+    /* =====================================================
+       ADDITIONAL PHOTO SLOTS
+       ===================================================== */
+
+    const photoSlots = document.querySelectorAll('.photo-slot');
+
+    photoSlots.forEach(function (slot) {
+
+        const trigger = slot.querySelector('.photo-slot-trigger');
+        const input = slot.querySelector('.photo-slot-input');
+        const preview = slot.querySelector('.photo-slot-preview');
+        const removeBtn = slot.querySelector('.photo-slot-remove');
+
+        if (!trigger || !input || !preview || !removeBtn) {
+            return;
+        }
+
+        // Clicking the empty slot opens the file picker
+        trigger.addEventListener('click', function () {
+            input.click();
+        });
+
+        // When a file is chosen, show it inside this exact slot
+        input.addEventListener('change', function () {
+
+            const file = input.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+
+                preview.src = event.target.result;
+                preview.hidden = false;
+                trigger.hidden = true;
+                removeBtn.hidden = false;
+
+            };
+
+            reader.readAsDataURL(file);
+
+        });
+
+        // Clear this slot and let the user pick again
+        removeBtn.addEventListener('click', function (event) {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            input.value = '';
+            preview.hidden = true;
+            preview.src = '';
+            trigger.hidden = false;
+            removeBtn.hidden = true;
+
+        });
+
+    });
+
+});
+    </script>
 
 </body>
 

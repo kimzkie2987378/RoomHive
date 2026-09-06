@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   /* =========================
-     TESTIMONIAL SLIDER
+     TESTIMONIAL SLIDER javaScript.js
   ========================= */
   const section = document.querySelector(".testimonials");
 

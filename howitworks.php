@@ -215,14 +215,20 @@ $quickLinks = [
                     <span class="account-circle">
                         <img src="images/MyAccountIcon.png" alt="My Account">
                     </span>
-                    <span>MY ACCOUNT</span>
+                    <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
 
-                    <a href="myaccount.php">
-                        My Account
+                    <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
+                        <a href="hostprofile.php">
+                            Host Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="userprofile.php">
+                        My Profile
                     </a>
 
                     <a href="logout.php">

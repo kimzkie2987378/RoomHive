@@ -7335,3 +7335,160 @@ body {
   font-size: 13px;
   line-height: 1.6;
 }
+/* =========================================================
+   ICON INPUT GROUP
+========================================================= */
+
+.three-columns {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 720px) {
+  .form-grid.three-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.icon-input-group {
+  width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  transition: 0.2s ease;
+}
+
+.icon-input-group:focus-within {
+  border-color: #eda423;
+  box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.1);
+}
+
+.icon-input-group .icon-input-icon {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-right: 1px solid #eeeeee;
+  background: #fbfbfb;
+}
+
+.icon-input-group .icon-input-icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.icon-input-group input,
+.icon-input-group select {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 16px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #263441;
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+}
+
+.icon-input-group input::placeholder {
+  color: #a0a0a0;
+}
+
+.icon-input-group select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  background-image: url("images/DownwardArrow.png");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 12px;
+  padding-right: 38px;
+}
+
+.icon-input-group .icon-input-suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-left: 1px solid #eeeeee;
+  background: #fbfbfb;
+  color: #8a8a8a;
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.icon-input-group input::-webkit-outer-spin-button,
+.icon-input-group input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.icon-input-group input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.amenities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.amenity-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.amenity-checkbox:hover {
+  border-color: #eda423;
+}
+
+.amenity-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #eda423;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.amenity-checkbox:has(input:checked) {
+  border-color: #eda423;
+  background: #fff8ec;
+}
+
+.amenity-checkbox-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.amenity-checkbox-icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.amenity-checkbox-label {
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #263441;
+}

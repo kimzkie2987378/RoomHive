@@ -531,10 +531,23 @@
   display: grid;
   grid-template-columns: 1.7fr 1fr;
   gap: 20px;
-  align-items: start;
+  /* Stretch (not start) so the bookings card and the right
+     column always match height — this is what lets an empty
+     Recent Bookings card grow to fill the same vertical space
+     as the stacked Payment Summary / Payment Methods / Account
+     Security / Need Help cards next to it. */
+  align-items: stretch;
 }
 
 /* Recent bookings */
+
+/* Bookings card is a flex column so its empty state (or its
+   list of booking rows + the "View All" button) can grow to
+   fill the full stretched height set by .up-two-col above. */
+.up-bookings-card {
+  display: flex;
+  flex-direction: column;
+}
 
 .up-booking-row {
   position: relative;
@@ -553,6 +566,34 @@
 
 .up-bookings-card .up-booking-row:first-of-type {
   border-top: none;
+}
+
+/* Empty state: fills whatever leftover height the stretched
+   card has, and centers its content both horizontally and
+   vertically within that space. */
+.up-bookings-empty {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.up-bookings-empty-title {
+  margin: 0 0 4px;
+  color: var(--up-navy);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.up-bookings-empty-text {
+  margin: 0 0 16px;
+  color: var(--up-text-muted);
+  font-size: 13px;
 }
 
 .up-booking-thumb {
@@ -758,6 +799,11 @@
 
 .up-security-enabled {
   color: var(--up-green);
+  font-weight: 700;
+}
+
+.up-security-disabled {
+  color: var(--up-red);
   font-weight: 700;
 }
 
