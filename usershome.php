@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once 'db_connect.php';
 /*
  * =========================================================
  * ROOMHIVE USER HOME - AUTHENTICATION CHECK
@@ -11,6 +12,24 @@ session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: login.php");
     exit();
+}
+
+/*
+ * -----------------------------------------------------
+ * KEEP is_host IN SYNC WITH THE DATABASE
+ * -----------------------------------------------------
+ * $_SESSION['is_host'] is only set at login time, so if an
+ * admin approves this user's host application (or their
+ * host status otherwise changes) during the same session,
+ * the session flag goes stale and the nav keeps showing
+ * them as a regular user. Re-check the real column on every
+ * load so the nav is always accurate.
+ */
+if (isset($_SESSION['user_id'])) {
+    $hostCheckStmt = $pdo->prepare("SELECT is_host FROM users WHERE id = :id LIMIT 1");
+    $hostCheckStmt->execute(['id' => $_SESSION['user_id']]);
+    $hostRow = $hostCheckStmt->fetch();
+    $_SESSION['is_host'] = $hostRow ? (bool) $hostRow['is_host'] : false;
 }
 
 /*

@@ -2,7 +2,7 @@
 
 /* =========================================================
    ROOMHIVE - BECOME A HOST (STEP 4)
-   SPACE ADDED SUCCESSFULLY
+   SPACE SUBMITTED — AWAITING ADMIN APPROVAL
    ========================================================= */
 
 session_start();
@@ -27,9 +27,18 @@ if (
 }
 
 $isLoggedIn = true;
-$currentPage = "hostprofile.php";
-$currentStep = 4;
 $userName = $_SESSION["user_name"] ?? "User";
+
+/*
+ * Whether the ADMIN has already approved this user's host
+ * application. This is the real gate now — not "did they
+ * finish the upload wizard". It only flips true from
+ * hostapplication.php once an admin clicks Approve.
+ */
+$isHostApproved = isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true;
+
+$currentPage = $isHostApproved ? "hostprofile.php" : "userprofile.php";
+$currentStep = 4;
 
 /* ---------------------------------------------------------
    HOSTING STEPS
@@ -66,12 +75,14 @@ $hostSteps = [
 ];
 
 /* ---------------------------------------------------------
-   FINALIZE THE LISTING (runs once)
+   FINALIZE THE LISTING SUBMISSION (runs once)
    Flips the real `listings` row from 'draft' to 'pending' so
-   it shows up in hostprofile.php's listings query and (once
-   an admin approves it) in listing.php too. Also marks the
-   account as a host. Guarded by "finalized" so refreshing
-   this page doesn't re-run the update.
+   it shows up in listingapplication.php's queue for an admin
+   to review. This does NOT touch is_host or hosting status —
+   that only happens once an admin approves the underlying
+   host_applications row (see hostapplication.php). Guarded by
+   "finalized" so refreshing this page doesn't re-run the
+   update.
 --------------------------------------------------------- */
 if (empty($_SESSION["host_application"]["finalized"])) {
 
@@ -80,10 +91,6 @@ if (empty($_SESSION["host_application"]["finalized"])) {
     $pdo->prepare("UPDATE listings SET status = 'pending' WHERE id = :id")
         ->execute(['id' => $listingId]);
 
-    $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
-        ->execute(['id' => $_SESSION['user_id']]);
-
-    $_SESSION["is_host"] = true;
     $_SESSION["host_application"]["finalized"] = true;
 }
 
@@ -124,7 +131,7 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>RoomHive - Space Added Successfully</title>
+    <title>RoomHive - <?php echo $isHostApproved ? 'Space Added Successfully' : 'Awaiting Approval'; ?></title>
 
     <link
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
@@ -169,7 +176,7 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
-                    <?php if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true): ?>
+                    <?php if ($isHostApproved): ?>
                         <a href="hostprofile.php">Host Profile</a>
                     <?php endif; ?>
                     <a href="userprofile.php">My Profile</a>
@@ -241,6 +248,20 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
     .account-dropdown-menu a:hover {
         background: #f5f5f5;
     }
+
+    .pending-approval-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #fff4e8;
+        border: 1px solid #f7941d;
+        color: #8a5a10;
+        padding: 8px 16px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin: 0 auto 20px;
+    }
 </style>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -309,39 +330,70 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
 
     <section class="success-card">
 
+        <?php if (!$isHostApproved): ?>
+            <span class="pending-approval-badge">&#9203; Awaiting Admin Approval</span>
+        <?php endif; ?>
+
         <div class="success-icon-wrap">
             <img
                 src="images/SpaceSuccessfullyAddIcon.png"
-                alt="Space Added Successfully"
+                alt="Space Submitted"
                 class="success-icon"
             >
         </div>
 
-        <h2>Space Add Successfully!</h2>
+        <?php if ($isHostApproved): ?>
 
-        <p class="success-message">
-            Your space has been added and is now awaiting approval.<br>
-            You can manage your listing, update details,<br>
-            and start receiving bookings once it's live.
-        </p>
+            <h2>Space Added Successfully!</h2>
 
-        <div class="success-actions">
+            <p class="success-message">
+                Your space has been added and is now awaiting approval.<br>
+                You can manage your listing, update details,<br>
+                and start receiving bookings once it's live.
+            </p>
 
-            <a href="hostprofile.php" class="success-button primary">
-                <img src="images/AddYourSpaceIcon-BecomeAHost.png" alt="" class="button-icon">
-                <span>GO TO HOST PROFILE</span>
-            </a>
+            <div class="success-actions">
 
-            <a href="becomeahost.php" class="success-button secondary">
-                <img src="images/AddAnotherButtonIcon.png" alt="" class="button-icon add-another-icon">
-                <span>ADD ANOTHER SPACE</span>
-            </a>
+                <a href="hostprofile.php" class="success-button primary">
+                    <img src="images/AddYourSpaceIcon-BecomeAHost.png" alt="" class="button-icon">
+                    <span>GO TO HOST PROFILE</span>
+                </a>
 
-        </div>
+                <a href="becomeahost.php" class="success-button secondary">
+                    <img src="images/AddAnotherButtonIcon.png" alt="" class="button-icon add-another-icon">
+                    <span>ADD ANOTHER SPACE</span>
+                </a>
 
-        <p class="success-footer-text">
-            Continue to your host profile to manage your spaces.
-        </p>
+            </div>
+
+            <p class="success-footer-text">
+                Continue to your host profile to manage your spaces.
+            </p>
+
+        <?php else: ?>
+
+            <h2>Submitted for Review!</h2>
+
+            <p class="success-message">
+                Your space and host application have been submitted.<br>
+                An admin needs to review and approve your application<br>
+                before you can access your Host Profile and manage listings.
+            </p>
+
+            <div class="success-actions">
+
+                <a href="userprofile.php" class="success-button primary">
+                    <img src="images/AddYourSpaceIcon-BecomeAHost.png" alt="" class="button-icon">
+                    <span>GO TO MY PROFILE</span>
+                </a>
+
+            </div>
+
+            <p class="success-footer-text">
+                We'll let you know as soon as your host application is approved.
+            </p>
+
+        <?php endif; ?>
 
     </section>
 

@@ -25,6 +25,21 @@ $isLoggedIn = (
 $userName = $_SESSION['user_name'] ?? 'Guest';
 
 /* =========================
+   KEEP is_host IN SYNC WITH THE DATABASE
+   $_SESSION['is_host'] is only set at login time, so if a
+   host application gets approved (or status otherwise
+   changes) mid-session, the flag goes stale and the nav
+   keeps showing a Host Profile link that's missing (or vice
+   versa). Re-check the real column on every load.
+========================== */
+if ($isLoggedIn && isset($_SESSION['user_id'])) {
+    $hostCheckStmt = $pdo->prepare("SELECT is_host FROM users WHERE id = :id LIMIT 1");
+    $hostCheckStmt->execute(['id' => $_SESSION['user_id']]);
+    $hostRow = $hostCheckStmt->fetch();
+    $_SESSION['is_host'] = $hostRow ? (bool) $hostRow['is_host'] : false;
+}
+
+/* =========================
    LISTINGS DATA (category tiles at top of page — unrelated
    to the real $allListings query below, kept as-is)
 ========================== */

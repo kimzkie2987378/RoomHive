@@ -1,79 +1,284 @@
 <?php
 /**admin.php
- * RoomHive Admin Dashboard — fresh/empty state
+ * RoomHive Admin Dashboard — now backed by real queries
  * Markup + data. All visual styling lives in admin.css
  *
- * This version reflects a brand-new platform: no bookings, users,
- * listings, hosts, or revenue yet. Every $-array below is empty or
- * zeroed on purpose — wire these up to your real queries once data
- * starts coming in, and the empty-state UI will automatically stop
- * showing.
+ * Every section below used to be a hardcoded empty/zeroed
+ * array. It now pulls from the real tables (users, listings,
+ * bookings, reviews, host_applications, listing_photos) via
+ * $pdo. If the platform is genuinely still empty, the same
+ * empty-state UI you already had kicks in automatically —
+ * nothing about the *look* of an empty dashboard changes,
+ * only where the numbers come from.
  */
+
+session_start();
+require_once 'db_connect.php';
+
+/*
+ * =========================================================
+ * ADMIN AUTH GUARD
+ * =========================================================
+ */
+if (
+    !isset($_SESSION['admin_logged_in']) ||
+    $_SESSION['admin_logged_in'] !== true
+) {
+    header('Location: adminlogin.php');
+    exit();
+}
+
+$adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+$adminEmail = $_SESSION['admin_email'] ?? '';
+
+/*
+ * =========================================================
+ * HOST APPLICATION ACTIONS (Approve / Reject)
+ * =========================================================
+ * Triggered by the Approve/Reject buttons on the Recent Host
+ * Applications panel below. Runs before any HTML is echoed,
+ * so the header() redirect at the end is always safe to send.
+ *
+ * Approving does TWO things in one transaction:
+ *   1. host_applications.status -> 'approved'
+ *   2. users.is_host -> 1 for that application's user_id
+ * Step 2 is the part that was missing before — every host
+ * guard (hostprofile.php, etc.) reads users.is_host, not the
+ * application's own status column, so without it the admin
+ * dashboard could show "Approved" while the user still
+ * couldn't access anything host-only.
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_POST['application_id'])) {
+    $applicationId = (int) $_POST['application_id'];
+    $action        = $_POST['host_app_action'];
+
+    if ($applicationId > 0 && in_array($action, ['approve', 'reject'], true)) {
+        $stmt = $pdo->prepare(
+            "SELECT id, user_id, status FROM host_applications WHERE id = :id LIMIT 1"
+        );
+        $stmt->execute(['id' => $applicationId]);
+        $application = $stmt->fetch();
+
+        if ($application) {
+            $pdo->beginTransaction();
+            try {
+                if ($action === 'approve') {
+                    $pdo->prepare(
+                        "UPDATE host_applications SET status = 'approved' WHERE id = :id"
+                    )->execute(['id' => $applicationId]);
+
+                    $pdo->prepare(
+                        "UPDATE users SET is_host = 1 WHERE id = :user_id"
+                    )->execute(['user_id' => $application['user_id']]);
+                } else {
+                    $pdo->prepare(
+                        "UPDATE host_applications SET status = 'rejected' WHERE id = :id"
+                    )->execute(['id' => $applicationId]);
+                }
+
+                $pdo->commit();
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                // Leave the application as-is (still pending) rather than
+                // showing a false "approved" state if either update failed.
+            }
+        }
+    }
+
+    // Redirect so refreshing the dashboard never resubmits the action.
+    header('Location: admin.php');
+    exit();
+}
 
 /* ---------- Sidebar navigation ---------- */
 $navItems = [
-    ['label' => 'Dashboard',          'icon' => 'home',      'active' => true],
-    ['label' => 'Users',              'icon' => 'users'],
-    ['label' => 'Bookings',           'icon' => 'calendar'],
-    ['label' => 'Listings',           'icon' => 'listing'],
+    ['label' => 'Dashboard',          'icon' => 'home',      'active' => true, 'href' => 'admin.php'],
+    ['label' => 'Users',              'icon' => 'users',     'href' => '#'],
+    ['label' => 'Bookings',           'icon' => 'calendar',  'href' => '#'],
+    ['label' => 'Listings',           'icon' => 'listing',   'href' => '#'],
     ['label' => 'Listings Application', 'icon' => 'clipboard', 'href' => 'listingapplication.php'],
     ['label' => 'Host Applications',  'icon' => 'user-check', 'href' => 'hostapplication.php'],
-    ['label' => 'Payouts',            'icon' => 'wallet'],
-    ['label' => 'Reviews',            'icon' => 'star'],
-    ['label' => 'Messages',           'icon' => 'message'],
-    ['label' => 'Reports',            'icon' => 'bar-chart'],
-    ['label' => 'Settings',           'icon' => 'settings'],
+    ['label' => 'Payouts',            'icon' => 'wallet',    'href' => '#'],
+    ['label' => 'Reviews',            'icon' => 'star',      'href' => '#'],
+    ['label' => 'Messages',           'icon' => 'message',   'href' => '#'],
+    ['label' => 'Reports',            'icon' => 'bar-chart', 'href' => '#'],
+    ['label' => 'Settings',           'icon' => 'settings',  'href' => '#'],
 ];
 
-/* ---------- Top stat cards (all zero — nothing has happened yet) ---------- */
+/* =========================================================
+   TOP STAT CARDS
+   ========================================================= */
+$totalBookings  = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
+$totalRevenue   = (float) $pdo->query(
+    "SELECT COALESCE(SUM(total),0) FROM bookings WHERE status IN ('confirmed','completed')"
+)->fetchColumn();
+$activeListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'approved'")->fetchColumn();
+$totalUsers     = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+$avgRatingRow   = $pdo->query("SELECT AVG(rating) FROM reviews")->fetchColumn();
+$avgRating      = $avgRatingRow !== null ? round((float) $avgRatingRow, 1) : null;
+$totalReviews   = (int) $pdo->query("SELECT COUNT(*) FROM reviews")->fetchColumn();
+
 $stats = [
-    ['label' => 'Total Bookings',  'value' => '0',      'delta' => '', 'up' => true, 'icon' => 'calendar-solid'],
-    ['label' => 'Total Revenue',   'value' => '₱0',     'delta' => '', 'up' => true, 'icon' => 'wallet-solid'],
-    ['label' => 'Active Listings', 'value' => '0',      'delta' => '', 'up' => true, 'icon' => 'listing-solid'],
-    ['label' => 'Total Users',     'value' => '0',      'delta' => '', 'up' => true, 'icon' => 'users-solid'],
-    ['label' => 'Average Rating',  'value' => '— / 5',  'delta' => '', 'up' => true, 'icon' => 'star-solid'],
+    ['label' => 'Total Bookings',  'value' => number_format($totalBookings),               'delta' => '', 'up' => true, 'icon' => 'calendar-solid'],
+    ['label' => 'Total Revenue',   'value' => '₱' . number_format($totalRevenue),           'delta' => '', 'up' => true, 'icon' => 'wallet-solid'],
+    ['label' => 'Active Listings', 'value' => number_format($activeListings),               'delta' => '', 'up' => true, 'icon' => 'listing-solid'],
+    ['label' => 'Total Users',     'value' => number_format($totalUsers),                   'delta' => '', 'up' => true, 'icon' => 'users-solid'],
+    ['label' => 'Average Rating',  'value' => ($avgRating !== null ? $avgRating : '—') . ' / 5', 'delta' => '', 'up' => true, 'icon' => 'star-solid'],
 ];
 $statCaptions = [
-    'No bookings yet',
-    'No revenue yet',
-    'No listings yet',
-    'No users yet',
-    'No ratings yet',
+    $totalBookings > 0  ? 'All-time bookings'          : 'No bookings yet',
+    $totalRevenue > 0   ? 'From confirmed & completed'  : 'No revenue yet',
+    $activeListings > 0 ? 'Currently live on the site'  : 'No listings yet',
+    $totalUsers > 0     ? 'Registered accounts'         : 'No users yet',
+    $totalReviews > 0   ? "From {$totalReviews} reviews" : 'No ratings yet',
 ];
 
-/* ---------- Bookings by status (donut) — empty until bookings exist ---------- */
-$statusBreakdown = [
-    ['label' => 'Confirmed', 'value' => 0, 'pct' => '0%', 'color' => '#2FA84F'],
-    ['label' => 'Completed', 'value' => 0, 'pct' => '0%', 'color' => '#2F7DE1'],
-    ['label' => 'Cancelled', 'value' => 0, 'pct' => '0%', 'color' => '#E14B4B'],
-    ['label' => 'Pending',   'value' => 0, 'pct' => '0%', 'color' => '#F5A623'],
+/* =========================================================
+   BOOKINGS BY STATUS (donut)
+   ========================================================= */
+$statusColors = [
+    'confirmed' => '#2FA84F',
+    'completed' => '#2F7DE1',
+    'cancelled' => '#E14B4B',
+    'pending'   => '#F5A623',
 ];
-$totalBookingsForDonut = array_sum(array_column($statusBreakdown, 'value'));
+$statusCountsRaw = $pdo->query(
+    "SELECT status, COUNT(*) AS cnt FROM bookings GROUP BY status"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
 
-/* ---------- Recent host applications — none submitted yet ---------- */
-$hostApplications = [];
+$totalBookingsForDonut = array_sum($statusCountsRaw);
 
-/* ---------- Top performing listings — none published yet ---------- */
-$topListings = [];
+$statusBreakdown = [];
+foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
+    $count = (int) ($statusCountsRaw[$statusKey] ?? 0);
+    $pct = $totalBookingsForDonut > 0 ? round(($count / $totalBookingsForDonut) * 100) . '%' : '0%';
+    $statusBreakdown[] = [
+        'label' => ucfirst($statusKey),
+        'value' => $count,
+        'pct'   => $pct,
+        'color' => $statusColors[$statusKey],
+    ];
+}
 
-/* ---------- Recent bookings — none made yet ---------- */
-$recentBookings = [];
+/* =========================================================
+   RECENT HOST APPLICATIONS (pending, most recent 4)
+   ========================================================= */
+$hostApplications = array_map(function ($row) {
+    return [
+        'id'         => (int) $row['id'],
+        'name'       => $row['full_name'],
+        'city'       => $row['location'],
+        'status'     => ucfirst($row['status']),
+        'raw_status' => $row['status'],
+        'img'        => 'https://ui-avatars.com/api/?background=EDA423&color=fff&bold=true&name=' . urlencode($row['full_name']),
+    ];
+}, $pdo->query(
+    "SELECT id, full_name, location, status
+     FROM host_applications
+     ORDER BY created_at DESC
+     LIMIT 4"
+)->fetchAll());
 
-/* ---------- Platform summary ---------- */
+/* =========================================================
+   TOP PERFORMING LISTINGS (by revenue, top 4)
+   ========================================================= */
+$topListings = array_map(function ($row) {
+    return [
+        'name'     => $row['title'],
+        'city'     => $row['location'],
+        'img'      => $row['cover_photo'] ?? 'images/ListingPlaceholder.png',
+        'revenue'  => '₱' . number_format((float) $row['revenue']),
+        'bookings' => (int) $row['booking_count'] . ' bookings',
+    ];
+}, $pdo->query(
+    "SELECT l.title, l.location,
+            p.photo_path AS cover_photo,
+            COUNT(b.id) AS booking_count,
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.total ELSE 0 END), 0) AS revenue
+     FROM listings l
+     LEFT JOIN bookings b ON b.listing_id = l.id
+     LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
+     GROUP BY l.id, l.title, l.location, p.photo_path
+     ORDER BY revenue DESC, booking_count DESC
+     LIMIT 4"
+)->fetchAll());
+
+/* =========================================================
+   RECENT BOOKINGS (most recent 4)
+   ========================================================= */
+$recentBookings = array_map(function ($row) {
+    return [
+        'name'   => $row['title'],
+        'city'   => $row['location'],
+        'img'    => $row['cover_photo'] ?? 'images/ListingPlaceholder.png',
+        'date'   => date('M j, Y', strtotime($row['booked_at'])),
+        'amount' => '₱' . number_format((float) $row['total']),
+        'status' => ucfirst($row['status']),
+    ];
+}, $pdo->query(
+    "SELECT l.title, l.location, p.photo_path AS cover_photo, b.booked_at, b.total, b.status
+     FROM bookings b
+     JOIN listings l ON l.id = b.listing_id
+     LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
+     ORDER BY b.booked_at DESC
+     LIMIT 4"
+)->fetchAll());
+
+/* =========================================================
+   PLATFORM SUMMARY (this calendar month)
+   ========================================================= */
+$monthStart = date('Y-m-01 00:00:00');
+
+$stmt = $pdo->prepare(
+    "SELECT COALESCE(SUM(total),0) FROM bookings WHERE status IN ('confirmed','completed') AND booked_at >= :start"
+);
+$stmt->execute(['start' => $monthStart]);
+$payoutsThisMonth = (float) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE created_at >= :start");
+$stmt->execute(['start' => $monthStart]);
+$newUsersThisMonth = (int) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM listings WHERE created_at >= :start");
+$stmt->execute(['start' => $monthStart]);
+$newListingsThisMonth = (int) $stmt->fetchColumn();
+
+/* No `messages` table exists yet — wire this up once one does. */
+$messagesThisMonth = 0;
+
 $platformSummary = [
-    ['label' => 'Payouts This Month', 'value' => '₱0', 'icon' => 'wallet'],
-    ['label' => 'New Users',          'value' => '0',  'icon' => 'user-add'],
-    ['label' => 'New Listings',       'value' => '0',  'icon' => 'listing'],
-    ['label' => 'Messages',           'value' => '0',  'icon' => 'message'],
+    ['label' => 'Payouts This Month', 'value' => '₱' . number_format($payoutsThisMonth), 'icon' => 'wallet'],
+    ['label' => 'New Users',          'value' => number_format($newUsersThisMonth),       'icon' => 'user-add'],
+    ['label' => 'New Listings',       'value' => number_format($newListingsThisMonth),    'icon' => 'listing'],
+    ['label' => 'Messages',           'value' => number_format($messagesThisMonth),       'icon' => 'message'],
 ];
 
-/* ---------- Notifications ---------- */
-$notificationCount = 0;
+/* ---------- Notifications: count of pending applications ---------- */
+$pendingHostApps = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
+$pendingListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
+$notificationCount = $pendingHostApps + $pendingListings;
 
-/* ---------- Chart data (Bookings Overview / Revenue Overview) — flat at zero ---------- */
-$chartLabels  = ['May 1','May 6','May 11','May 16','May 21','May 26','May 31'];
-$bookingSeries = array_fill(0, 7, 0);
-$revenueSeries = array_fill(0, 7, 0);
+/* =========================================================
+   CHART DATA — last 7 days of bookings / revenue
+   ========================================================= */
+$chartLabels   = [];
+$bookingSeries = [];
+$revenueSeries = [];
+
+for ($i = 6; $i >= 0; $i--) {
+    $day = date('Y-m-d', strtotime("-{$i} days"));
+    $chartLabels[] = date('M j', strtotime($day));
+
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN status IN ('confirmed','completed') THEN total ELSE 0 END),0)
+         FROM bookings WHERE DATE(booked_at) = :day"
+    );
+    $stmt->execute(['day' => $day]);
+    [$dayCount, $dayRevenue] = $stmt->fetch(PDO::FETCH_NUM);
+
+    $bookingSeries[] = (int) $dayCount;
+    $revenueSeries[] = (float) $dayRevenue;
+}
 
 /* ---------- Inline icon helper (lucide-style strokes) ---------- */
 function icon($name, $class = '') {
@@ -97,21 +302,7 @@ function icon($name, $class = '') {
         'menu' => '<path d="M3 6h18M3 12h18M3 18h18"/>',
         'arrow-up' => '<path d="M12 19V5M6 11l6-6 6 6"/>',
         'inbox' => '<path d="M3 12h4.5l1.5 3h6l1.5-3H21"/><path d="M5.5 5.5h13l2.5 6.5v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"/>',
-        'eye' => '<path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/>',
-        'clock' => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
-        'check-circle' => '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.3 2.4 2.4 4.6-5.4"/>',
-        'x-circle' => '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>',
-        'person' => '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/>',
-        'pin' => '<path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.2"/>',
-        'calendar-small' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
-        'mail' => '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 6 9 7 9-7"/>',
-        'phone' => '<path d="M5 4h3.5l1.5 5-2.2 1.6a11 11 0 0 0 5.6 5.6L14.5 14l5 1.5V19a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2Z"/>',
-        'file' => '<path d="M7 3.5h7l4.5 4.5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4.5"/>',
         'lock' => '<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
-        'chevron-left' => '<path d="m15 6-6 6 6 6"/>',
-        'chevron-right' => '<path d="m9 6 6 6-6 6"/>',
-        'home-solid' => '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
-        'tag' => '<path d="M11.5 3h6.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-.3.7l-9 9a1 1 0 0 1-1.4 0l-6.5-6.5a1 1 0 0 1 0-1.4l9-9a1 1 0 0 1 .7-.3Z"/><circle cx="15.5" cy="7.5" r="1.3"/>',
     ];
     $path = $icons[$name] ?? '';
     return '<svg class="icon '.$class.'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'.$path.'</svg>';
@@ -146,6 +337,60 @@ function emptyState($text) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="admin.css">
+<style>
+    .admin-chip { position: relative; cursor: pointer; }
+    .admin-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(20, 20, 43, 0.12);
+        padding: 8px;
+        z-index: 50;
+    }
+    .admin-chip.open .admin-menu { display: block; }
+    .admin-menu-header {
+        display: flex;
+        flex-direction: column;
+        padding: 8px 10px 10px;
+        border-bottom: 1px solid #EEF1F6;
+        margin-bottom: 6px;
+    }
+    .admin-menu-name { font-weight: 600; font-size: 13px; color: #14142B; }
+    .admin-menu-email { font-size: 12px; color: #8B93A6; margin-top: 2px; }
+    .admin-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #14142B;
+        text-decoration: none;
+    }
+    .admin-menu-item:hover { background: #F6F7FB; }
+    .admin-menu-item .icon { width: 16px; height: 16px; }
+    .admin-logout { color: #E14B4B; }
+
+    .host-app-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .host-app-form { margin: 0; }
+    .host-app-btn {
+        border: none;
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .host-app-approve { background: #E7F7EC; color: #2FA84F; }
+    .host-app-approve:hover { background: #2FA84F; color: #fff; }
+    .host-app-reject { background: #FCEAEA; color: #E14B4B; }
+    .host-app-reject:hover { background: #E14B4B; color: #fff; }
+</style>
 </head>
 <body>
 
@@ -199,13 +444,28 @@ function emptyState($text) {
                         <span class="bell-badge"><?= $notificationCount ?></span>
                     <?php endif; ?>
                 </button>
-                <div class="admin-chip">
-                    <div class="admin-avatar admin-avatar-fallback">A</div>
+                <div class="admin-chip" id="adminChip">
+                    <div class="admin-avatar admin-avatar-fallback">
+                        <?= htmlspecialchars(strtoupper(substr($adminName, 0, 1))) ?>
+                    </div>
                     <div class="admin-info">
-                        <span class="admin-name">Admin User</span>
+                        <span class="admin-name"><?= htmlspecialchars($adminName) ?></span>
                         <span class="admin-role">Administrator</span>
                     </div>
                     <?= icon('chevron-down', 'chevron') ?>
+
+                    <div class="admin-menu" id="adminMenu">
+                        <div class="admin-menu-header">
+                            <span class="admin-menu-name"><?= htmlspecialchars($adminName) ?></span>
+                            <?php if ($adminEmail): ?>
+                                <span class="admin-menu-email"><?= htmlspecialchars($adminEmail) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <a href="logout.php" class="admin-menu-item admin-logout">
+                            <?= icon('lock') ?>
+                            <span>Log Out</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </header>
@@ -242,7 +502,7 @@ function emptyState($text) {
                 <div class="panel span-2">
                     <div class="panel-header">
                         <h2>Bookings Overview</h2>
-                        <select class="period-select"><option>This Month</option><option>Last Month</option></select>
+                        <select class="period-select"><option>Last 7 Days</option></select>
                     </div>
                     <canvas id="bookingsChart" height="230"></canvas>
                 </div>
@@ -250,7 +510,7 @@ function emptyState($text) {
                 <div class="panel">
                     <div class="panel-header">
                         <h2>Bookings by Status</h2>
-                        <select class="period-select"><option>This Month</option><option>Last Month</option></select>
+                        <select class="period-select"><option>All Time</option></select>
                     </div>
                     <div class="donut-wrap">
                         <canvas id="statusChart" width="180" height="180"></canvas>
@@ -277,11 +537,11 @@ function emptyState($text) {
                     <div>
                         <div class="panel-header">
                             <h2>Revenue Overview</h2>
-                            <select class="period-select"><option>This Month</option><option>Last Month</option></select>
+                            <select class="period-select"><option>Last 7 Days</option></select>
                         </div>
                         <div class="revenue-total-row">
-                            <span class="revenue-total">₱0</span>
-                            <span class="stat-caption">No revenue yet</span>
+                            <span class="revenue-total">₱<?= number_format(array_sum($revenueSeries)) ?></span>
+                            <span class="stat-caption"><?= array_sum($revenueSeries) > 0 ? 'Last 7 days' : 'No revenue yet' ?></span>
                         </div>
                         <canvas id="revenueChart" height="190"></canvas>
                     </div>
@@ -314,12 +574,27 @@ function emptyState($text) {
                             <ul class="people-list">
                                 <?php foreach ($hostApplications as $h): ?>
                                     <li>
-                                        <img src="<?= $h['img'] ?>" alt="<?= htmlspecialchars($h['name']) ?>">
+                                        <img src="<?= htmlspecialchars($h['img']) ?>" alt="<?= htmlspecialchars($h['name']) ?>">
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($h['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($h['city']) ?></span>
                                         </div>
-                                        <span class="badge <?= statusBadgeClass($h['status']) ?>"><?= $h['status'] ?></span>
+                                        <?php if ($h['raw_status'] === 'pending'): ?>
+                                            <div class="host-app-actions">
+                                                <form method="post" action="admin.php" class="host-app-form">
+                                                    <input type="hidden" name="application_id" value="<?= $h['id'] ?>">
+                                                    <input type="hidden" name="host_app_action" value="approve">
+                                                    <button type="submit" class="host-app-btn host-app-approve">Approve</button>
+                                                </form>
+                                                <form method="post" action="admin.php" class="host-app-form">
+                                                    <input type="hidden" name="application_id" value="<?= $h['id'] ?>">
+                                                    <input type="hidden" name="host_app_action" value="reject">
+                                                    <button type="submit" class="host-app-btn host-app-reject">Reject</button>
+                                                </form>
+                                            </div>
+                                        <?php else: ?>
+                                            <span class="badge <?= statusBadgeClass($h['status']) ?>"><?= htmlspecialchars($h['status']) ?></span>
+                                        <?php endif; ?>
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
@@ -338,14 +613,14 @@ function emptyState($text) {
                                 <?php foreach ($topListings as $i => $l): ?>
                                     <li>
                                         <span class="rank"><?= $i + 1 ?></span>
-                                        <img src="<?= $l['img'] ?>" alt="<?= htmlspecialchars($l['name']) ?>">
+                                        <img src="<?= htmlspecialchars($l['img']) ?>" alt="<?= htmlspecialchars($l['name']) ?>">
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($l['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($l['city']) ?></span>
                                         </div>
                                         <div class="listing-figures">
-                                            <span class="listing-revenue"><?= $l['revenue'] ?></span>
-                                            <span class="listing-bookings"><?= $l['bookings'] ?></span>
+                                            <span class="listing-revenue"><?= htmlspecialchars($l['revenue']) ?></span>
+                                            <span class="listing-bookings"><?= htmlspecialchars($l['bookings']) ?></span>
                                         </div>
                                     </li>
                                 <?php endforeach; ?>
@@ -364,15 +639,15 @@ function emptyState($text) {
                             <ul class="booking-list">
                                 <?php foreach ($recentBookings as $b): ?>
                                     <li>
-                                        <img src="<?= $b['img'] ?>" alt="<?= htmlspecialchars($b['name']) ?>">
+                                        <img src="<?= htmlspecialchars($b['img']) ?>" alt="<?= htmlspecialchars($b['name']) ?>">
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($b['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($b['city']) ?></span>
                                         </div>
                                         <div class="booking-figures">
-                                            <span class="booking-date"><?= $b['date'] ?></span>
-                                            <span class="booking-amount"><?= $b['amount'] ?></span>
-                                            <span class="badge <?= statusBadgeClass($b['status']) ?>"><?= $b['status'] ?></span>
+                                            <span class="booking-date"><?= htmlspecialchars($b['date']) ?></span>
+                                            <span class="booking-amount"><?= htmlspecialchars($b['amount']) ?></span>
+                                            <span class="badge <?= statusBadgeClass($b['status']) ?>"><?= htmlspecialchars($b['status']) ?></span>
                                         </div>
                                     </li>
                                 <?php endforeach; ?>
@@ -387,6 +662,21 @@ function emptyState($text) {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
+(function () {
+    const chip = document.getElementById('adminChip');
+    if (!chip) return;
+
+    chip.addEventListener('click', function (e) {
+        chip.classList.toggle('open');
+        e.stopPropagation();
+    });
+
+    document.addEventListener('click', function () {
+        chip.classList.remove('open');
+    });
+})();
+</script>
+<script>
 const chartLabels = <?= json_encode($chartLabels) ?>;
 const bookingSeries = <?= json_encode($bookingSeries) ?>;
 const revenueSeries = <?= json_encode($revenueSeries) ?>;
@@ -398,12 +688,12 @@ new Chart(bookingsCtx, {
         labels: chartLabels,
         datasets: [{
             data: bookingSeries,
-            borderColor: '#E9E4D8',
-            backgroundColor: 'rgba(233,228,216,0.25)',
+            borderColor: '#2F7DE1',
+            backgroundColor: 'rgba(47,125,225,0.12)',
             borderWidth: 2.5,
             fill: true,
             tension: 0.35,
-            pointRadius: 0,
+            pointRadius: 3,
         }]
     },
     options: {
@@ -417,8 +707,7 @@ new Chart(bookingsCtx, {
             y: {
                 ticks: { color: '#8B93A6', stepSize: 1, font: { size: 11 } },
                 grid: { color: '#EEF1F6' },
-                beginAtZero: true,
-                max: 5
+                beginAtZero: true
             }
         }
     }
@@ -450,7 +739,7 @@ new Chart(revenueCtx, {
         labels: chartLabels,
         datasets: [{
             data: revenueSeries,
-            backgroundColor: '#EEEAE0',
+            backgroundColor: '#2FA84F',
             borderRadius: 3,
             maxBarThickness: 14,
         }]
@@ -470,8 +759,7 @@ new Chart(revenueCtx, {
                     callback: (v) => v === 0 ? '0' : (v / 1000) + 'K'
                 },
                 grid: { color: '#EEF1F6' },
-                beginAtZero: true,
-                max: 100
+                beginAtZero: true
             }
         }
     }

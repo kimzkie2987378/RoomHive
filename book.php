@@ -4,12 +4,14 @@
    ROOMHIVE - CHECKOUT / SEND INQUIRY
    book.php
 
-   Called from listing-detail.php's "Send Inquiry" button.
-   Creates a `bookings` row for the current user against the
-   requested listing. Since listing.php's query excludes any
-   listing with a pending/confirmed booking, this is what
-   makes the listing disappear from the public Listings page
-   the moment checkout happens.
+   Called from listing-detail.php's "Send Inquiry" button
+   (and now also from the "List Now" button a host sees on
+   their own listing). Creates a `bookings` row for the
+   current user against the requested listing. Since
+   listing.php's query excludes any listing with a
+   pending/confirmed booking, this is what makes the listing
+   disappear from the public Listings page the moment
+   checkout happens.
    ========================================================= */
 
 session_start();
@@ -64,19 +66,11 @@ if (!$listing) {
     exit;
 }
 
-/* Prevent a host from "booking" their own listing. */
-$ownerCheckStmt = $pdo->prepare(
-    "SELECT user_id FROM listings WHERE id = :id LIMIT 1"
-);
-$ownerCheckStmt->execute(['id' => $listingId]);
-$owner = $ownerCheckStmt->fetch();
-
-if ($owner && (int) $owner['user_id'] === (int) $_SESSION['user_id']) {
-    header("Location: listing-detail.php?id=" . $listingId . "&ownbooking=1");
-    exit;
-}
-
-/* Create the booking. */
+/* Create the booking.
+   NOTE: the previous "prevent a host from booking their own
+   listing" check has been intentionally removed so the host
+   can use the "List Now" button on their own listing detail
+   page to mark it as taken/booked. */
 $insertStmt = $pdo->prepare(
     "INSERT INTO bookings (listing_id, user_id, total, status)
      VALUES (:listing_id, :user_id, :total, 'confirmed')"

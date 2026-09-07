@@ -21,13 +21,12 @@ if (!isset($_SESSION['user_id'])) {
    Pulled straight from the `users` row created back on
    createaccount.php — Full Name -> name, Email -> email.
 
-   The `users` table has no avatar / about columns, so those
-   stay blank/placeholder until those columns (or an
-   "editprofile" flow) exist. phone/location ARE real columns
-   now (set on becomeahost.php), so we pull them for real.
+   avatar_path is now a real column (added for the profile
+   photo upload feature). phone/location ARE real columns
+   too (set on becomeahost.php), so we pull them for real.
 ----------------------------------------------------- */
 $stmt = $pdo->prepare(
-    "SELECT id, name, email, phone, location, is_host, created_at FROM users WHERE id = :id LIMIT 1"
+    "SELECT id, name, email, phone, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
 $stmt->execute(['id' => $_SESSION['user_id']]);
 $dbUser = $stmt->fetch();
@@ -41,9 +40,22 @@ if (!$dbUser) {
     exit;
 }
 
+/* -----------------------------------------------------
+   HOST REDIRECT
+   userprofile.php is the regular-user account page. Once a
+   user has been approved as a host (users.is_host = 1, set
+   by the admin's Approve action), their account page IS the
+   host dashboard — send them to hostprofile.php instead of
+   the plain user view.
+----------------------------------------------------- */
+if ($dbUser['is_host']) {
+    header("Location: hostprofile.php");
+    exit;
+}
+
 $user = [
     'name'          => $dbUser['name'],
-    'avatar'        => 'images/default-avatar.png',
+    'avatar'        => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : 'images/default-avatar.png',
     'location'      => $dbUser['location'] ?? '',
     'email'         => $dbUser['email'],
     'phone'         => $dbUser['phone'] ?? '',
@@ -175,22 +187,11 @@ $total_spent_all_time  = number_format($bookings_spent_all_time + $membership_sp
 
 /* -----------------------------------------------------
    PAYMENT METHODS
-   TODO: replace with SELECT * FROM payment_methods WHERE user_id = ?
+   New site — nobody has saved a card yet, so this starts
+   empty. Once a real payments flow exists, replace with:
+   SELECT * FROM payment_methods WHERE user_id = ?
 ----------------------------------------------------- */
-$payment_methods = [
-    [
-        'icon'    => 'images/visalogo.png',
-        'label'   => 'Visa',
-        'last4'   => '4242',
-        'expires' => '12/26',
-    ],
-    [
-        'icon'    => 'images/mastercardlogo.png',
-        'label'   => 'Mastercard',
-        'last4'   => '8881',
-        'expires' => '08/27',
-    ],
-];
+$payment_methods = [];
 
 /* TODO: replace with a real `users.two_factor_enabled` column
    (or a separate `two_factor_auth` table) once the actual 2FA
@@ -200,53 +201,13 @@ $two_factor_enabled = false;
 
 /* -----------------------------------------------------
    WISHLIST
-   TODO: replace with
+   New site — nobody has saved a listing yet, so this
+   starts empty. Once wishlisting is wired up, replace with:
    SELECT * FROM listings l
    JOIN wishlist w ON w.listing_id = l.id
    WHERE w.user_id = ?
 ----------------------------------------------------- */
-$wishlist = [
-    [
-        'id'       => 1,
-        'title'    => 'Mountain View Cabin',
-        'location' => 'Valencia, Negros Oriental',
-        'thumb'    => 'images/wishlist-mountain-view-cabin.jpg',
-        'price'    => '3,200',
-        'rating'   => '4.7',
-        'reviews'  => 32,
-        'saved'    => true,
-    ],
-    [
-        'id'       => 2,
-        'title'    => 'City Center Condo',
-        'location' => 'Dumaguete City',
-        'thumb'    => 'images/wishlist-city-center-condo.jpg',
-        'price'    => '2,800',
-        'rating'   => '4.6',
-        'reviews'  => 18,
-        'saved'    => true,
-    ],
-    [
-        'id'       => 3,
-        'title'    => 'Seaside Bungalow',
-        'location' => 'Bacong, Negros Oriental',
-        'thumb'    => 'images/wishlist-seaside-bungalow.jpg',
-        'price'    => '4,500',
-        'rating'   => '4.9',
-        'reviews'  => 27,
-        'saved'    => true,
-    ],
-    [
-        'id'       => 4,
-        'title'    => 'Private Resort Villa',
-        'location' => 'Zamboanguita, Negros Or.',
-        'thumb'    => 'images/wishlist-private-resort-villa.jpg',
-        'price'    => '7,800',
-        'rating'   => '4.8',
-        'reviews'  => 15,
-        'saved'    => true,
-    ],
-];
+$wishlist = [];
 
 /* Derived counts — always reflect the actual $wishlist array,
    never hardcode these separately or they'll drift out of sync. */
@@ -419,10 +380,11 @@ function h($value) {
     <!-- PROFILE CARD -->
     <section class="up-card up-profile-card">
       <div class="up-profile-photo">
-        <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>">
+        <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>" id="profileAvatarImg">
         <button type="button" class="up-photo-edit" id="photoButton" aria-label="Change profile photo">
           <img src="images/cameraicon-userprofile.png" alt="">
         </button>
+        <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
       </div>
 
       <div class="up-profile-info">
@@ -565,15 +527,22 @@ function h($value) {
             <a href="payments.php" class="up-link-view-all">Manage</a>
           </div>
 
-          <?php foreach ($payment_methods as $method): ?>
-            <div class="up-card-item">
-              <img src="<?php echo h($method['icon']); ?>" alt="<?php echo h($method['label']); ?>">
-              <div>
-                <strong>&#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; <?php echo h($method['last4']); ?></strong>
-                <span>Expires <?php echo h($method['expires']); ?></span>
-              </div>
+          <?php if (empty($payment_methods)): ?>
+            <div class="up-payment-methods-empty" style="text-align:center; padding:20px 8px; color:#777777;">
+              <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38);">No payment methods yet</p>
+              <p style="margin:0; font-size:13px;">Add a card to make booking faster.</p>
             </div>
-          <?php endforeach; ?>
+          <?php else: ?>
+            <?php foreach ($payment_methods as $method): ?>
+              <div class="up-card-item">
+                <img src="<?php echo h($method['icon']); ?>" alt="<?php echo h($method['label']); ?>">
+                <div>
+                  <strong>&#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226; <?php echo h($method['last4']); ?></strong>
+                  <span>Expires <?php echo h($method['expires']); ?></span>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
 
           <button type="button" class="up-btn-outline up-add-card">+ Add New Card</button>
         </div>
@@ -617,7 +586,7 @@ function h($value) {
         <a href="wishlist.php" class="up-link-view-all">View All</a>
       </div>
 
-      <div class="up-wishlist-grid" id="up-wishlist-grid">
+      <div class="up-wishlist-grid" id="up-wishlist-grid" <?php if (empty($wishlist)): ?>style="display:none;"<?php endif; ?>>
         <?php foreach ($wishlist as $item): ?>
           <a href="listing.php?id=<?php echo h($item['id']); ?>" class="listing-box" data-listing-id="<?php echo h($item['id']); ?>">
             <div class="up-wishlist-thumb">
@@ -639,9 +608,9 @@ function h($value) {
         <?php endforeach; ?>
       </div>
 
-      <!-- Shown by JS once every wishlist item has been removed.
-           Hidden by default via inline style; toggled in the script below. -->
-      <div class="up-wishlist-empty" id="up-wishlist-empty" style="display:none; text-align:center; padding:32px 12px; color:#777777;">
+      <!-- Shown on load when the user has no wishlist items yet, and also
+           by JS once every wishlist item has been removed. -->
+      <div class="up-wishlist-empty" id="up-wishlist-empty" style="<?php echo empty($wishlist) ? '' : 'display:none; '; ?>text-align:center; padding:32px 12px; color:#777777;">
         <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38);">Your wishlist is empty</p>
         <p style="margin:0; font-size:13px;">Save listings you like and they'll show up here.</p>
       </div>
@@ -764,6 +733,76 @@ function h($value) {
 
     });
 
+})();
+</script>
+
+<!-- =========================================================
+     PROFILE PHOTO — UPLOAD ON CAMERA ICON CLICK
+     Opens the file picker, shows an instant local preview,
+     uploads to uploadavatar.php, then swaps in the real saved
+     image (or reverts + alerts on failure).
+========================================================= -->
+<script>
+(function () {
+    const photoButton = document.getElementById('photoButton');
+    const fileInput    = document.getElementById('avatarFileInput');
+    const avatarImg    = document.getElementById('profileAvatarImg');
+
+    if (!photoButton || !fileInput || !avatarImg) return;
+
+    photoButton.addEventListener('click', function () {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function () {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Please choose a JPG, PNG, or WEBP image.');
+            fileInput.value = '';
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('That image is too large. Please choose one under 5MB.');
+            fileInput.value = '';
+            return;
+        }
+
+        // Instant local preview while it uploads
+        const previewUrl = URL.createObjectURL(file);
+        const previousSrc = avatarImg.src;
+        avatarImg.src = previewUrl;
+        photoButton.disabled = true;
+
+        const formData = new FormData();
+        formData.append('avatar', file);
+
+        fetch('uploadavatar.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.success) {
+                avatarImg.src = data.avatar_url;
+            } else {
+                avatarImg.src = previousSrc;
+                alert(data.error || 'Could not update your profile photo.');
+            }
+        })
+        .catch(function () {
+            avatarImg.src = previousSrc;
+            alert('Something went wrong uploading your photo. Please try again.');
+        })
+        .finally(function () {
+            URL.revokeObjectURL(previewUrl);
+            photoButton.disabled = false;
+            fileInput.value = '';
+        });
+    });
 })();
 </script>
 

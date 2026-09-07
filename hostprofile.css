@@ -37,6 +37,22 @@
   box-sizing: border-box;
 }
 
+/* ---------------------------------------------------------
+   SAFETY NET: any <img> under the hero or dashboard that
+   doesn't already have an explicit size rule (e.g. a new
+   icon added later without updating this stylesheet, or a
+   stale/oversized source asset) will be capped here instead
+   of blowing out the layout. Every existing sized selector
+   below (.hp-side-link img, .hp-stat-pill-icon img, etc.) is
+   MORE specific than this, so it always wins over this rule
+   — this only catches images nothing else is sizing.
+--------------------------------------------------------- */
+.hp-hero img,
+.hp-dashboard img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* =========================================================
    HERO
 ========================================================= */
@@ -149,6 +165,24 @@
   grid-template-columns: 260px 1fr;
   gap: 24px;
   align-items: start;
+}
+
+/* ---------------------------------------------------------
+   Pages that go straight into .hp-dashboard with no .hp-hero
+   above it (hostbookings.php, mylistings.php) need extra top
+   clearance of their own, since normally it's .hp-hero's
+   margin-top that pushes everything below the fixed navbar.
+   Without this, the page title and sidebar card render partly
+   hidden under the navbar.
+--------------------------------------------------------- */
+.hp-dashboard--flush-top {
+  margin-top: 130px;
+}
+
+@media (max-width: 900px) {
+  .hp-dashboard--flush-top {
+    margin-top: 110px;
+  }
 }
 
 .hp-card {
@@ -829,4 +863,517 @@
 .account-dropdown-menu a:hover {
   background: var(--hp-orange-light);
   color: var(--hp-orange);
+}
+
+/* =========================================================
+   SUB-DASHBOARD PAGE HEADER
+   Used by pages under .hp-dashboard that show a plain title
+   block instead of the full .hp-hero (e.g. hostbookings.php,
+   mylistings.php).
+========================================================= */
+
+.hp-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+
+  margin-bottom: 24px;
+}
+
+.hp-page-title {
+  margin: 0 0 6px;
+  color: var(--hp-navy);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.hp-page-subtitle {
+  margin: 0;
+  color: var(--hp-text-muted);
+  font-size: 13px;
+}
+
+/* ---- mini stat pillbox (top-right of a page header) ---- */
+
+.hp-stat-pillbox {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+
+  background: var(--hp-orange-light);
+  border: 1px solid #f6dfb0;
+  border-radius: var(--hp-radius);
+  padding: 14px 20px;
+}
+
+.hp-stat-pill-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hp-stat-pill-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--hp-orange);
+  border-radius: 10px;
+}
+
+.hp-stat-pill-icon img {
+  width: 16px;
+  height: 16px;
+}
+
+.hp-stat-pill-icon.hp-green {
+  background: var(--hp-green);
+}
+
+.hp-stat-pill-icon.hp-yellow {
+  background: var(--hp-yellow);
+}
+
+.hp-stat-pill-label {
+  margin: 0;
+  color: var(--hp-text-muted);
+  font-size: 11.5px;
+}
+
+.hp-stat-pill-value {
+  margin: 0;
+  color: var(--hp-navy);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+/* =========================================================
+   TABS + SEARCH CONTROLS
+========================================================= */
+
+.hp-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  margin: 0 0 20px;
+}
+
+.hp-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hp-tab {
+  padding: 8px 16px;
+
+  background: #ffffff;
+  color: var(--hp-text-muted);
+
+  border: 1px solid var(--hp-border);
+  border-radius: 999px;
+
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hp-tab.active {
+  background: var(--hp-orange-light);
+  color: var(--hp-orange);
+  border-color: var(--hp-orange);
+}
+
+.hp-search-wrap {
+  flex: 1;
+  min-width: 220px;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.hp-search-wrap img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+}
+
+.hp-search-wrap input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.hp-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  background: #ffffff;
+  color: var(--hp-navy);
+
+  border: 1px solid var(--hp-border);
+  border-radius: 10px;
+  padding: 10px 16px;
+
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* =========================================================
+   BOOKINGS — full page list (hostbookings.php)
+   Distinct from .hp-listing-row, which is the compact table
+   row used inside the Overview page's mini "My Listings"
+   widget.
+========================================================= */
+
+.hp-booking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hp-booking-card {
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-radius);
+  box-shadow: var(--hp-shadow);
+
+  padding: 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.hp-booking-img {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.hp-booking-info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.hp-booking-info h4 {
+  margin: 0 0 4px;
+  color: var(--hp-navy);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hp-booking-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+
+  color: var(--hp-text-muted);
+  font-size: 12.5px;
+}
+
+.hp-booking-meta img {
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+.hp-booking-right {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.hp-booking-status-col {
+  min-width: 140px;
+}
+
+.hp-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 4px 11px;
+
+  border-radius: 999px;
+
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.hp-badge-green {
+  background: var(--hp-green-bg);
+  color: var(--hp-green);
+}
+
+.hp-badge-yellow {
+  background: var(--hp-yellow-bg);
+  color: var(--hp-yellow);
+}
+
+.hp-badge-blue {
+  background: #e3edfd;
+  color: #2563eb;
+}
+
+.hp-badge-red {
+  background: var(--hp-red-bg);
+  color: var(--hp-red);
+}
+
+.hp-booking-rent-label,
+.hp-booking-booked-label {
+  margin: 0;
+  color: var(--hp-text-muted);
+  font-size: 11px;
+}
+
+.hp-booking-rent-value {
+  margin: 0 0 8px;
+  color: var(--hp-navy);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.hp-booking-booked-value {
+  margin: 0;
+  color: var(--hp-navy);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.hp-booking-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* =========================================================
+   MY LISTINGS — full page grid (mylistings.php)
+   Distinct from .hp-listing-row (mini table on Overview).
+========================================================= */
+
+.hp-mylistings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hp-mylisting-card {
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-radius);
+  box-shadow: var(--hp-shadow);
+
+  padding: 18px;
+
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.hp-mylisting-img-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.hp-mylisting-img {
+  width: 140px;
+  height: 112px;
+
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+
+.hp-mylisting-info {
+  flex: 1;
+  min-width: 220px;
+}
+
+.hp-mylisting-info h3 {
+  margin: 0 0 4px;
+  color: var(--hp-navy);
+  font-size: 16.5px;
+  font-weight: 700;
+}
+
+.hp-mylisting-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+
+  color: var(--hp-text-muted);
+  font-size: 12.5px;
+}
+
+.hp-mylisting-location img {
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+.hp-mylisting-price-row {
+  border-top: 1px solid var(--hp-border);
+  padding-top: 9px;
+}
+
+.hp-mylisting-price {
+  color: var(--hp-navy);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.hp-mylisting-price span {
+  color: var(--hp-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hp-mylisting-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 110px;
+}
+
+.hp-mylisting-stat-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  color: var(--hp-text-muted);
+  font-size: 12px;
+}
+
+.hp-mylisting-stat-line img {
+  width: 13px;
+  height: 13px;
+  opacity: 0.6;
+}
+
+.hp-mylisting-stat-line b {
+  color: var(--hp-navy);
+  font-size: 13px;
+}
+
+.hp-mylisting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* =========================================================
+   FLASH BANNER (result of bookingaction.php's redirect)
+========================================================= */
+
+.hp-flash {
+  padding: 12px 18px;
+  margin-bottom: 18px;
+
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.hp-flash-success {
+  background: var(--hp-green-bg);
+  color: var(--hp-green);
+  border: 1px solid var(--hp-green);
+}
+
+.hp-flash-error {
+  background: var(--hp-red-bg);
+  color: var(--hp-red);
+  border: 1px solid var(--hp-red);
+}
+
+/* ---- Accept / Decline buttons on a pending booking card ---- */
+
+.hp-btn-accept {
+  border-color: var(--hp-green);
+  color: var(--hp-green);
+}
+
+.hp-btn-accept:hover {
+  background: var(--hp-green);
+  color: #ffffff;
+}
+
+.hp-btn-decline {
+  border-color: var(--hp-red);
+  color: var(--hp-red);
+}
+
+.hp-btn-decline:hover {
+  background: var(--hp-red);
+  color: #ffffff;
+}
+
+/* =========================================================
+   SHARED EMPTY STATE (bookings + my listings)
+========================================================= */
+
+.hp-empty-state {
+  text-align: center;
+  padding: 56px 20px;
+
+  background: #ffffff;
+  border: 1px dashed var(--hp-border);
+  border-radius: var(--hp-radius);
+
+  color: var(--hp-text-muted);
+}
+
+.hp-empty-state-title {
+  margin: 0 0 6px;
+  color: var(--hp-navy);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .hp-booking-card,
+  .hp-mylisting-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hp-booking-right,
+  .hp-mylisting-stats,
+  .hp-mylisting-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hp-stat-pillbox {
+    width: 100%;
+  }
 }

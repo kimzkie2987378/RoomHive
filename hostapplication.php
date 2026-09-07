@@ -3,10 +3,21 @@
  * RoomHive Admin — Host Applications
  * Review users who applied to become hosts: approve or reject them.
  *
- * $hostApps below is sample data standing in for a real query
- * (e.g. SELECT * FROM host_applications ORDER BY submitted_at DESC).
- * Swap it out once the Users/Hosts tables exist.
+ * Pulls real rows from `host_applications` (joined to `users`
+ * for member-since) and actually updates `host_applications.status`
+ * when you click Approve / Reject.
  */
+
+session_start();
+require_once 'db_connect.php';
+
+if (
+    !isset($_SESSION['admin_logged_in']) ||
+    $_SESSION['admin_logged_in'] !== true
+) {
+    header('Location: adminlogin.php');
+    exit();
+}
 
 /* ---------- Sidebar navigation ---------- */
 $navItems = [
@@ -23,20 +34,83 @@ $navItems = [
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '#'],
 ];
 
-$notificationCount = 0;
+$notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
 
-/* ---------- Host applications — none submitted yet on a brand-new platform ----------
- * Wire this up to a real query (e.g. SELECT * FROM host_applications ORDER BY
- * submitted_at DESC) once applications start coming in. Each row is expected to
- * look like the shape below:
- * ['id'=>1, 'name'=>'', 'email'=>'', 'phone'=>'', 'city'=>'', 'memberSince'=>'',
- *  'date'=>'', 'time'=>'', 'status'=>'Pending|Approved|Rejected', 'reason'=>'',
- *  'propertyType'=>'', 'numProperties'=>'', 'experience'=>'', 'payout'=>'']
- */
-$hostApps = [];
+/* =========================================================
+   HANDLE APPROVE / REJECT
+   ========================================================= */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
 
-/* Documents submitted are the same required set for every host application */
-$requiredDocuments = ['Valid ID (Front)', 'Valid ID (Back)', 'Proof of Ownership / Lease', 'Government ID with Selfie', 'Bank Account Details'];
+    $targetId = (int) $_POST['id'];
+    $action   = $_POST['action'];
+
+    if (in_array($action, ['approve', 'reject'], true)) {
+
+        $newStatus = $action === 'approve' ? 'approved' : 'rejected';
+
+        /* Need the applicant's user_id before we update the
+           application row, so we know whose account to flip. */
+        $userIdStmt = $pdo->prepare("SELECT user_id FROM host_applications WHERE id = :id");
+        $userIdStmt->execute(['id' => $targetId]);
+        $applicantUserId = $userIdStmt->fetchColumn();
+
+        $pdo->prepare(
+            "UPDATE host_applications SET status = :status, updated_at = NOW() WHERE id = :id"
+        )->execute([
+            'status' => $newStatus,
+            'id'     => $targetId,
+        ]);
+
+        /*
+         * Approving here is the ONLY place is_host gets set to
+         * true. host-step4.php no longer flips it on its own —
+         * the applicant just sees "awaiting approval" until an
+         * admin does this. Rejecting leaves is_host untouched
+         * (it should already be 0/false for a first-time
+         * applicant).
+         */
+        if ($newStatus === 'approved' && $applicantUserId) {
+            $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
+                ->execute(['id' => $applicantUserId]);
+        }
+
+        header('Location: hostapplication.php?' . http_build_query([
+            'filter' => $_GET['filter'] ?? 'all',
+            'page'   => $_GET['page'] ?? 1,
+            'id'     => $targetId,
+        ]));
+        exit();
+    }
+}
+
+/* =========================================================
+   LOAD HOST APPLICATIONS FROM THE DATABASE
+   ========================================================= */
+$rows = $pdo->query(
+    "SELECT ha.id, ha.full_name, ha.email, ha.phone, ha.location,
+            ha.id_type, ha.id_number, ha.id_file, ha.status,
+            ha.created_at, u.created_at AS user_created_at
+     FROM host_applications ha
+     JOIN users u ON u.id = ha.user_id
+     ORDER BY ha.created_at DESC"
+)->fetchAll();
+
+$hostApps = array_map(function ($r) {
+    return [
+        'id'           => (int) $r['id'],
+        'name'         => $r['full_name'],
+        'email'        => $r['email'],
+        'phone'        => $r['phone'],
+        'city'         => $r['location'],
+        'memberSince'  => date('F Y', strtotime($r['user_created_at'])),
+        'date'         => date('M j, Y', strtotime($r['created_at'])),
+        'time'         => date('g:i A', strtotime($r['created_at'])),
+        'status'       => ucfirst($r['status']),
+        'idType'       => $r['id_type'],
+        'idNumber'     => $r['id_number'],
+        'idFile'       => $r['id_file'],
+    ];
+}, $rows);
 
 foreach ($hostApps as &$a) {
     $a['avatar'] = 'https://ui-avatars.com/api/?background=EDA423&color=fff&bold=true&name=' . urlencode($a['name']);
@@ -120,10 +194,6 @@ function icon($name, $class = '') {
 function statusBadgeClass($status) {
     $map = ['Pending' => 'badge-pending', 'Approved' => 'badge-approved', 'Rejected' => 'badge-rejected'];
     return $map[$status] ?? '';
-}
-function statusIcon($status) {
-    $map = ['Pending' => 'clock', 'Approved' => 'check-circle', 'Rejected' => 'x-circle'];
-    return $map[$status] ?? 'clock';
 }
 function emptyState($text) {
     echo '<div class="empty-state"><div class="empty-icon">'.icon('inbox').'</div><p>'.htmlspecialchars($text).'</p></div>';
@@ -237,7 +307,7 @@ function emptyState($text) {
                                             onclick="location.href='<?= appLink($a['id'], $filter, $page) ?>'">
                                             <td>
                                                 <div class="applicant-cell">
-                                                    <img src="<?= $a['avatar'] ?>" alt="<?= htmlspecialchars($a['name']) ?>">
+                                                    <img src="<?= htmlspecialchars($a['avatar']) ?>" alt="<?= htmlspecialchars($a['name']) ?>">
                                                     <div class="people-info">
                                                         <span class="people-name"><?= htmlspecialchars($a['name']) ?></span>
                                                         <span class="people-sub"><?= htmlspecialchars($a['city']) ?></span>
@@ -287,7 +357,7 @@ function emptyState($text) {
                             </div>
 
                             <div class="detail-profile">
-                                <img class="detail-avatar" src="<?= $selected['avatar'] ?>" alt="<?= htmlspecialchars($selected['name']) ?>">
+                                <img class="detail-avatar" src="<?= htmlspecialchars($selected['avatar']) ?>" alt="<?= htmlspecialchars($selected['name']) ?>">
                                 <div>
                                     <p class="detail-name"><?= htmlspecialchars($selected['name']) ?></p>
                                     <div class="detail-meta-row"><?= icon('mail') ?><?= htmlspecialchars($selected['email']) ?></div>
@@ -298,26 +368,23 @@ function emptyState($text) {
                             <div class="detail-meta-row"><?= icon('calendar-small') ?>Member since <?= htmlspecialchars($selected['memberSince']) ?></div>
 
                             <div class="detail-section">
-                                <h3>Why do you want to become a host?</h3>
-                                <p class="detail-text"><?= htmlspecialchars($selected['reason']) ?></p>
-                            </div>
-
-                            <div class="detail-section">
-                                <h3>Documents Submitted</h3>
-                                <div class="doc-list">
-                                    <?php foreach ($requiredDocuments as $doc): ?>
-                                        <div class="doc-item"><?= icon('file') ?><?= htmlspecialchars($doc) ?></div>
-                                    <?php endforeach; ?>
+                                <h3>Identification</h3>
+                                <div class="info-grid">
+                                    <div class="info-item"><span class="info-label">ID Type</span><span class="info-value"><?= htmlspecialchars(ucwords(str_replace('-', ' ', $selected['idType']))) ?></span></div>
+                                    <div class="info-item"><span class="info-label">ID Number</span><span class="info-value"><?= htmlspecialchars($selected['idNumber']) ?></span></div>
                                 </div>
                             </div>
 
                             <div class="detail-section">
-                                <h3>Additional Information</h3>
-                                <div class="info-grid">
-                                    <div class="info-item"><span class="info-label">Property Type</span><span class="info-value"><?= htmlspecialchars($selected['propertyType']) ?></span></div>
-                                    <div class="info-item"><span class="info-label">No. of Properties</span><span class="info-value"><?= htmlspecialchars($selected['numProperties']) ?></span></div>
-                                    <div class="info-item"><span class="info-label">Experience as Host</span><span class="info-value"><?= htmlspecialchars($selected['experience']) ?></span></div>
-                                    <div class="info-item"><span class="info-label">Preferred Payout Method</span><span class="info-value"><?= htmlspecialchars($selected['payout']) ?></span></div>
+                                <h3>Uploaded Document</h3>
+                                <div class="doc-list">
+                                    <?php if (!empty($selected['idFile'])): ?>
+                                        <a class="doc-item" href="<?= htmlspecialchars($selected['idFile']) ?>" target="_blank" rel="noopener">
+                                            <?= icon('file') ?>View Uploaded ID
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="doc-item"><?= icon('file') ?>No file on record</div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
 
@@ -326,11 +393,23 @@ function emptyState($text) {
                                 <span class="info-value"><?= htmlspecialchars($selected['date']) ?> <?= htmlspecialchars($selected['time']) ?></span>
                             </div>
 
-                            <div class="detail-actions">
-                                <button type="button" class="btn-reject" onclick="return confirm('Reject <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Reject Application</button>
-                                <button type="button" class="btn-approve" onclick="return confirm('Approve <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Approve Application</button>
-                            </div>
-                            <div class="detail-note"><?= icon('lock') ?>You can approve or reject this application. The user will be notified of your decision.</div>
+                            <?php if ($selected['status'] === 'Pending'): ?>
+                                <div class="detail-actions">
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                        <input type="hidden" name="action" value="reject">
+                                        <button type="submit" class="btn-reject" onclick="return confirm('Reject <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Reject Application</button>
+                                    </form>
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                        <input type="hidden" name="action" value="approve">
+                                        <button type="submit" class="btn-approve" onclick="return confirm('Approve <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Approve Application</button>
+                                    </form>
+                                </div>
+                                <div class="detail-note"><?= icon('lock') ?>You can approve or reject this application. The user will be notified of your decision.</div>
+                            <?php else: ?>
+                                <div class="detail-note"><?= icon('lock') ?>This application has already been <?= strtolower($selected['status']) ?>.</div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>

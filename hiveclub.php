@@ -21,6 +21,22 @@ $isLoggedIn = (
 
 
 // =====================================================
+// KEEP is_host IN SYNC WITH THE DATABASE
+// $_SESSION['is_host'] is only set at login time, so if a
+// host application gets approved mid-session, the flag goes
+// stale and the nav keeps showing the wrong state. Re-check
+// the real column on every load.
+// =====================================================
+
+if ($isLoggedIn && isset($_SESSION['user_id'])) {
+    $hostCheckStmt = $pdo->prepare("SELECT is_host FROM users WHERE id = :id LIMIT 1");
+    $hostCheckStmt->execute(['id' => $_SESSION['user_id']]);
+    $hostRow = $hostCheckStmt->fetch();
+    $_SESSION['is_host'] = $hostRow ? (bool) $hostRow['is_host'] : false;
+}
+
+
+// =====================================================
 // CURRENT YEAR
 // =====================================================
 

@@ -648,20 +648,3 @@ if (editProfileButton) {
     window.location.href = "editprofile.php";
   });
 }
-
-/* =========================================================
-   PROFILE PHOTO BUTTON
-========================================================= */
-
-const photoButton = document.getElementById("photoButton");
-
-if (photoButton) {
-  photoButton.addEventListener("click", function () {
-    /*
-     * We will connect this later to a profile
-     * picture upload system.
-     */
-
-    alert("Profile photo upload will be added next.");
-  });
-}

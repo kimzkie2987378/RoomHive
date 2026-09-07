@@ -3,6 +3,26 @@
 session_start();
 require_once 'db_connect.php';
 
+/*
+ * =========================================================
+ * FIXED ADMIN ACCOUNT
+ * =========================================================
+ * One hardcoded admin login. If the email + password typed into
+ * this same form match these, the person is signed in as admin
+ * instead of a regular user — no separate admin table needed.
+ *
+ * The password below is stored as a hash (never store it in plain
+ * text); this hash is for the placeholder password 'ChangeMe123!'.
+ * To use your own password, generate a new hash once and paste it
+ * in below:
+ *   echo password_hash('your-new-password', PASSWORD_DEFAULT);
+ */
+define('ADMIN_NAME', 'Admin User');
+define('ADMIN_EMAIL', 'admin@roomhive.com');
+define('ADMIN_PASSWORD_HASH', '$2b$10$hK5yT40UWo1rEvszXfutDuzUeCMo.RzqJKhZIte2YvnjOzBd.SCE2');
+// ^ hash of "" — this IS the password, hashed. Never put the
+// plain password itself here, or password_verify() will never match it.
+
 $error = "";
 $success = "";
 
@@ -37,6 +57,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $error = "Please enter a valid email address.";
 
     } else {
+
+        /*
+         * =========================================================
+         * FIXED ADMIN CHECK (comes before the regular DB login)
+         * =========================================================
+         * If the typed email + password match the hardcoded admin
+         * account, log in as admin and skip the users table lookup
+         * entirely.
+         */
+        $isAdminEmail = hash_equals(strtolower(ADMIN_EMAIL), strtolower($email));
+
+        if ($isAdminEmail && password_verify($password, ADMIN_PASSWORD_HASH)) {
+
+            session_regenerate_id(true);
+
+            $_SESSION["admin_name"] = ADMIN_NAME;
+            $_SESSION["admin_email"] = ADMIN_EMAIL;
+            $_SESSION["admin_logged_in"] = true;
+
+            header("Location: admin.php");
+            exit();
+        }
 
         /*
          * =========================================================

@@ -18,7 +18,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $stmt = $pdo->prepare(
-    "SELECT id, name, email, is_host, created_at FROM users WHERE id = :id LIMIT 1"
+    "SELECT id, name, email, phone, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
 $stmt->execute(['id' => $_SESSION['user_id']]);
 $dbUser = $stmt->fetch();
@@ -47,22 +47,22 @@ if (!$dbUser) {
    guard doesn't 404 while that page is still being built.
 ----------------------------------------------------- */
 if (!$dbUser['is_host']) {
-    header("Location: hostprofile.php"); // TODO: change back to becomeahost.php once that file exists
+    header("Location: becomeahost.php");
     exit;
 }
 
 /* -----------------------------------------------------
    HOST DATA
-   Same "no fake data" rule as myaccount.php: phone / location /
-   about have no columns in `users` yet, so they stay blank
-   until those columns (or an edit-profile flow) exist.
+   phone/location ARE real columns (set on becomeahost.php),
+   so we pull them for real — same as userprofile.php.
+   `about` still has no column in `users` yet.
 ----------------------------------------------------- */
 $host = [
     'name'          => $dbUser['name'],
-    'avatar'        => 'images/default-avatar.png',
-    'location'      => '', // no column in `users` yet
+    'avatar'        => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : 'images/default-avatar.png',
+    'location'      => $dbUser['location'] ?? '',
     'email'         => $dbUser['email'],
-    'phone'         => '', // no column in `users` yet — left blank on purpose
+    'phone'         => $dbUser['phone'] ?? '',
     'member_since'  => date('F Y', strtotime($dbUser['created_at'])),
     'about'         => '', // no column in `users` yet
 ];
@@ -74,10 +74,13 @@ $notification_count = 0;
    Real query against the `listings` table for this host.
 ----------------------------------------------------- */
 $listingsStmt = $pdo->prepare(
-    "SELECT id, title, location, exact_address, price, status, created_at
-     FROM listings
-     WHERE user_id = :id
-     ORDER BY created_at DESC"
+    "SELECT l.id, l.title, l.location, l.exact_address, l.price, l.status, l.created_at,
+            p.photo_path AS cover_photo
+     FROM listings l
+     LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+     WHERE l.user_id = :id
+     ORDER BY l.created_at DESC"
 );
 $listingsStmt->execute(['id' => $_SESSION['user_id']]);
 $listings = $listingsStmt->fetchAll();
@@ -179,13 +182,15 @@ function hp_status_label($status) {
                 <span class="account-circle">
                     <img src="images/MyAccountIcon.png" alt="My Account">
                 </span>
-                <span>MY ACCOUNT</span>
+                <span>MY PROFILE</span>
                 <span class="dropdown-caret">&#9662;</span>
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <a href="myaccount.php">My Account</a>
-                <a href="hostprofile.php">Host Profile</a>
+                <?php if ($dbUser['is_host']): ?>
+                    <a href="hostprofile.php">Host Profile</a>
+                <?php endif; ?>
+                <a href="userprofile.php">My Profile</a>
                 <a href="logout.php">Logout</a>
             </div>
 
@@ -413,7 +418,7 @@ function hp_status_label($status) {
             <div class="hp-listing-row">
 
               <div class="hp-listing-info">
-                <img src="images/listing-placeholder.jpg" alt="<?php echo h($listing['title']); ?>">
+                <img src="<?php echo h($listing['cover_photo'] ?: 'images/ListingPlaceholder.png'); ?>" alt="<?php echo h($listing['title']); ?>">
                 <div>
                   <h4><?php echo h($listing['title']); ?></h4>
                   <p><?php echo h($listing['location']); ?></p>

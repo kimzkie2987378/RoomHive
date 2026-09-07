@@ -518,14 +518,14 @@ $galleryCount = count($listing['gallery']);
 
                         <div class="rd-date-field">
                             <span>Check-in</span>
-                            <input type="text" placeholder="Select date" readonly>
+                            <input type="date" id="rd-checkin" min="<?= date('Y-m-d') ?>">
                         </div>
 
                         <span class="rd-date-sep">&ndash;</span>
 
                         <div class="rd-date-field">
                             <span>Check-out</span>
-                            <input type="text" placeholder="Select date" readonly>
+                            <input type="date" id="rd-checkout" min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
                         </div>
 
                     </div>
@@ -553,9 +553,12 @@ $galleryCount = count($listing['gallery']);
 
                 <?php elseif ($isOwnListing): ?>
 
-                    <button type="button" class="rd-btn rd-btn-primary" disabled>
-                        This Is Your Listing
-                    </button>
+                    <form action="book.php" method="POST">
+                        <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
+                        <button type="submit" class="rd-btn rd-btn-primary">
+                            List Now
+                        </button>
+                    </form>
 
                 <?php elseif (!$isBookable): ?>
 
@@ -979,6 +982,41 @@ $galleryCount = count($listing['gallery']);
             scrollThumbsBy(220);
         });
     }
+
+})();
+
+/* =========================
+   DATE PICKERS
+========================== */
+
+(function () {
+
+    const checkinInput  = document.getElementById('rd-checkin');
+    const checkoutInput = document.getElementById('rd-checkout');
+
+    if (!checkinInput || !checkoutInput) {
+        return;
+    }
+
+    checkinInput.addEventListener('change', function () {
+
+        if (!checkinInput.value) {
+            return;
+        }
+
+        // Checkout can't be before (or same day as) check-in
+        const nextDay = new Date(checkinInput.value);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        const minCheckout = nextDay.toISOString().split('T')[0];
+        checkoutInput.min = minCheckout;
+
+        // If the currently selected checkout is now invalid, clear it
+        if (checkoutInput.value && checkoutInput.value <= checkinInput.value) {
+            checkoutInput.value = '';
+        }
+
+    });
 
 })();
 

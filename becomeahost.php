@@ -5,8 +5,7 @@
    ========================================================= */
 
 session_start();
-require_once 'db_connect.php';
-
+require_once 'db_connect.php';   // ← add this, it's missing
 /*
  * =========================================================
  * AUTHENTICATION CHECK
@@ -28,10 +27,8 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
  */
 
 if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true) {
-
     header("Location: host-step2.php");
     exit();
-
 }
 
 /*
@@ -250,110 +247,64 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if (empty($errors)) {
 
-        /*
-         * 1. Save the phone/location back onto the user's account.
-         * 2. Save the uploaded ID to disk.
-         * 3. Create the host_applications row (status: pending).
-         * 4. Stash the new row's id in session so host-step2.php
-         *    can attach the listing it creates to this application.
-         * 5. Move to the next registration step.
-         */
+    $updateStmt = $pdo->prepare(
+        "UPDATE users SET phone = :phone, location = :location WHERE id = :id"
+    );
+    $updateStmt->execute([
+        'phone'    => $phone,
+        'location' => $location,
+        'id'       => $_SESSION['user_id'],
+    ]);
 
-        $updateStmt = $pdo->prepare(
-            "UPDATE users SET phone = :phone, location = :location WHERE id = :id"
-        );
-        $updateStmt->execute([
-            'phone'    => $phone,
-            'location' => $location,
-            'id'       => $_SESSION['user_id'],
-        ]);
+    // Save uploaded ID first, so we have the path ready for the insert
+    $uploadDirectory = "uploads/host_ids/";
 
-        // Save uploaded ID first, so we have the path ready for the insert
-        $uploadDirectory = "uploads/host_ids/";
-
-        if (!is_dir($uploadDirectory)) {
-
-            mkdir(
-                $uploadDirectory,
-                0755,
-                true
-            );
-
-        }
-
-        $fileExtension = strtolower(
-            pathinfo(
-                $file["name"],
-                PATHINFO_EXTENSION
-            )
-        );
-
-        $newFileName =
-            "host_" .
-            time() .
-            "_" .
-            uniqid() .
-            "." .
-            $fileExtension;
-
-        $uploadPath =
-            $uploadDirectory .
-            $newFileName;
-
-        move_uploaded_file(
-            $file["tmp_name"],
-            $uploadPath
-        );
-
-        // Insert into host_applications — this is what host-step2.php
-        // needs as host_application_id when it creates the listing row.
-        $stmt = $pdo->prepare(
-            "INSERT INTO host_applications
-                (user_id, full_name, email, phone, location, id_type, id_number, id_file, status)
-             VALUES
-                (:user_id, :full_name, :email, :phone, :location, :id_type, :id_number, :id_file, 'pending')"
-        );
-
-        $stmt->execute([
-            'user_id'    => $_SESSION['user_id'],
-            'full_name'  => $fullName,
-            'email'      => $email,
-            'phone'      => $phone,
-            'location'   => $location,
-            'id_type'    => $idType,
-            'id_number'  => $idNumber,
-            'id_file'    => $uploadPath,
-        ]);
-
-        $_SESSION['host_application_id'] = $pdo->lastInsertId();
-
-        $_SESSION["host_application"] = [
-
-            "full_name" => $fullName,
-
-            "email" => $email,
-
-            "phone" => $phone,
-
-            "location" => $location,
-
-            "id_type" => $idType,
-
-            "id_number" => $idNumber,
-
-            "id_file" => $uploadPath,
-
-        ];
-
-
-        // Step 1 done - on to "Add Your Space".
-        // The user only becomes a host (is_host = true) once
-        // they finish host-step4.php, the real final step.
-        header("Location: host-step2.php");
-
-        exit;
-
+    if (!is_dir($uploadDirectory)) {
+        mkdir($uploadDirectory, 0755, true);
     }
+
+    $fileExtension = strtolower(pathinfo($file["name"], PATHINFO_EXTENSION));
+    $newFileName = "host_" . time() . "_" . uniqid() . "." . $fileExtension;
+    $uploadPath = $uploadDirectory . $newFileName;
+
+    move_uploaded_file($file["tmp_name"], $uploadPath);
+
+    // Insert into host_applications — this is what host-step2.php
+    // needs as host_application_id when it creates the listing row.
+    $stmt = $pdo->prepare(
+        "INSERT INTO host_applications
+            (user_id, full_name, email, phone, location, id_type, id_number, id_file, status)
+         VALUES
+            (:user_id, :full_name, :email, :phone, :location, :id_type, :id_number, :id_file, 'pending')"
+    );
+
+    $stmt->execute([
+        'user_id'    => $_SESSION['user_id'],
+        'full_name'  => $fullName,
+        'email'      => $email,
+        'phone'      => $phone,
+        'location'   => $location,
+        'id_type'    => $idType,
+        'id_number'  => $idNumber,
+        'id_file'    => $uploadPath,
+    ]);
+
+    $_SESSION['host_application_id'] = $pdo->lastInsertId();
+
+    $_SESSION["host_application"] = [
+        "full_name" => $fullName,
+        "email"     => $email,
+        "phone"     => $phone,
+        "location"  => $location,
+        "id_type"   => $idType,
+        "id_number" => $idNumber,
+        "id_file"   => $uploadPath,
+    ];
+
+    // Step 1 done — on to "Add Your Space".
+    header("Location: host-step2.php");
+    exit;
+}
 
 }
 
@@ -462,6 +413,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <div class="account-dropdown-menu">
 
                     <?php if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true): ?>
+                        <a href="hostdashboard.php">
+                            Host Dashboard
+                        </a>
+
                         <a href="hostprofile.php">
                             Host Profile
                         </a>
@@ -555,7 +510,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         background: #f5f5f5;
     }
 </style>
-<!-- The dropdown's open/close behavior lives in javaScript.js
+<!-- The dropdown's open/close behavior now lives in javaScript.js
      (shared by every page instead of a copy-pasted inline script). -->
 <?php endif; ?>
 

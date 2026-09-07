@@ -9,6 +9,15 @@ $isLoggedIn = (
     $_SESSION["logged_in"] === true
 );
 
+/*
+ * Whether an admin is currently logged in, so the footer's Admin
+ * link can go straight to the dashboard instead of the login form.
+ */
+$isAdminLoggedIn = (
+    isset($_SESSION["admin_logged_in"]) &&
+    $_SESSION["admin_logged_in"] === true
+);
+
 // =========================
 // PAGE DATA - index.php
 // =========================
@@ -140,6 +149,23 @@ $currentYear = date('Y');
 
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
+
+    <style>
+        .footer-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .footer-admin-link {
+            font-size: 12px;
+            color: #8B93A6;
+            text-decoration: none;
+            opacity: 0.8;
+        }
+        .footer-admin-link:hover { opacity: 1; text-decoration: underline; }
+    </style>
 </head>
 
 <body>
@@ -746,6 +772,13 @@ $currentYear = date('Y');
             <?php echo htmlspecialchars($currentYear); ?>
             RoomHive. All rights reserved.
         </p>
+
+        <a
+            href="<?php echo $isAdminLoggedIn ? 'admin.php' : 'adminlogin.php'; ?>"
+            class="footer-admin-link"
+        >
+            Admin
+        </a>
 
     </div>
 

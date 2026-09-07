@@ -3,10 +3,22 @@
  * RoomHive Admin — Listings Application
  * Review listings submitted by hosts before they go live: approve or reject them.
  *
- * $listingApps below is sample data standing in for a real query
- * (e.g. SELECT * FROM listings WHERE status = 'pending' ORDER BY submitted_at DESC).
- * Swap it out once the Listings table exists.
+ * Pulls real rows from `listings` (excluding drafts — a host hasn't
+ * finished the wizard yet if status is still 'draft'), joined to
+ * `users` for the host's name, and actually updates `listings.status`
+ * when you click Approve / Reject.
  */
+
+session_start();
+require_once 'db_connect.php';
+
+if (
+    !isset($_SESSION['admin_logged_in']) ||
+    $_SESSION['admin_logged_in'] !== true
+) {
+    header('Location: adminlogin.php');
+    exit();
+}
 
 /* ---------- Sidebar navigation ---------- */
 $navItems = [
@@ -23,17 +35,64 @@ $navItems = [
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '#'],
 ];
 
-$notificationCount = 0;
+$notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
 
-/* ---------- Listing applications — none submitted yet on a brand-new platform ----------
- * Wire this up to a real query (e.g. SELECT * FROM listings WHERE status = 'pending'
- * ORDER BY submitted_at DESC) once hosts start submitting listings. Each row is
- * expected to look like the shape below:
- * ['id'=>1, 'title'=>'', 'host'=>'', 'city'=>'', 'type'=>'', 'price'=>'',
- *  'date'=>'', 'time'=>'', 'status'=>'Pending|Approved|Rejected', 'desc'=>'',
- *  'amenities'=>[]]
- */
-$listingApps = [];
+/* =========================================================
+   HANDLE APPROVE / REJECT
+   ========================================================= */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+
+    $targetId = (int) $_POST['id'];
+    $action   = $_POST['action'];
+
+    if (in_array($action, ['approve', 'reject'], true)) {
+
+        $newStatus = $action === 'approve' ? 'approved' : 'rejected';
+
+        $pdo->prepare(
+            "UPDATE listings SET status = :status, updated_at = NOW() WHERE id = :id"
+        )->execute([
+            'status' => $newStatus,
+            'id'     => $targetId,
+        ]);
+
+        header('Location: listingapplication.php?' . http_build_query([
+            'filter' => $_GET['filter'] ?? 'all',
+            'page'   => $_GET['page'] ?? 1,
+            'id'     => $targetId,
+        ]));
+        exit();
+    }
+}
+
+/* =========================================================
+   LOAD LISTINGS FROM THE DATABASE (skip unfinished drafts)
+   ========================================================= */
+$rows = $pdo->query(
+    "SELECT l.id, l.title, l.location, l.property_type, l.price,
+            l.description, l.amenities, l.status, l.created_at,
+            u.name AS host_name
+     FROM listings l
+     JOIN users u ON u.id = l.user_id
+     WHERE l.status != 'draft'
+     ORDER BY l.created_at DESC"
+)->fetchAll();
+
+$listingApps = array_map(function ($r) {
+    return [
+        'id'        => (int) $r['id'],
+        'title'     => $r['title'],
+        'host'      => $r['host_name'],
+        'city'      => $r['location'],
+        'type'      => ucfirst($r['property_type']),
+        'price'     => '₱' . number_format((float) $r['price']) . ' / month',
+        'date'      => date('M j, Y', strtotime($r['created_at'])),
+        'time'      => date('g:i A', strtotime($r['created_at'])),
+        'status'    => ucfirst($r['status']),
+        'desc'      => $r['description'],
+        'amenities' => json_decode($r['amenities'] ?? '[]', true) ?? [],
+    ];
+}, $rows);
 
 $requiredDocuments = ['Land Title / Lease Contract', 'Barangay Business Clearance', 'Property Photos (Exterior & Interior)', 'Fire Safety Certificate'];
 
@@ -232,7 +291,7 @@ function emptyState($text) {
                                             onclick="location.href='<?= appLink($l['id'], $filter, $page) ?>'">
                                             <td>
                                                 <div class="applicant-cell">
-                                                    <img src="<?= $l['avatar'] ?>" alt="<?= htmlspecialchars($l['host']) ?>">
+                                                    <img src="<?= htmlspecialchars($l['avatar']) ?>" alt="<?= htmlspecialchars($l['host']) ?>">
                                                     <div class="people-info">
                                                         <span class="people-name"><?= htmlspecialchars($l['title']) ?></span>
                                                         <span class="people-sub">by <?= htmlspecialchars($l['host']) ?> · <?= htmlspecialchars($l['city']) ?></span>
@@ -282,7 +341,7 @@ function emptyState($text) {
                             </div>
 
                             <div class="detail-profile">
-                                <img class="detail-avatar" src="<?= $selected['avatar'] ?>" alt="<?= htmlspecialchars($selected['host']) ?>">
+                                <img class="detail-avatar" src="<?= htmlspecialchars($selected['avatar']) ?>" alt="<?= htmlspecialchars($selected['host']) ?>">
                                 <div>
                                     <p class="detail-name"><?= htmlspecialchars($selected['title']) ?></p>
                                     <div class="detail-meta-row"><?= icon('person') ?>Hosted by <?= htmlspecialchars($selected['host']) ?></div>
@@ -303,14 +362,18 @@ function emptyState($text) {
                             <div class="detail-section">
                                 <h3>Amenities</h3>
                                 <div class="amenity-tags">
-                                    <?php foreach ($selected['amenities'] as $am): ?>
-                                        <span class="amenity-tag"><?= htmlspecialchars($am) ?></span>
-                                    <?php endforeach; ?>
+                                    <?php if (empty($selected['amenities'])): ?>
+                                        <span class="amenity-tag">None listed</span>
+                                    <?php else: ?>
+                                        <?php foreach ($selected['amenities'] as $am): ?>
+                                            <span class="amenity-tag"><?= htmlspecialchars($am) ?></span>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </div>
                             </div>
 
                             <div class="detail-section">
-                                <h3>Documents Submitted</h3>
+                                <h3>Documents Required</h3>
                                 <div class="doc-list">
                                     <?php foreach ($requiredDocuments as $doc): ?>
                                         <div class="doc-item"><?= icon('file') ?><?= htmlspecialchars($doc) ?></div>
@@ -323,11 +386,23 @@ function emptyState($text) {
                                 <span class="info-value"><?= htmlspecialchars($selected['date']) ?> <?= htmlspecialchars($selected['time']) ?></span>
                             </div>
 
-                            <div class="detail-actions">
-                                <button type="button" class="btn-reject" onclick="return confirm('Reject the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Reject Listing</button>
-                                <button type="button" class="btn-approve" onclick="return confirm('Approve the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Approve Listing</button>
-                            </div>
-                            <div class="detail-note"><?= icon('lock') ?>Approving publishes this listing on RoomHive. The host will be notified of your decision.</div>
+                            <?php if ($selected['status'] === 'Pending'): ?>
+                                <div class="detail-actions">
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                        <input type="hidden" name="action" value="reject">
+                                        <button type="submit" class="btn-reject" onclick="return confirm('Reject the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Reject Listing</button>
+                                    </form>
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                        <input type="hidden" name="action" value="approve">
+                                        <button type="submit" class="btn-approve" onclick="return confirm('Approve the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Approve Listing</button>
+                                    </form>
+                                </div>
+                                <div class="detail-note"><?= icon('lock') ?>Approving publishes this listing on RoomHive. The host will be notified of your decision.</div>
+                            <?php else: ?>
+                                <div class="detail-note"><?= icon('lock') ?>This listing has already been <?= strtolower($selected['status']) ?>.</div>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
