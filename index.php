@@ -23,50 +23,50 @@ $isAdminLoggedIn = (
 // =========================
 
 $navLinks = [
-    ['label' => 'HOME', 'href' => 'index.php', 'class' => 'active'],
-    ['label' => 'LISTINGS', 'href' => 'listing.php', 'class' => ''],
-    ['label' => 'HOW IT WORKS', 'href' => 'howitworks.php', 'class' => ''],
+    ['label' => 'HOME', 'href' => '/webprogg/index.php', 'class' => 'active'],
+    ['label' => 'LISTINGS', 'href' => '/webprogg/Listings/listing.php', 'class' => ''],
+    ['label' => 'HOW IT WORKS', 'href' => '/webprogg/host/howitworks.php', 'class' => ''],
 
     [
         'label' => 'BECOME A HOST',
-        'href' => $isLoggedIn ? 'becomeahost.php' : 'loginform.php',
+        'href' => $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php',
         'class' => ''
     ],
 
-    ['label' => 'HIVE CLUB', 'href' => 'hiveclub.php', 'class' => ''],
-    ['label' => 'CONTACTS', 'href' => 'contacts.php', 'class' => ''],
+    ['label' => 'HIVE CLUB', 'href' => '/webprogg/hiveclub.php', 'class' => ''],
+    ['label' => 'CONTACTS', 'href' => '/webprogg/misc/contacts.php', 'class' => ''],
 ];
 
 // FIX: added 'slug' to each listing so the "Top Listings" cards on
 // this page link correctly to listing.php?category=<slug> — these
 // slugs match the $categories keys used in listing.php.
 $listings = [
-    ['name' => 'STUDIO LOFT', 'image' => 'images/StudioLoft.png', 'slug' => 'studioloft'],
-    ['name' => 'SHARED ROOM', 'image' => 'images/SharedBedroom.png', 'slug' => 'sharedbedroom'],
-    ['name' => 'ENTIRE HOUSE', 'image' => 'images/EntireHouse.png', 'slug' => 'entirehouse'],
-    ['name' => 'PRIVATE ROOM', 'image' => 'images/PrivateRoom.png', 'slug' => 'privateroom'],
-    ['name' => 'BOARDING HOUSE', 'image' => 'images/BoardingHouse.png', 'slug' => 'boardinghouse'],
-    ['name' => 'APARTMENT', 'image' => 'images/Apartment.png', 'slug' => 'apartment'],
+    ['name' => 'STUDIO LOFT', 'image' => '/webprogg/images/StudioLoft.png', 'slug' => 'studioloft'],
+    ['name' => 'SHARED ROOM', 'image' => '/webprogg/images/SharedBedroom.png', 'slug' => 'sharedbedroom'],
+    ['name' => 'ENTIRE HOUSE', 'image' => '/webprogg/images/EntireHouse.png', 'slug' => 'entirehouse'],
+    ['name' => 'PRIVATE ROOM', 'image' => '/webprogg/images/PrivateRoom.png', 'slug' => 'privateroom'],
+    ['name' => 'BOARDING HOUSE', 'image' => '/webprogg/images/BoardingHouse.png', 'slug' => 'boardinghouse'],
+    ['name' => 'APARTMENT', 'image' => '/webprogg/images/Apartment.png', 'slug' => 'apartment'],
 ];
 
 $reasons = [
     [
-        'icon' => 'images/247SupportsIcons.png',
+        'icon' => '/webprogg/images/247SupportsIcons.png',
         'title' => '24/7 Support',
         'text' => 'Our team is on call around the clock for hosts and tenants.',
     ],
     [
-        'icon' => 'images/VerifiedListingsIcons.png',
+        'icon' => '/webprogg/images/VerifiedListingsIcons.png',
         'title' => 'Verified Listings',
         'text' => 'Every listing is hand-reviewed and checked by our team before it goes live.',
     ],
     [
-        'icon' => 'images/SecurePaymentsIcon.png',
+        'icon' => '/webprogg/images/SecurePaymentsIcon.png',
         'title' => 'Secure Payments',
         'text' => 'Your booking and deposits are protected end-to-end.',
     ],
     [
-        'icon' => 'images/NoHiddenFeesIcons.png',
+        'icon' => '/webprogg/images/NoHiddenFeesIcons.png',
         'title' => 'No Hidden Fees',
         'text' => 'What you see is what you pay — no surprise charges, ever.',
     ],
@@ -106,24 +106,24 @@ $testimonials = [
 ];
 
 $ctaImages = [
-    'images/FirstImageLeft.jpg',
-    'images/SecondImageLeft.jpg',
-    'images/MiddleImage.avif',
-    'images/FirstImageRight.jpg',
-    'images/SecondImageRight.jpg',
+    '/webprogg/images/FirstImageLeft.jpg',
+    '/webprogg/images/SecondImageLeft.jpg',
+    '/webprogg/images/MiddleImage.avif',
+    '/webprogg/images/FirstImageRight.jpg',
+    '/webprogg/images/SecondImageRight.jpg',
 ];
 
 $footerCompanyLinks = [
-    ['label' => 'Home', 'href' => 'index.php'],
-    ['label' => 'Listings', 'href' => 'listing.php'],
-    ['label' => 'How It Works', 'href' => 'howitworks.php'],
-    ['label' => 'Contacts', 'href' => 'contacts.php'],
+    ['label' => 'Home', 'href' => '/webprogg/index.php'],
+    ['label' => 'Listings', 'href' => '/webprogg/Listings/listing.php'],
+    ['label' => 'How It Works', 'href' => '/webprogg/host/howitworks.php'],
+    ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
 ];
 
 $footerInvolvedLinks = [
-    ['label' => 'Become A Host', 'href' => 'becomeahost.php'],
-    ['label' => 'Hive Club', 'href' => 'hiveclub.php'],
-    ['label' => 'List Your Space', 'href' => 'becomeahost.php'],
+    ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
+    ['label' => 'Hive Club', 'href' => '/webprogg/hiveclub.php'],
+    ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Terms Of Service', 'href' => '#'],
 ];
 
@@ -148,7 +148,7 @@ $currentYear = date('Y');
     >
 
     <!-- CSS -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/webprogg/assets/style.css">
 
     <style>
         .footer-bottom {
@@ -177,8 +177,8 @@ $currentYear = date('Y');
 <nav class="navbar">
 
     <!-- LOGO -->
-    <a href="index.php" class="logo">
-        <img src="images/RoomHiveLogos.png" alt="RoomHive Logo">
+    <a href="/webprogg/index.php" class="logo">
+        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
     <!-- NAVIGATION LINKS -->
@@ -198,7 +198,7 @@ $currentYear = date('Y');
         <!-- LIST YOUR SPACE -->
 
         <a
-            href="<?php echo $isLoggedIn ? 'becomeahost.php' : 'loginform.php'; ?>"
+            href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
             class="list-space"
         >
             LIST YOUR SPACE
@@ -217,7 +217,7 @@ $currentYear = date('Y');
 
     <img
         class="hero-image"
-        src="images/Living_Room.png"
+        src="/webprogg/images/Living_Room.png"
         alt="Living Room"
     >
 
@@ -240,14 +240,14 @@ $currentYear = date('Y');
         <div class="hero-buttons">
 
             <a
-                href="<?php echo $isLoggedIn ? 'becomeahost.php' : 'loginform.php'; ?>"
+                href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
                 class="btn-primary"
             >
                 LIST YOUR SPACE
             </a>
 
             <a
-                href="listing.php"
+                href="/webprogg/Listings/listing.php"
                 class="btn-secondary"
             >
                 VIEW LISTING
@@ -269,7 +269,7 @@ $currentYear = date('Y');
     <div class="club-content">
 
         <img
-            src="images/Crown_Logo.png"
+            src="/webprogg/images/Crown_Logo.png"
             alt="Hive Club Crown"
             class="crown-logo"
         >
@@ -293,7 +293,7 @@ $currentYear = date('Y');
 
     </div>
 
-    <a href="hiveclub.php" class="join-button">
+    <a href="/webprogg/hiveclub.php" class="join-button">
         JOIN NOW
     </a>
 
@@ -319,7 +319,7 @@ $currentYear = date('Y');
         <?php foreach ($listings as $listing): ?>
 
             <a
-                href="listing.php?category=<?php echo urlencode($listing['slug']); ?>"
+                href="/webprogg/Listings/listing.php?category=<?php echo urlencode($listing['slug']); ?>"
         class="listing-card"
             >
 
@@ -386,7 +386,7 @@ $currentYear = date('Y');
     <div class="about-image">
 
         <img
-            src="images/3rdPageImage.png"
+            src="/webprogg/images/3rdPageImage.png"
             alt="RoomHive team handing over keys"
         >
 
@@ -484,7 +484,7 @@ $currentYear = date('Y');
                 aria-label="Previous testimonial"
             >
                 <img
-                    src="images/TenantsLeftArrow.png"
+                    src="/webprogg/images/TenantsLeftArrow.png"
                     alt="Previous"
                 >
             </button>
@@ -506,7 +506,7 @@ $currentYear = date('Y');
                 aria-label="Next testimonial"
             >
                 <img
-                    src="images/TenantsRightArrows.png"
+                    src="/webprogg/images/TenantsRightArrows.png"
                     alt="Next"
                 >
             </button>
@@ -534,7 +534,7 @@ $currentYear = date('Y');
                 <div class="testimonial-author">
 
                     <img
-                        src="images/HappyTenantsHumanIcon.png"
+                        src="/webprogg/images/HappyTenantsHumanIcon.png"
                         alt="Tenant"
                     >
 
@@ -584,7 +584,7 @@ $currentYear = date('Y');
         </h2>
 
         <a
-            href="listing.php"
+            href="/webprogg/Listings/listing.php"
             class="cta-button"
         >
             VIEW LISTINGS
@@ -604,7 +604,7 @@ $currentYear = date('Y');
     <div class="dual-cta-panel hive-panel">
 
         <img
-            src="images/Crown_Logo.png"
+            src="/webprogg/images/Crown_Logo.png"
             alt="Hive Club Crown"
             class="dual-cta-icon"
         >
@@ -619,7 +619,7 @@ $currentYear = date('Y');
         </p>
 
         <a
-            href="hiveclub.php"
+            href="/webprogg/hiveclub.php"
             class="dual-cta-button hive-button"
         >
             JOIN NOW
@@ -631,7 +631,7 @@ $currentYear = date('Y');
     <div class="dual-cta-panel host-panel">
 
         <img
-            src="images/HouseIcon.png"
+            src="/webprogg/images/HouseIcon.png"
             alt="Become a Host"
             class="dual-cta-icon"
         >
@@ -646,7 +646,7 @@ $currentYear = date('Y');
         </p>
 
         <a
-            href="<?php echo $isLoggedIn ? 'becomeahost.php' : 'loginform.php'; ?>"
+            href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
             class="dual-cta-button host-button"
         >
             LIST YOUR SPACE
@@ -668,7 +668,7 @@ $currentYear = date('Y');
         <div class="footer-brand">
 
             <img
-                src="images/RoomHiveLogos.png"
+                src="/webprogg/images/RoomHiveLogos.png"
                 alt="RoomHive Logo"
                 class="footer-logo"
             >
@@ -676,7 +676,7 @@ $currentYear = date('Y');
             <div class="footer-contact-line">
 
                 <img
-                    src="images/PhoneIcon.jpg"
+                    src="/webprogg/images/PhoneIcon.jpg"
                     alt="Phone"
                 >
 
@@ -689,7 +689,7 @@ $currentYear = date('Y');
             <div class="footer-contact-line">
 
                 <img
-                    src="images/EmailIcon.jpg"
+                    src="/webprogg/images/EmailIcon.jpg"
                     alt="Email"
                 >
 
@@ -749,12 +749,12 @@ $currentYear = date('Y');
             <div class="footer-app-badges">
 
                 <img
-                    src="images/AppStore.jpg"
+                    src="/webprogg/images/AppStore.jpg"
                     alt="Download on the App Store"
                 >
 
                 <img
-                    src="images/GooglePlay.jpg"
+                    src="/webprogg/images/GooglePlay.jpg"
                     alt="Get it on Google Play"
                 >
 
@@ -774,7 +774,7 @@ $currentYear = date('Y');
         </p>
 
         <a
-            href="<?php echo $isAdminLoggedIn ? 'admin.php' : 'adminlogin.php'; ?>"
+            href="<?php echo $isAdminLoggedIn ? '/webprogg/admin/admin.php' : '/webprogg/auth/adminlogin.php'; ?>"
             class="footer-admin-link"
         >
             Admin
@@ -785,7 +785,7 @@ $currentYear = date('Y');
 </footer>
 
 
-<script src="javaScript.js"></script>
+<script src="/webprogg/assets/javaScript.js"></script>
 
 </body>
 </html>

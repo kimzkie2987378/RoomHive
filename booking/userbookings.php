@@ -1,0 +1,456 @@
+<?php
+/* =========================================================
+   ROOMHIVE — MY ACCOUNT
+   userbookings.php
+
+   Full bookings page — the "View All" / "VIEW ALL BOOKINGS"
+   destination from the Recent Bookings widget on
+   userprofile.php. Same navbar, sidebar, and footer as the
+   rest of the /my-account pages.
+========================================================= */
+
+session_start();
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+
+/* -----------------------------------------------------
+   AUTH GUARD
+----------------------------------------------------- */
+if (!isset($_SESSION['user_id'])) {
+    header("Location: /webprogg/auth/loginform.php");
+    exit;
+}
+
+/* -----------------------------------------------------
+   USER DATA
+   Same shape as userprofile.php so the shared navbar/sidebar
+   render identically on both pages.
+----------------------------------------------------- */
+$stmt = $pdo->prepare(
+    "SELECT id, name, email, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
+);
+$stmt->execute(['id' => $_SESSION['user_id']]);
+$dbUser = $stmt->fetch();
+
+if (!$dbUser) {
+    session_destroy();
+    header("Location: /webprogg/auth/loginform.php");
+    exit;
+}
+
+/* This is a regular-user account page — hosts land on the
+   host dashboard instead, same redirect rule as userprofile.php. */
+if ($dbUser['is_host']) {
+    header("Location: /webprogg/host/hostprofile.php");
+    exit;
+}
+
+/* Keep the navbar's account icon in sync, same as every
+   other /my-account page. */
+$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
+$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+
+$notification_count = 0;
+
+/* -----------------------------------------------------
+   STATUS FILTER
+   Tabs above the list let the user narrow down to one
+   status at a time. "all" (the default) shows everything.
+----------------------------------------------------- */
+$validStatuses = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
+
+$statusFilter = isset($_GET['status']) && in_array($_GET['status'], $validStatuses, true)
+    ? $_GET['status']
+    : 'all';
+
+/* -----------------------------------------------------
+   ALL BOOKINGS
+   Every booking this user has ever made, most recent first.
+   Joined to `listings` for the title/location and
+   `listing_photos` for the cover thumbnail — same shape as
+   the mini widget on userprofile.php, just without the
+   LIMIT 3.
+----------------------------------------------------- */
+$sql = "SELECT b.id, b.total, b.status, b.booked_at,
+               l.title, l.location,
+               p.photo_path AS cover_photo
+        FROM bookings b
+        JOIN listings l ON l.id = b.listing_id
+        LEFT JOIN listing_photos p
+               ON p.listing_id = l.id AND p.photo_type = 'cover'
+        WHERE b.user_id = :id";
+
+if ($statusFilter !== 'all') {
+    $sql .= " AND b.status = :status";
+}
+
+$sql .= " ORDER BY b.booked_at DESC";
+
+$bookingsStmt = $pdo->prepare($sql);
+$bookingsStmt->bindValue(':id', $_SESSION['user_id']);
+if ($statusFilter !== 'all') {
+    $bookingsStmt->bindValue(':status', $statusFilter);
+}
+$bookingsStmt->execute();
+
+$bookings = array_map(function ($row) {
+    return [
+        'id'       => (int) $row['id'],
+        'title'    => $row['title'],
+        'location' => $row['location'],
+        'thumb'    => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
+        'dates'    => date('M j, Y', strtotime($row['booked_at'])),
+        'status'   => $row['status'],
+        'total'    => number_format((float) $row['total'], 2),
+    ];
+}, $bookingsStmt->fetchAll());
+
+$bookings_total = count($bookings);
+
+/* -----------------------------------------------------
+   TAB COUNTS
+   Counts every status regardless of the current filter, so
+   the tab bar's numbers don't shift depending on which tab
+   is active.
+----------------------------------------------------- */
+$countsStmt = $pdo->prepare(
+    "SELECT status, COUNT(*) AS total
+     FROM bookings
+     WHERE user_id = :id
+     GROUP BY status"
+);
+$countsStmt->execute(['id' => $_SESSION['user_id']]);
+
+$statusCounts = ['pending' => 0, 'confirmed' => 0, 'completed' => 0, 'cancelled' => 0];
+foreach ($countsStmt->fetchAll() as $row) {
+    if (isset($statusCounts[$row['status']])) {
+        $statusCounts[$row['status']] = (int) $row['total'];
+    }
+}
+$statusCounts['all'] = array_sum($statusCounts);
+
+$tabs = [
+    'all'       => 'All',
+    'pending'   => 'Pending',
+    'confirmed' => 'Confirmed',
+    'completed' => 'Completed',
+    'cancelled' => 'Cancelled',
+];
+
+/* Small helper so we're not repeating htmlspecialchars() everywhere */
+function h($value) {
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Bookings — RoomHive</title>
+
+<link rel="stylesheet" href="/webprogg/assets/style.css">
+<link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<style>
+    /* Status filter tabs above the bookings list */
+    .ub-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+
+    .ub-tab {
+        padding: 8px 16px;
+        background: #ffffff;
+        color: #777777;
+        border: 1px solid #eeeeee;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .ub-tab.active {
+        background: var(--up-orange-light, #fdf1dc);
+        color: var(--up-orange, #eda423);
+        border-color: var(--up-orange, #eda423);
+    }
+
+    .ub-tab-count {
+        margin-left: 4px;
+        opacity: 0.7;
+    }
+
+    .ub-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     NAVBAR (identical to userprofile.php)
+========================================================= -->
+<header class="navbar">
+
+    <!-- LOGO -->
+    <a href="/webprogg/user/usershome.php" class="logo">
+        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
+    </a>
+
+    <!-- NAVIGATION -->
+    <nav class="nav-links">
+
+        <a href="/webprogg/user/usershome.php">HOME</a>
+        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
+        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
+        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
+        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
+        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
+
+        <a href="notifications.php" class="nav-bell">
+            <img src="/webprogg/images/bellicon.png" alt="Notifications">
+            <?php if ($notification_count > 0): ?>
+                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
+            <?php endif; ?>
+        </a>
+
+        <!-- MY ACCOUNT -->
+        <div class="account-dropdown js-account-dropdown">
+
+            <button
+                type="button"
+                class="my-account js-account-toggle"
+                id="accountDropdownToggle"
+                aria-haspopup="true"
+                aria-expanded="false"
+            >
+                <span class="account-circle">
+                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
+                </span>
+                <span>MY PROFILE</span>
+                <span class="dropdown-caret">&#9662;</span>
+            </button>
+
+            <div class="account-dropdown-menu" id="accountDropdownMenu">
+                <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
+                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
+                <?php endif; ?>
+                <a href="/webprogg/user/userprofile.php">My Profile</a>
+                <a href="/webprogg/auth/logout.php">Logout</a>
+            </div>
+
+        </div>
+
+    </nav>
+
+</header>
+
+<!-- =========================================================
+     WELCOME BANNER
+========================================================= -->
+<section class="up-welcome">
+  <div class="up-welcome-text">
+    <p class="up-welcome-eyebrow">Every stay,</p>
+    <h1>My Bookings</h1>
+    <span class="up-welcome-underline"></span>
+    <p class="up-welcome-sub">Track every inquiry and stay you've booked through RoomHive.</p>
+  </div>
+  <div class="up-welcome-image">
+    <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
+  </div>
+</section>
+
+<!-- =========================================================
+     MAIN DASHBOARD LAYOUT
+========================================================= -->
+<main class="up-dashboard">
+
+  <!-- SIDEBAR (full nav, matches userprofile.php — My Bookings active) -->
+<aside class="up-sidebar">
+  <a href="/webprogg/user/userprofile.php" class="up-side-link">
+    <img src="/webprogg/images/overviewicon-userprofile.png" alt="">
+    Overview
+  </a>
+  <a href="/webprogg/booking/userbookings.php" class="up-side-link active">
+    <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
+    My Bookings
+  </a>
+  <a href="/webprogg/user/userwishlist.php" class="up-side-link">
+    <img src="/webprogg/images/wihlistedicon-userprofile.png" alt="">
+    Wishlist
+  </a>
+  <a href="payments.php" class="up-side-link">
+    <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
+    Payments
+  </a>
+  <a href="reviews.php" class="up-side-link">
+    <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
+    Reviews
+  </a>
+  <a href="messages.php" class="up-side-link">
+    <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
+    Messages
+  </a>
+  <a href="editprofile.php" class="up-side-link">
+    <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
+    Profile &amp; Account
+  </a>
+  <a href="notificationsettings.php" class="up-side-link">
+    <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
+    Notification Settings
+  </a>
+  <a href="savedsearches.php" class="up-side-link">
+    <img src="/webprogg/images/savedsearchesicon-userprofile.png" alt="">
+    Saved Searches
+  </a>
+  <a href="helpcenter.php" class="up-side-link">
+    <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
+    Help Center
+  </a>
+  <a href="/webprogg/auth/logout.php" class="up-side-link up-side-logout">
+    <img src="/webprogg/images/logouticon-userprofile.png" alt="">
+    Log Out
+  </a>
+</aside>
+
+  <!-- CONTENT COLUMN -->
+  <div class="up-content">
+
+    <!-- BOOKINGS -->
+    <section class="up-card up-bookings-card">
+      <div class="up-card-header">
+        <h3>My Bookings (<?php echo h($bookings_total); ?>)</h3>
+        <a href="/webprogg/Listings/listing.php" class="up-link-view-all">Browse Listings</a>
+      </div>
+
+      <!-- STATUS TABS -->
+      <div class="ub-tabs">
+        <?php foreach ($tabs as $key => $label): ?>
+          <a
+            href="/webprogg/booking/userbookings.php?status=<?php echo h($key); ?>"
+            class="ub-tab<?php echo $statusFilter === $key ? ' active' : ''; ?>"
+          >
+            <?php echo h($label); ?>
+            <span class="ub-tab-count">(<?php echo h($statusCounts[$key]); ?>)</span>
+          </a>
+        <?php endforeach; ?>
+      </div>
+
+      <?php if (empty($bookings)): ?>
+
+        <div class="up-bookings-empty">
+          <p class="up-bookings-empty-title">
+            <?php echo $statusFilter === 'all' ? 'No bookings yet' : 'No ' . h($tabs[$statusFilter]) . ' bookings'; ?>
+          </p>
+          <p class="up-bookings-empty-text">
+            <?php echo $statusFilter === 'all' ? 'Once you book a stay, it will show up here.' : 'Try a different tab, or browse listings to book a new stay.'; ?>
+          </p>
+          <a href="/webprogg/Listings/listing.php" class="up-btn-outline">BROWSE LISTINGS</a>
+        </div>
+
+      <?php else: ?>
+
+        <div class="ub-list">
+          <?php foreach ($bookings as $booking): ?>
+            <a href="/webprogg/booking/booking-details.php?id=<?php echo h($booking['id']); ?>" class="up-booking-row">
+              <img src="<?php echo h($booking['thumb']); ?>" alt="<?php echo h($booking['title']); ?>" class="up-booking-thumb">
+              <div class="up-booking-info">
+                <h4><?php echo h($booking['title']); ?></h4>
+                <p class="up-booking-location"><?php echo h($booking['location']); ?></p>
+                <p class="up-booking-dates"><img src="/webprogg/images/calendaricon-userprofile.png" alt=""><?php echo h($booking['dates']); ?></p>
+              </div>
+              <div class="up-booking-side">
+                <span class="up-status up-status-<?php echo h($booking['status']); ?>">
+                  <?php echo h(ucfirst($booking['status'])); ?>
+                </span>
+                <strong>&#8369; <?php echo h($booking['total']); ?></strong>
+                <span>Total Paid</span>
+              </div>
+              <span class="up-booking-chevron">&#8250;</span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+
+      <?php endif; ?>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+
+    <div class="footer-top">
+
+        <!-- BRAND -->
+        <div class="footer-brand">
+
+            <a href="/webprogg/user/usershome.php">
+                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
+            </a>
+
+            <p class="footer-tagline">
+                Find, stay, relax, at home. RoomHive helps you discover
+                comfortable stays across Negros Oriental.
+            </p>
+
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
+                <span>0927 569 3574</span>
+            </div>
+
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/EmailIcon.jpg" alt="">
+                <span>kimdivino55@gmail.com</span>
+            </div>
+
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/GPSIcon.png" alt="">
+                <span>Dumaguete City, Negros Oriental, Philippines</span>
+            </div>
+
+        </div>
+
+        <!-- LISTINGS -->
+        <div class="footer-links">
+            <span class="footer-heading">LISTINGS</span>
+            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php">Featured Stays</a>
+        </div>
+
+        <!-- QUICK LINKS -->
+        <div class="footer-links">
+            <span class="footer-heading">QUICK LINKS</span>
+            <a href="/webprogg/index.php">About Us</a>
+            <a href="/webprogg/misc/contacts.php">Contact</a>
+            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
+            <a href="/webprogg/hiveclub.php">Hive Club</a>
+        </div>
+
+        <!-- GET THE APP -->
+        <div class="footer-contact">
+            <span class="footer-heading">GET THE APP</span>
+            <div class="footer-app-badges">
+                <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
+                <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer-bottom">
+        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
+    </div>
+
+</footer>
+
+<script src="/webprogg/assets/javaScript.js"></script>
+
+</body>
+</html>

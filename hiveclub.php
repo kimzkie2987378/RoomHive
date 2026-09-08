@@ -2,7 +2,7 @@
 
 session_start();
 
-require_once 'db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
 
 // =====================================================
@@ -39,7 +39,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 /* Same staleness reasoning as is_host above: the navbar's
    account icon should reflect a freshly-uploaded profile photo
    without requiring the user to log out and back in. */
-$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
+$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 
 // =====================================================
@@ -54,14 +54,14 @@ $currentYear = date("Y");
 // =====================================================
 
 $navigation = [
-    "HOME" => $isLoggedIn ? "usershome.php" : "index.php",
-    "LISTINGS" => "listing.php",
-    "HOW IT WORKS" => "howitworks.php",
+    "HOME" => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
+    "LISTINGS" => "/webprogg/Listings/listing.php",
+    "HOW IT WORKS" => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => $isLoggedIn
-        ? "becomeahost.php"
-        : "loginform.php",
-    "HIVE CLUB" => "hiveclub.php",
-    "CONTACTS" => "contacts.php"
+        ? "/webprogg/host/becomeahost.php"
+        : "/webprogg/auth/loginform.php",
+    "HIVE CLUB" => "/webprogg/hiveclub.php",
+    "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
 
 
@@ -211,9 +211,9 @@ if ($progress > 100) {
 // and bring them back to Hive Club afterward.
 
 $joinHiveClubLink = $isLoggedIn
-    ? "membership.php"
-    : "loginform.php?redirect=" .
-      urlencode("hiveclub.php");
+    ? "/webprogg/user/membership.php"
+    : "/webprogg/auth/loginform.php?redirect=" .
+      urlencode("/webprogg/hiveclub.php");
 
 ?>
 
@@ -244,7 +244,7 @@ $joinHiveClubLink = $isLoggedIn
 
     <link
         rel="stylesheet"
-        href="style.css"
+        href="/webprogg/assets/style.css"
     >
 
 </head>
@@ -265,12 +265,12 @@ $joinHiveClubLink = $isLoggedIn
 
         <a
             href="<?php echo $isLoggedIn
-                ? 'usershome.php'
-                : 'index.php'; ?>"
+                ? '/webprogg/user/usershome.php'
+                : '/webprogg/index.php'; ?>"
         >
 
             <img
-                src="images/RoomHiveLogos.png"
+                src="/webprogg/images/RoomHiveLogos.png"
                 alt="RoomHive Logo"
             >
 
@@ -338,16 +338,16 @@ $joinHiveClubLink = $isLoggedIn
                 >
 
                     <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
-                        <a href="hostprofile.php">
+                        <a href="/webprogg/host/hostprofile.php">
                             Host Profile
                         </a>
                     <?php endif; ?>
 
-                    <a href="userprofile.php">
+                    <a href="/webprogg/user/userprofile.php">
                         My Profile
                     </a>
 
-                    <a href="logout.php">
+                    <a href="/webprogg/auth/logout.php">
                         Logout
                     </a>
 
@@ -362,7 +362,7 @@ $joinHiveClubLink = $isLoggedIn
             <!-- LIST YOUR SPACE -->
 
             <a
-                href="loginform.php"
+                href="/webprogg/auth/loginform.php"
                 class="list-space"
             >
                 LIST YOUR SPACE
@@ -534,7 +534,7 @@ document.addEventListener("click", function(event) {
                 <!-- ALREADY A MEMBER -->
 
                 <a
-                    href="membership.php"
+                    href="/webprogg/user/membership.php"
                     class="hero-btn primary"
                 >
 
@@ -545,7 +545,7 @@ document.addEventListener("click", function(event) {
 
                 <form
                     method="POST"
-                    action="cancelmembership.php"
+                    action="/webprogg/user/cancelmembership.php"
                     class="stop-subscribe-form"
                     onsubmit="return confirm(
                         'Stop your Hive Club subscription? ' +
@@ -602,7 +602,7 @@ document.addEventListener("click", function(event) {
     <div class="member-card-area">
 
         <img
-            src="images/HiveCardIcon-HiveClub.png"
+            src="/webprogg/images/HiveCardIcon-HiveClub.png"
             class="member-card-image"
             alt="Hive Club Member Card"
         >
@@ -651,7 +651,7 @@ document.addEventListener("click", function(event) {
                 <div class="benefit-icon">
 
                     <img
-                        src="images/ExclusiveDiscountIcon-HiveClub.png"
+                        src="/webprogg/images/ExclusiveDiscountIcon-HiveClub.png"
                         alt="Exclusive Discounts"
                     >
 
@@ -675,7 +675,7 @@ document.addEventListener("click", function(event) {
                 <div class="benefit-icon">
 
                     <img
-                        src="images/SpecialOffersIcon-HiveClub.png"
+                        src="/webprogg/images/SpecialOffersIcon-HiveClub.png"
                         alt="Special Offers"
                     >
 
@@ -699,7 +699,7 @@ document.addEventListener("click", function(event) {
                 <div class="benefit-icon">
 
                     <img
-                        src="images/EarnPointIcon-HiveClub.png"
+                        src="/webprogg/images/EarnPointIcon-HiveClub.png"
                         alt="Earn Points"
                     >
 
@@ -723,7 +723,7 @@ document.addEventListener("click", function(event) {
                 <div class="benefit-icon">
 
                     <img
-                        src="images/EarlyAccessIcon-HiveClub.png"
+                        src="/webprogg/images/EarlyAccessIcon-HiveClub.png"
                         alt="Early Access"
                     >
 
@@ -779,7 +779,7 @@ document.addEventListener("click", function(event) {
                 <div class="tier-icon">
 
                     <img
-                        src="images/BronzeIcon-HiveClub.png"
+                        src="/webprogg/images/BronzeIcon-HiveClub.png"
                         alt="Bronze"
                     >
 
@@ -836,7 +836,7 @@ document.addEventListener("click", function(event) {
                 <div class="tier-icon">
 
                     <img
-                        src="images/GoldIcon-HiveClub.png"
+                        src="/webprogg/images/GoldIcon-HiveClub.png"
                         alt="Gold"
                     >
 
@@ -897,7 +897,7 @@ document.addEventListener("click", function(event) {
                 <div class="tier-icon">
 
                     <img
-                        src="images/PlatinumIcon-HiveClub.png"
+                        src="/webprogg/images/PlatinumIcon-HiveClub.png"
                         alt="Platinum"
                     >
 
@@ -963,19 +963,19 @@ document.addEventListener("click", function(event) {
                     <?php
 
                     $statusIcon =
-                        "images/BronzeIcon-HiveClub.png";
+                        "/webprogg/images/BronzeIcon-HiveClub.png";
 
                     if ($memberTier === "Gold Member") {
 
                         $statusIcon =
-                            "images/GoldIcon-HiveClub.png";
+                            "/webprogg/images/GoldIcon-HiveClub.png";
 
                     } elseif (
                         $memberTier === "Platinum Member"
                     ) {
 
                         $statusIcon =
-                            "images/PlatinumIcon-HiveClub.png";
+                            "/webprogg/images/PlatinumIcon-HiveClub.png";
 
                     }
 
@@ -1228,7 +1228,7 @@ document.addEventListener("click", function(event) {
 
 
     <a
-        href="listing.php"
+        href="/webprogg/Listings/listing.php"
         class="booking-button"
     >
 
@@ -1254,12 +1254,12 @@ document.addEventListener("click", function(event) {
 
             <a
                 href="<?php echo $isLoggedIn
-                    ? 'usershome.php'
-                    : 'index.php'; ?>"
+                    ? '/webprogg/user/usershome.php'
+                    : '/webprogg/index.php'; ?>"
             >
 
                 <img
-                    src="images/RoomHiveLogos.png"
+                    src="/webprogg/images/RoomHiveLogos.png"
                     alt="RoomHive Logo"
                     class="footer-logo"
                 >
@@ -1287,23 +1287,23 @@ document.addEventListener("click", function(event) {
             </span>
 
 
-            <a href="listing.php?type=shared-bedroom">
+            <a href="/webprogg/Listings/listing.php?type=shared-bedroom">
                 Shared Bedroom
             </a>
 
-            <a href="listing.php?type=private-room">
+            <a href="/webprogg/Listings/listing.php?type=private-room">
                 Private Room
             </a>
 
-            <a href="listing.php?type=entire-house">
+            <a href="/webprogg/Listings/listing.php?type=entire-house">
                 Entire House
             </a>
 
-            <a href="listing.php?type=boarding-house">
+            <a href="/webprogg/Listings/listing.php?type=boarding-house">
                 Boarding House
             </a>
 
-            <a href="listing.php?type=studio-loft">
+            <a href="/webprogg/Listings/listing.php?type=studio-loft">
                 Studio Loft
             </a>
 
@@ -1319,26 +1319,26 @@ document.addEventListener("click", function(event) {
             </span>
 
 
-            <a href="index.php">
+            <a href="/webprogg/index.php">
                 About Us
             </a>
 
-            <a href="howitworks.php">
+            <a href="/webprogg/host/howitworks.php">
                 How It Works
             </a>
 
-            <a href="becomeahost.php">
+            <a href="/webprogg/host/becomeahost.php">
                 Become a Host
             </a>
 
             <a
-                href="hiveclub.php"
+                href="/webprogg/hiveclub.php"
                 class="active"
             >
                 Hive Club
             </a>
 
-            <a href="contacts.php">
+            <a href="/webprogg/misc/contacts.php">
                 Contacts
             </a>
 
@@ -1357,12 +1357,12 @@ document.addEventListener("click", function(event) {
             <div class="footer-app-badges">
 
                 <img
-                    src="images/GooglePlay.jpg"
+                    src="/webprogg/images/GooglePlay.jpg"
                     alt="Get it on Google Play"
                 >
 
                 <img
-                    src="images/AppStore.jpg"
+                    src="/webprogg/images/AppStore.jpg"
                     alt="Download on the App Store"
                 >
 
@@ -1372,7 +1372,7 @@ document.addEventListener("click", function(event) {
             <div class="footer-contact-line">
 
                 <img
-                    src="images/PhoneIcon.jpg"
+                    src="/webprogg/images/PhoneIcon.jpg"
                     alt="Phone"
                 >
 
@@ -1386,7 +1386,7 @@ document.addEventListener("click", function(event) {
             <div class="footer-contact-line">
 
                 <img
-                    src="images/EmailIcon.jpg"
+                    src="/webprogg/images/EmailIcon.jpg"
                     alt="Email"
                 >
 
@@ -1400,7 +1400,7 @@ document.addEventListener("click", function(event) {
             <div class="footer-contact-line">
 
                 <img
-                    src="images/GPSIcon.png"
+                    src="/webprogg/images/GPSIcon.png"
                     alt="Location"
                 >
 
