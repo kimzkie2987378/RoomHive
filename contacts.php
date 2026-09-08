@@ -6,6 +6,22 @@ $isLoggedIn = (
     $_SESSION["logged_in"] === true
 );
 
+/*
+ * NAVBAR AVATAR
+ * $_SESSION['avatar_path'] is only set at login time, so if the
+ * user uploaded a new profile photo since then, re-check the DB
+ * so the navbar's account icon reflects it immediately instead
+ * of only after logging back in.
+ */
+if ($isLoggedIn && isset($_SESSION['user_id'])) {
+    require_once 'db_connect.php';
+    $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+    $avatarStmt->execute(['id' => $_SESSION['user_id']]);
+    $avatarRow = $avatarStmt->fetch();
+    $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+}
+$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
+
 // =========================================================
 // ROOMHIVE - CONTACTS PAGE
 // =========================================================
@@ -159,7 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     onclick="toggleAccountMenu()"
                 >
                     <span class="account-circle">
-                        <img src="images/MyAccountIcon.png" alt="My Account">
+                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account">
                     </span>
                     <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>

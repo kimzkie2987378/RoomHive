@@ -29,11 +29,17 @@ $isLoggedIn = (
 // =====================================================
 
 if ($isLoggedIn && isset($_SESSION['user_id'])) {
-    $hostCheckStmt = $pdo->prepare("SELECT is_host FROM users WHERE id = :id LIMIT 1");
+    $hostCheckStmt = $pdo->prepare("SELECT is_host, avatar_path FROM users WHERE id = :id LIMIT 1");
     $hostCheckStmt->execute(['id' => $_SESSION['user_id']]);
     $hostRow = $hostCheckStmt->fetch();
     $_SESSION['is_host'] = $hostRow ? (bool) $hostRow['is_host'] : false;
+    $_SESSION['avatar_path'] = $hostRow['avatar_path'] ?? null;
 }
+
+/* Same staleness reasoning as is_host above: the navbar's
+   account icon should reflect a freshly-uploaded profile photo
+   without requiring the user to log out and back in. */
+$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
 
 
 // =====================================================
@@ -311,7 +317,7 @@ $joinHiveClubLink = $isLoggedIn
                     <span class="account-circle">
 
                         <img
-                            src="images/MyAccountIcon.png"
+                            src="<?php echo htmlspecialchars($navAvatar); ?>"
                             alt="My Account"
                         >
 

@@ -60,6 +60,19 @@ $isLoggedIn = (
 
 $userName = $_SESSION["user_name"] ?? "User";
 
+/*
+ * NAVBAR AVATAR
+ * $_SESSION['avatar_path'] is only set at login time, so if the
+ * user uploaded a new profile photo since then, re-check the DB
+ * so the navbar's account icon reflects it immediately instead
+ * of only after logging back in.
+ */
+$avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+$avatarStmt->execute(['id' => $_SESSION['user_id']]);
+$avatarRow = $avatarStmt->fetch();
+$_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
+
 
 // Current page (kept as becomeahost.php so the nav /
 // footer "BECOME A HOST" link stays highlighted while the
@@ -407,6 +420,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $_SESSION['host_application']['listing_id'] = $pdo->lastInsertId();
 
+        // This is a NEW listing — clear any leftover flags/fields from a
+        // previous "Add Another Space" run. Without this, `finalized`
+        // stays true from the last listing and host-step4.php silently
+        // skips flipping THIS listing's status from 'draft' to 'pending'.
+        unset($_SESSION['host_application']['finalized']);
+        unset($_SESSION['host_application']['cover_photo']);
+
         // Keep a few fields in session too, in case any later
         // step wants to read them without hitting the DB.
         $_SESSION["host_application"]["title"] = $title;
@@ -543,7 +563,7 @@ $amenityChecked = fn(string $key): string =>
                     onclick="toggleAccountMenu()"
                 >
                     <span class="account-circle">
-                        <img src="images/MyAccountIcon.png" alt="My Account">
+                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account">
                     </span>
                     <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>

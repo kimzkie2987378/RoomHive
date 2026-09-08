@@ -136,6 +136,10 @@ function appLink($id, $filter, $page) {
     return '?' . http_build_query(['filter' => $filter, 'page' => $page, 'id' => $id]);
 }
 
+function eyeLink($id, $filter, $page) {
+    return 'listingapplicationeye.php?' . http_build_query(['filter' => $filter, 'page' => $page, 'id' => $id]);
+}
+
 /* ---------- Inline icon helper (same set as admin.php) ---------- */
 function icon($name, $class = '') {
     $icons = [
@@ -305,7 +309,7 @@ function emptyState($text) {
                                                 <span class="badge <?= statusBadgeClass($l['status']) ?>"><?= htmlspecialchars($l['status']) ?></span>
                                             </td>
                                             <td>
-                                                <a class="btn-view" href="<?= appLink($l['id'], $filter, $page) ?>" onclick="event.stopPropagation()" aria-label="View listing"><?= icon('eye') ?></a>
+                                                <a class="btn-view" href="<?= eyeLink($l['id'], $filter, $page) ?>" onclick="event.stopPropagation()" aria-label="View listing"><?= icon('eye') ?></a>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -337,7 +341,10 @@ function emptyState($text) {
                         <?php else: ?>
                             <div class="detail-header">
                                 <h2>Listing Details</h2>
-                                <a href="?<?= http_build_query(['filter'=>$filter,'page'=>$page]) ?>" class="icon-btn" aria-label="Close">✕</a>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <a href="<?= eyeLink($selected['id'], $filter, $page) ?>" class="btn-view" aria-label="View full application and photos"><?= icon('eye') ?></a>
+                                    <a href="?<?= http_build_query(['filter'=>$filter,'page'=>$page]) ?>" class="icon-btn" aria-label="Close">✕</a>
+                                </div>
                             </div>
 
                             <div class="detail-profile">

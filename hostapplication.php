@@ -321,7 +321,7 @@ function emptyState($text) {
                                                 <span class="badge <?= statusBadgeClass($a['status']) ?>"><?= htmlspecialchars($a['status']) ?></span>
                                             </td>
                                             <td>
-                                                <a class="btn-view" href="<?= appLink($a['id'], $filter, $page) ?>" onclick="event.stopPropagation()" aria-label="View application"><?= icon('eye') ?></a>
+                                                <a class="btn-view" href="hostapplicationeye.php?<?= http_build_query(['id' => $a['id'], 'filter' => $filter, 'page' => $page]) ?>" onclick="event.stopPropagation()" aria-label="View space details"><?= icon('eye') ?></a>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>

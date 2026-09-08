@@ -50,6 +50,18 @@ $isLoggedIn = (
 
 $userName = $_SESSION["user_name"] ?? "User";
 
+/*
+ * NAVBAR AVATAR
+ * $_SESSION['avatar_path'] is only set at login time, so if the
+ * user uploaded a new profile photo since then, re-check the DB
+ * so the navbar's account icon reflects it immediately instead
+ * of only after logging back in.
+ */
+$avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+$avatarStmt->execute(['id' => $_SESSION['user_id']]);
+$avatarRow = $avatarStmt->fetch();
+$_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
 
 // Current page
 $currentPage = "becomeahost.php";
@@ -163,6 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $fullName = trim($_POST["full_name"] ?? "");
     $email = trim($_POST["email"] ?? "");
     $phone = trim($_POST["phone"] ?? "");
+    $age = trim($_POST["age"] ?? "");
     $location = trim($_POST["location"] ?? "");
     $idType = trim($_POST["id_type"] ?? "");
     $idNumber = trim($_POST["id_number"] ?? "");
@@ -184,6 +197,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if ($phone === "") {
         $errors[] = "Please enter your phone number.";
+    }
+
+
+    // =====================================================
+    // AGE VALIDATION
+    // Must be a whole number, and must be 18+ to host.
+    // Anyone under 18 is blocked right here — no record is
+    // ever created for a minor's host application.
+    // =====================================================
+
+    if ($age === "" || !ctype_digit($age)) {
+
+        $errors[] = "Please enter a valid age.";
+
+    } elseif ((int) $age < 18) {
+
+        $errors[] = "You must be at least 18 years old to become a host.";
+
+    } elseif ((int) $age > 120) {
+
+        $errors[] = "Please enter a valid age.";
+
     }
 
 
@@ -248,11 +283,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (empty($errors)) {
 
     $updateStmt = $pdo->prepare(
-        "UPDATE users SET phone = :phone, location = :location WHERE id = :id"
+        "UPDATE users SET phone = :phone, location = :location, age = :age WHERE id = :id"
     );
     $updateStmt->execute([
         'phone'    => $phone,
         'location' => $location,
+        'age'      => (int) $age,
         'id'       => $_SESSION['user_id'],
     ]);
 
@@ -273,9 +309,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // needs as host_application_id when it creates the listing row.
     $stmt = $pdo->prepare(
         "INSERT INTO host_applications
-            (user_id, full_name, email, phone, location, id_type, id_number, id_file, status)
+            (user_id, full_name, email, phone, age, location, id_type, id_number, id_file, status)
          VALUES
-            (:user_id, :full_name, :email, :phone, :location, :id_type, :id_number, :id_file, 'pending')"
+            (:user_id, :full_name, :email, :phone, :age, :location, :id_type, :id_number, :id_file, 'pending')"
     );
 
     $stmt->execute([
@@ -283,6 +319,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         'full_name'  => $fullName,
         'email'      => $email,
         'phone'      => $phone,
+        'age'        => (int) $age,
         'location'   => $location,
         'id_type'    => $idType,
         'id_number'  => $idNumber,
@@ -295,6 +332,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         "full_name" => $fullName,
         "email"     => $email,
         "phone"     => $phone,
+        "age"       => (int) $age,
         "location"  => $location,
         "id_type"   => $idType,
         "id_number" => $idNumber,
@@ -404,7 +442,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     aria-expanded="false"
                 >
                     <span class="account-circle">
-                        <img src="images/MyAccountIcon.png" alt="My Account">
+                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account">
                     </span>
                     <span>MY PROFILE</span>
                     <span class="dropdown-caret">&#9662;</span>
@@ -749,6 +787,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         value="<?php echo htmlspecialchars($_POST["phone"] ?? ""); ?>"
                         required
                     >
+
+                </div>
+
+
+
+                <!-- AGE -->
+
+                <div class="input-group">
+
+                    <label for="age">
+
+                        Age
+
+                    </label>
+
+
+                    <input
+                        type="number"
+                        id="age"
+                        name="age"
+                        placeholder="Enter your age"
+                        min="18"
+                        max="120"
+                        value="<?php echo htmlspecialchars($_POST["age"] ?? ""); ?>"
+                        required
+                    >
+
+
+                    <small style="display:block; margin-top:6px; color:#777777; font-size:12px;">
+
+                        You must be 18 or older to become a host.
+
+                    </small>
 
                 </div>
 

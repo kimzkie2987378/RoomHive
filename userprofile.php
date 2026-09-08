@@ -26,7 +26,7 @@ if (!isset($_SESSION['user_id'])) {
    too (set on becomeahost.php), so we pull them for real.
 ----------------------------------------------------- */
 $stmt = $pdo->prepare(
-    "SELECT id, name, email, phone, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
+    "SELECT id, name, email, phone, age, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
 $stmt->execute(['id' => $_SESSION['user_id']]);
 $dbUser = $stmt->fetch();
@@ -53,12 +53,19 @@ if ($dbUser['is_host']) {
     exit;
 }
 
+/* Keep the navbar's account icon in sync too — it's a
+   separate <img> from the big profile photo below, so both
+   need the same source of truth. */
+$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
+$navAvatar = $_SESSION['avatar_path'] ?? 'images/default-avatar.png';
+
 $user = [
     'name'          => $dbUser['name'],
     'avatar'        => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : 'images/default-avatar.png',
     'location'      => $dbUser['location'] ?? '',
     'email'         => $dbUser['email'],
     'phone'         => $dbUser['phone'] ?? '',
+    'age'           => $dbUser['age'] ?? '',
     'member_since'  => date('F Y', strtotime($dbUser['created_at'])),
     'about'         => '', // no column in `users` yet
 ];
@@ -179,11 +186,44 @@ foreach ($membershipTransactions as $txn) {
 
 /* -----------------------------------------------------
    COMBINED TOTALS
-   "This Week" and "All Time" fold together real bookings
-   and paid Hive Club membership transactions.
+   "This Week" folds together real bookings and paid Hive
+   Club membership transactions. "All Time" is kept for the
+   stats row below (Total Spent All Time).
 ----------------------------------------------------- */
 $total_spent_this_week = number_format($bookings_spent_this_week + $membership_spent_this_week, 2);
 $total_spent_all_time  = number_format($bookings_spent_all_time + $membership_spent_all_time, 2);
+
+/* -----------------------------------------------------
+   PENDING TO PAY
+   Bookings still sitting at status = 'pending' are waiting
+   on the host to accept or reject them — nothing has been
+   charged yet, so this is what the user still owes if/once
+   each one gets accepted. Any Hive Club transaction stuck
+   at payment_status = 'pending' counts too.
+----------------------------------------------------- */
+$pendingBookingsStmt = $pdo->prepare(
+    "SELECT total
+     FROM bookings
+     WHERE user_id = :id AND status = 'pending'"
+);
+$pendingBookingsStmt->execute(['id' => $_SESSION['user_id']]);
+$bookings_pending_to_pay = array_sum(array_map(
+    'floatval',
+    array_column($pendingBookingsStmt->fetchAll(), 'total')
+));
+
+$pendingTxnStmt = $pdo->prepare(
+    "SELECT amount
+     FROM hiveclub_transactions
+     WHERE user_id = :id AND payment_status = 'pending'"
+);
+$pendingTxnStmt->execute(['id' => $_SESSION['user_id']]);
+$membership_pending_to_pay = array_sum(array_map(
+    'floatval',
+    array_column($pendingTxnStmt->fetchAll(), 'amount')
+));
+
+$total_pending_to_pay = number_format($bookings_pending_to_pay + $membership_pending_to_pay, 2);
 
 /* -----------------------------------------------------
    PAYMENT METHODS
@@ -280,7 +320,7 @@ function h($value) {
                 aria-expanded="false"
             >
                 <span class="account-circle">
-                    <img src="images/MyAccountIcon.png" alt="My Account">
+                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
                 </span>
                 <span>MY PROFILE</span>
                 <span class="dropdown-caret">&#9662;</span>
@@ -408,6 +448,9 @@ function h($value) {
           <?php endif; ?>
           <li><img src="images/emailicon-userprofile.png" alt=""><?php echo h($user['email']); ?></li>
           <li><img src="images/phoneicon-userprofile.png" alt=""><?php echo $user['phone'] !== '' ? h($user['phone']) : ''; ?></li>
+          <?php if ($user['age'] !== ''): ?>
+            <li><img src="images/calendaricon-userprofile.png" alt=""><?php echo h($user['age']); ?> years old</li>
+          <?php endif; ?>
           <li><img src="images/calendaricon-userprofile.png" alt="">Member since <?php echo h($user['member_since']); ?></li>
         </ul>
       </div>
@@ -497,22 +540,22 @@ function h($value) {
             <button
               type="button"
               class="up-summary-tab"
-              data-range="all"
+              data-range="pending"
               style="flex:1; padding:6px 10px; border:1px solid var(--up-border); border-radius:8px; background:#ffffff; color:#777777; font-size:11px; font-weight:700; cursor:pointer;"
             >
-              All Time
+              Pending to Pay
             </button>
           </div>
 
           <div class="up-payment-summary-body">
             <div>
-              <span class="up-muted">Total Spent</span>
+              <span class="up-muted up-summary-label">Total Spent</span>
               <strong>
                 &#8369;
                 <span
                   class="up-summary-amount"
                   data-week="<?php echo h($total_spent_this_week); ?>"
-                  data-all="<?php echo h($total_spent_all_time); ?>"
+                  data-pending="<?php echo h($total_pending_to_pay); ?>"
                 ><?php echo h($total_spent_this_week); ?></span>
               </strong>
               <span class="up-muted up-summary-range-label">Last 7 Days</span>
@@ -690,9 +733,9 @@ function h($value) {
 <script src="javaScript.js"></script>
 
 <!-- =========================================================
-     PAYMENT SUMMARY — WEEK / ALL TIME TOGGLE
+     PAYMENT SUMMARY — WEEK / PENDING TO PAY TOGGLE
      Both figures are computed server-side in PHP already
-     (bookings + paid hiveclub_transactions); this just swaps
+     (bookings + hiveclub_transactions); this just swaps
      which one is displayed without a page reload.
 ========================================================= -->
 <script>
@@ -701,6 +744,7 @@ function h($value) {
     const tabs = document.querySelectorAll('.up-summary-tab');
     const amountEl = document.querySelector('.up-summary-amount');
     const rangeLabel = document.querySelector('.up-summary-range-label');
+    const amountLabel = document.querySelector('.up-summary-label');
 
     if (!tabs.length || !amountEl) {
         return;
@@ -722,12 +766,14 @@ function h($value) {
 
             const range = tab.getAttribute('data-range');
 
-            if (range === 'all') {
-                amountEl.textContent = amountEl.getAttribute('data-all');
-                if (rangeLabel) rangeLabel.textContent = 'All Time';
+            if (range === 'pending') {
+                amountEl.textContent = amountEl.getAttribute('data-pending');
+                if (rangeLabel) rangeLabel.textContent = 'Awaiting Host Approval';
+                if (amountLabel) amountLabel.textContent = 'Pending to Pay';
             } else {
                 amountEl.textContent = amountEl.getAttribute('data-week');
                 if (rangeLabel) rangeLabel.textContent = 'Last 7 Days';
+                if (amountLabel) amountLabel.textContent = 'Total Spent';
             }
         });
 
@@ -747,6 +793,7 @@ function h($value) {
     const photoButton = document.getElementById('photoButton');
     const fileInput    = document.getElementById('avatarFileInput');
     const avatarImg    = document.getElementById('profileAvatarImg');
+    const navAvatarImg = document.getElementById('navAccountAvatarImg');
 
     if (!photoButton || !fileInput || !avatarImg) return;
 
@@ -788,6 +835,9 @@ function h($value) {
         .then(function (data) {
             if (data.success) {
                 avatarImg.src = data.avatar_url;
+                // Keep the navbar's account icon in sync too — it's a
+                // separate <img> from the profile photo above.
+                if (navAvatarImg) navAvatarImg.src = data.avatar_url;
             } else {
                 avatarImg.src = previousSrc;
                 alert(data.error || 'Could not update your profile photo.');

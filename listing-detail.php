@@ -122,6 +122,31 @@ $isBookable = (bool) $availabilityStmt->fetchColumn();
 
 $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
 
+/* =========================
+   MY APPLICATION STATUS
+   If the logged-in visitor has ever applied (booked/sent an
+   inquiry) for this specific listing, pull the status of
+   their most recent application so we can show them where
+   it stands with the host (pending / accepted / rejected).
+========================== */
+$myApplicationStatus = null;
+
+if ($isLoggedIn && !$isOwnListing) {
+    $myApplicationStmt = $pdo->prepare(
+        "SELECT status
+         FROM bookings
+         WHERE listing_id = :listing_id AND user_id = :user_id
+         ORDER BY booked_at DESC
+         LIMIT 1"
+    );
+    $myApplicationStmt->execute([
+        'listing_id' => $listingId,
+        'user_id'    => $_SESSION['user_id'],
+    ]);
+    $statusResult = $myApplicationStmt->fetchColumn();
+    $myApplicationStatus = $statusResult !== false ? $statusResult : null;
+}
+
 /* Assemble into the shape the template below expects */
 $listing = [
     'id'             => (int) $listingRow['id'],
@@ -252,6 +277,42 @@ $galleryCount = count($listing['gallery']);
     border: 1px solid #f7941d;
     color: #8a5a10;
     font-size: 0.9rem;
+}
+
+.rd-application-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    width: fit-content;
+}
+
+.rd-application-status-pending {
+    background: #fff4e0;
+    color: #8a5a10;
+    border: 1px solid #f7941d;
+}
+
+.rd-application-status-confirmed {
+    background: #e6f6ec;
+    color: #1e7a3d;
+    border: 1px solid #2ecc71;
+}
+
+.rd-application-status-rejected {
+    background: #fdecec;
+    color: #a3282e;
+    border: 1px solid #e14b4b;
+}
+
+.rd-application-status-cancelled {
+    background: #f0f0f0;
+    color: #666666;
+    border: 1px solid #cccccc;
 }
 </style>
 
@@ -392,6 +453,20 @@ $galleryCount = count($listing['gallery']);
 
             </div>
 
+            <?php if ($myApplicationStatus): ?>
+                <div class="rd-application-status rd-application-status-<?= htmlspecialchars($myApplicationStatus, ENT_QUOTES, 'UTF-8') ?>">
+                    <?php if ($myApplicationStatus === 'confirmed'): ?>
+                        &#9989; Accepted by Host &mdash; you're good to go!
+                    <?php elseif ($myApplicationStatus === 'rejected'): ?>
+                        &#10060; Not Accepted by Host
+                    <?php elseif ($myApplicationStatus === 'cancelled'): ?>
+                        Application Cancelled
+                    <?php else: ?>
+                        &#8987; Application Pending Host Approval
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
             <!-- AMENITIES ROW -->
 
             <div class="rd-amenities">
@@ -518,14 +593,14 @@ $galleryCount = count($listing['gallery']);
 
                         <div class="rd-date-field">
                             <span>Check-in</span>
-                            <input type="date" id="rd-checkin" min="<?= date('Y-m-d') ?>">
+                            <input type="date" id="rd-checkin" name="checkin_date" form="rd-inquiry-form" min="<?= date('Y-m-d') ?>" required>
                         </div>
 
                         <span class="rd-date-sep">&ndash;</span>
 
                         <div class="rd-date-field">
                             <span>Check-out</span>
-                            <input type="date" id="rd-checkout" min="<?= date('Y-m-d', strtotime('+1 day')) ?>">
+                            <input type="date" id="rd-checkout" name="checkout_date" form="rd-inquiry-form" min="<?= date('Y-m-d', strtotime('+1 day')) ?>" required>
                         </div>
 
                     </div>
@@ -536,11 +611,11 @@ $galleryCount = count($listing['gallery']);
 
                     <label for="rd-guests-select">Guests</label>
 
-                    <select id="rd-guests-select">
-                        <option>1 Guest</option>
-                        <option>2 Guests</option>
-                        <option>3 Guests</option>
-                        <option>4+ Guests</option>
+                    <select id="rd-guests-select" name="guests" form="rd-inquiry-form">
+                        <option value="1">1 Guest</option>
+                        <option value="2">2 Guests</option>
+                        <option value="3">3 Guests</option>
+                        <option value="4+">4+ Guests</option>
                     </select>
 
                 </div>
@@ -568,7 +643,7 @@ $galleryCount = count($listing['gallery']);
 
                 <?php else: ?>
 
-                    <form action="book.php" method="POST">
+                    <form id="rd-inquiry-form" action="book.php" method="POST">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button type="submit" class="rd-btn rd-btn-primary">
                             Send Inquiry
