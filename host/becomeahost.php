@@ -20,6 +20,7 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
     exit();
 
 }
+
 /*
  * If the user is already a host, don't show them the
  * "Become a Host" form again — send them straight to
@@ -71,7 +72,7 @@ $currentPage = "/webprogg/host/becomeahost.php";
 // =========================================================
 
 $navigation = [
-    "HOME" => "/webprogg/user/usershome.php",
+    "HOME" => "/webprogg/index.php",
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => "/webprogg/host/becomeahost.php",
@@ -244,6 +245,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     // Warn if this email or phone is already tied to a
     // different user's host application. Checked separately
     // so the user gets a specific warning for each field.
+    // Only blocks against applications that are still ACTIVE
+    // (pending/approved) — a rejected or otherwise dead
+    // application shouldn't permanently squat on an email
+    // or phone number.
     // =====================================================
 
     if ($email !== "" && filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -251,6 +256,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $emailCheckStmt = $pdo->prepare(
             "SELECT id FROM host_applications
              WHERE email = :email AND user_id != :user_id
+               AND status IN ('pending', 'approved')
              LIMIT 1"
         );
 
@@ -271,6 +277,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $phoneCheckStmt = $pdo->prepare(
             "SELECT id FROM host_applications
              WHERE phone = :phone AND user_id != :user_id
+               AND status IN ('pending', 'approved')
              LIMIT 1"
         );
 
@@ -341,41 +348,161 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         'id'       => $_SESSION['user_id'],
     ]);
 
-    // Save uploaded ID first, so we have the path ready for the insert
-    $uploadDirectory = "uploads/host_ids/";
+    // =================================================
+    // SAVE UPLOADED ID
+    // -------------------------------------------------
+    // Use an ABSOLUTE FILESYSTEM path (via DOCUMENT_ROOT)
+    // to actually write the file, so it's not dependent
+    // on whatever the script's current working directory
+    // happens to be.
+    //
+    // Store an ABSOLUTE WEB path (starting with /webprogg/...)
+    // in the database instead of a relative one. A relative
+    // path like "uploads/host_ids/x.jpg" only resolves
+    // correctly when viewed from a page in the same folder
+    // as becomeahost.php — it breaks the moment it's
+    // rendered from a different directory, like
+    // /webprogg/admin/hostapplicationeye.php, because the
+    // browser resolves relative src attributes against the
+    // CURRENT page's URL, not the upload script's location.
+    // =================================================
 
-    if (!is_dir($uploadDirectory)) {
-        mkdir($uploadDirectory, 0755, true);
+    $uploadDirFilesystem = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/host_ids/';
+    $uploadDirWeb        = '/webprogg/uploads/host_ids/';
+
+    if (!is_dir($uploadDirFilesystem)) {
+        mkdir($uploadDirFilesystem, 0755, true);
     }
 
     $fileExtension = strtolower(pathinfo($file["name"], PATHINFO_EXTENSION));
     $newFileName = "host_" . time() . "_" . uniqid() . "." . $fileExtension;
-    $uploadPath = $uploadDirectory . $newFileName;
+
+    $uploadPath = $uploadDirFilesystem . $newFileName; // filesystem write target
+    $webPath    = $uploadDirWeb . $newFileName;         // what gets stored in the DB / used in <img src>
 
     move_uploaded_file($file["tmp_name"], $uploadPath);
 
-    // Insert into host_applications — this is what host-step2.php
-    // needs as host_application_id when it creates the listing row.
-    $stmt = $pdo->prepare(
-        "INSERT INTO host_applications
-            (user_id, full_name, email, phone, age, location, id_type, id_number, id_file, status)
-         VALUES
-            (:user_id, :full_name, :email, :phone, :age, :location, :id_type, :id_number, :id_file, 'pending')"
-    );
+    // =====================================================
+    // FIND EXISTING APPLICATION FOR THIS USER, IF ANY
+    // -----------------------------------------------------
+    // Step 2's "BACK" link sends the user right back to this
+    // form. If they fill it out and hit "Next step" again,
+    // this handler runs a second time — without this check
+    // that used to mean a second INSERT and a duplicate row
+    // in the admin's Host Applications list for the same
+    // person. Reuse the existing row (session first, DB as a
+    // fallback for a lost session) instead of inserting again.
+    //
+    // Fallback also matches 'approved' now, not just
+    // 'pending' — once an application is approved, the old
+    // pending-only lookup stopped finding it, so a second
+    // submission (e.g. via "Add Another Space" -> BACK) would
+    // insert a brand new duplicate row instead of updating
+    // the existing approved one.
+    // =====================================================
 
-    $stmt->execute([
-        'user_id'    => $_SESSION['user_id'],
-        'full_name'  => $fullName,
-        'email'      => $email,
-        'phone'      => $phone,
-        'age'        => (int) $age,
-        'location'   => $location,
-        'id_type'    => $idType,
-        'id_number'  => $idNumber,
-        'id_file'    => $uploadPath,
-    ]);
+    $existingApplicationId = $_SESSION['host_application_id'] ?? null;
 
-    $_SESSION['host_application_id'] = $pdo->lastInsertId();
+    if ($existingApplicationId === null) {
+
+        $existingStmt = $pdo->prepare(
+            "SELECT id, id_file FROM host_applications
+             WHERE user_id = :user_id AND status IN ('pending', 'approved')
+             ORDER BY id DESC
+             LIMIT 1"
+        );
+        $existingStmt->execute(['user_id' => $_SESSION['user_id']]);
+        $existingRow = $existingStmt->fetch();
+
+        if ($existingRow) {
+            $existingApplicationId = $existingRow['id'];
+        }
+
+    } else {
+
+        $existingStmt = $pdo->prepare(
+            "SELECT id_file FROM host_applications WHERE id = :id LIMIT 1"
+        );
+        $existingStmt->execute(['id' => $existingApplicationId]);
+        $existingRow = $existingStmt->fetch();
+
+    }
+
+    if ($existingApplicationId !== null && $existingRow) {
+
+        // Update the application already on file instead of
+        // creating a duplicate.
+        $stmt = $pdo->prepare(
+            "UPDATE host_applications
+    SET full_name = :full_name,
+        email = :email,
+        phone = :phone,
+        age = :age,
+        location = :location,
+        id_type = :id_type,
+        id_number = :id_number,
+        id_file = :id_file,
+        status = CASE
+                    WHEN status = 'rejected' THEN 'pending'
+                    ELSE status
+                 END,
+        updated_at = NOW()
+ WHERE id = :id"
+        );
+
+        $stmt->execute([
+            'full_name'  => $fullName,
+            'email'      => $email,
+            'phone'      => $phone,
+            'age'        => (int) $age,
+            'location'   => $location,
+            'id_type'    => $idType,
+            'id_number'  => $idNumber,
+            'id_file'    => $webPath,
+            'id'         => $existingApplicationId,
+        ]);
+
+        // Old ID image has been replaced — remove it so
+        // uploads/host_ids/ doesn't accumulate orphaned files.
+        // id_file in the DB is a WEB path, so translate it back
+        // to a filesystem path before checking/deleting it.
+        if (!empty($existingRow['id_file']) && $existingRow['id_file'] !== $webPath) {
+            $oldFilesystemPath = $_SERVER['DOCUMENT_ROOT'] . $existingRow['id_file'];
+            if (file_exists($oldFilesystemPath)) {
+                unlink($oldFilesystemPath);
+            }
+        }
+
+        $_SESSION['host_application_id'] = $existingApplicationId;
+
+    } else {
+
+        // No application on record yet for this user — first
+        // time through step 1, so insert a new row. This is
+        // what host-step2.php needs as host_application_id
+        // when it creates the listing row.
+        $stmt = $pdo->prepare(
+            "INSERT INTO host_applications
+                (user_id, full_name, email, phone, age, location, id_type, id_number, id_file, status)
+             VALUES
+                (:user_id, :full_name, :email, :phone, :age, :location, :id_type, :id_number, :id_file, 'pending')"
+        );
+
+        $stmt->execute([
+            'user_id'    => $_SESSION['user_id'],
+            'full_name'  => $fullName,
+            'email'      => $email,
+            'phone'      => $phone,
+            'age'        => (int) $age,
+            'location'   => $location,
+            'id_type'    => $idType,
+            'id_number'  => $idNumber,
+            'id_file'    => $webPath,
+        ]);
+
+        $_SESSION['host_application_id'] = $pdo->lastInsertId();
+
+    }
 
     $_SESSION["host_application"] = [
         "full_name" => $fullName,
@@ -385,7 +512,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         "location"  => $location,
         "id_type"   => $idType,
         "id_number" => $idNumber,
-        "id_file"   => $uploadPath,
+        "id_file"   => $webPath,
     ];
 
     // Step 1 done — on to "Add Your Space".
@@ -535,7 +662,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <!-- LOGO -->
 
-    <a
+<a    
         href="/webprogg/user/usershome.php"
         class="logo"
     >
@@ -554,7 +681,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <?php foreach ($navigation as $name => $link): ?>
 
-            <a
+<a            
                 href="<?php echo htmlspecialchars($link); ?>"
                 class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
             >
@@ -612,7 +739,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <!-- LIST YOUR SPACE -->
 
-            <a
+<a            
                 href="/webprogg/host/becomeahost.php"
                 class="list-space"
             >
@@ -1247,7 +1374,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <?php foreach ($listingCategories as $category => $type): ?>
 
-                <a
+           <a                
                     href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>"
                 >
 
@@ -1278,8 +1405,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <?php foreach ($quickLinks as $name => $link): ?>
 
-                <a
-                    href="<?php echo htmlspecialchars($link); ?>"
+                <a                    href="<?php echo htmlspecialchars($link); ?>"
                     class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
                 >
 

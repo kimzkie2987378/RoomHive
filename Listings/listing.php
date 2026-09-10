@@ -1,9 +1,22 @@
-    <?php
+<?php
     /* =========================
     listing.php
     ========================== */
     session_start();
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+
+    /* =========================
+    STALE BOOKING HOLD CLEANUP
+    Free up any 'pending' bookings that were never paid within
+    the hold window (10 minutes), so those listings reappear
+    here automatically. Paid holds and confirmed bookings are
+    left untouched — see booking_helpers.php for the full rule.
+    Must run BEFORE the $allListings query below, since that
+    query is what decides which listings currently count as
+    "taken".
+    ========================== */
+    require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/booking_helpers.php';
+    roomhive_expire_stale_bookings($pdo);
 
     /* =========================
     NEGROS ORIENTAL LOCATION DATA
@@ -88,31 +101,44 @@
     listing_photos for the cover image). Only approved
     listings with no active booking show up here — the
     moment a listing gets booked, it disappears from this
-    page automatically.
+    page automatically. Stale unpaid holds were already
+    swept above, so this NOT EXISTS check now only matches
+    real (paid-pending or confirmed) holds.
     ========================== */
 
     $listingsStmt = $pdo->query(
-        "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
-                l.bedrooms, l.amenities, l.created_at,
-                p.photo_path AS cover_photo
-        FROM listings l
-        LEFT JOIN listing_photos p
-                ON p.listing_id = l.id AND p.photo_type = 'cover'
-        WHERE l.status = 'approved'
-        AND NOT EXISTS (
-            SELECT 1 FROM bookings b
-            WHERE b.listing_id = l.id
-                AND b.status IN ('pending', 'confirmed')
-        )
-        ORDER BY l.created_at DESC"
-    );
-
+    "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
+            l.bedrooms, l.amenities, l.created_at,
+            p.photo_path AS cover_photo
+    FROM listings l
+    LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+    WHERE l.status = 'approved'
+    AND NOT EXISTS (
+        SELECT 1 FROM bookings b
+        WHERE b.listing_id = l.id
+            AND b.status = 'pending'
+    )
+    ORDER BY l.created_at DESC"
+);
     $allListings = array_map(function ($row) {
         return [
             'id'             => (int) $row['id'],
             'title'          => $row['title'],
+            /*
+             * FIX: cover photos are written to disk by
+             * host-step3.php using an ABSOLUTE path built from
+             * $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/listing_photos/cover/'
+             * — there is no "host/" segment in that real
+             * directory. The old code here hardcoded
+             * '/webprogg/host/uploads/listing_photos/cover/',
+             * which pointed at a folder that doesn't exist, so
+             * every cover photo 404'd on this page (both the
+             * "Explore More Spaces" carousel and the main
+             * listing grid).
+             */
             'image' => !empty($row['cover_photo'])
-    ? '/webprogg/host/uploads/listing_photos/cover/' . basename($row['cover_photo'])
+    ? '/webprogg/uploads/listing_photos/cover/' . basename($row['cover_photo'])
     : '/webprogg/images/ListingPlaceholder.png',
             'location'       => $row['location'],
             'location_label' => $row['location'],

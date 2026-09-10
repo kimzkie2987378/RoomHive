@@ -3,20 +3,7 @@
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
-/*
- * =========================================================
- * FIXED ADMIN ACCOUNT
- * =========================================================
- * One hardcoded admin login. If the email + password typed into
- * this same form match these, the person is signed in as admin
- * instead of a regular user — no separate admin table needed.
- *
- * The password below is stored as a hash (never store it in plain
- * text); this hash is for the placeholder password 'ChangeMe123!'.
- * To use your own password, generate a new hash once and paste it
- * in below:
- *   echo password_hash('your-new-password', PASSWORD_DEFAULT);
- */
+
 define('ADMIN_NAME', 'Admin User');
 define('ADMIN_EMAIL', 'admin@roomhive.com');
 define('ADMIN_PASSWORD_HASH', '$2b$10$hK5yT40UWo1rEvszXfutDuzUeCMo.RzqJKhZIte2YvnjOzBd.SCE2');

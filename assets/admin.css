@@ -1212,6 +1212,123 @@ button {
 }
 
 /* =========================================================
+   LISTING ACTION MENU
+   ========================================================= */
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
+}
+
+.action-divider {
+  width: 1px;
+  height: 25px;
+  background: var(--border);
+  display: block;
+}
+
+.btn-more {
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.btn-more:hover {
+  background: var(--orange-light);
+  border-color: var(--orange-deep);
+  color: var(--orange-deep);
+}
+
+.btn-more .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Dropdown container */
+.action-menu {
+  position: relative;
+}
+
+/* Dropdown */
+.action-dropdown {
+  display: none;
+  position: fixed; /* was: absolute; top: calc(100% + 7px); right: 0; */
+  min-width: 145px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 24px rgba(31, 42, 68, 0.12),
+    0 2px 6px rgba(31, 42, 68, 0.06);
+  padding: 6px;
+  z-index: 1000;
+}
+
+.action-dropdown.show {
+  display: block;
+}
+
+/* Dropdown buttons */
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-item .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.dropdown-item:hover {
+  background: #f8f6f1;
+}
+
+.accept-item {
+  color: var(--green);
+}
+
+.accept-item:hover {
+  background: var(--green-bg);
+}
+
+.reject-item {
+  color: var(--red);
+}
+
+.reject-item:hover {
+  background: var(--red-bg);
+}
+
+.delete-item {
+  color: #6b7280;
+}
+
+.delete-item:hover {
+  background: #f3f4f6;
+  color: var(--red);
+}
+
+/* =========================================================
    RESPONSIVE
    ========================================================= */
 @media (max-width: 1200px) {

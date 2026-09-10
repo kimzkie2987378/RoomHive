@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
 /* ---------- Sidebar navigation ---------- */
 $navItems = [
     ['label' => 'Dashboard',          'icon' => 'home',      'active' => true, 'href' => '/webprogg/admin/admin.php'],
-    ['label' => 'Users',              'icon' => 'users',     'href' => '#'],
+    ['label' => 'Users',              'icon' => 'users',     'href' => '/webprogg/admin/adminusers.php'],
     ['label' => 'Bookings',           'icon' => 'calendar',  'href' => '#'],
     ['label' => 'Listings',           'icon' => 'listing',   'href' => '#'],
     ['label' => 'Listings Application', 'icon' => 'clipboard', 'href' => '/webprogg/admin/listingapplication.php'],

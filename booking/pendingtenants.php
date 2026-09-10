@@ -90,6 +90,29 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   Uploaded photo_path / avatar_path values for OTHER users'
+   photos (listing cover + tenant avatar here) are saved
+   relative to /webprogg — e.g. "uploads/listings/abc.jpg".
+   Printed as-is, the browser resolves that against the
+   CURRENT page's folder instead of the site root, which is
+   why these break on a nested page like /booking/, even
+   though the logged-in host's OWN avatar (already stored as
+   a full "/webprogg/..." path by uploadavatar.php) works
+   fine. This forces every photo path back to an absolute,
+   site-root path so it loads correctly from any page.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^(https?://|/)#i', $path)) {
+        return $path; // already absolute — leave it alone
+    }
+    return '/webprogg/' . ltrim($path, '/');
+}
+
 /* Same "Not specified" fallback booking-details.php uses for these
    optional fields (a host's own "List Now" booking never has them). */
 function pt_date_or_unspecified($value) {
@@ -270,10 +293,10 @@ $hp_css_version = '3';
             data-booking-id="<?php echo h($app['booking_id']); ?>"
             data-listing-title="<?php echo h($app['listing_title']); ?>"
             data-listing-location="<?php echo h($app['listing_location']); ?>"
-            data-listing-photo="<?php echo h($app['cover_photo'] ?: '/webprogg/images/listing-placeholder.jpg'); ?>"
+            data-listing-photo="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/listing-placeholder.jpg')); ?>"
             data-tenant-name="<?php echo h($app['tenant_name']); ?>"
             data-tenant-email="<?php echo h($app['tenant_email']); ?>"
-            data-tenant-avatar="<?php echo h($app['tenant_avatar'] ?: '/webprogg/images/default-avatar.png'); ?>"
+            data-tenant-avatar="<?php echo h(resolve_photo($app['tenant_avatar'], '/webprogg/images/default-avatar.png')); ?>"
             data-checkin="<?php echo h(pt_date_or_unspecified($app['checkin_date'])); ?>"
             data-checkout="<?php echo h(pt_date_or_unspecified($app['checkout_date'])); ?>"
             data-guests="<?php echo h($app['guests'] !== null && $app['guests'] !== '' ? $app['guests'] : 'Not specified'); ?>"
@@ -286,7 +309,7 @@ $hp_css_version = '3';
 
           <img
             class="pt-listing-photo"
-            src="<?php echo h($app['cover_photo'] ?: '/webprogg/images/listing-placeholder.jpg'); ?>"
+            src="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/listing-placeholder.jpg')); ?>"
             alt="<?php echo h($app['listing_title']); ?>"
           >
 
@@ -300,7 +323,7 @@ $hp_css_version = '3';
             <div class="pt-tenant-row">
               <img
                 class="pt-tenant-avatar"
-                src="<?php echo h($app['tenant_avatar'] ?: '/webprogg/images/default-avatar.png'); ?>"
+                src="<?php echo h(resolve_photo($app['tenant_avatar'], '/webprogg/images/default-avatar.png')); ?>"
                 alt="<?php echo h($app['tenant_name']); ?>"
               >
               <div>

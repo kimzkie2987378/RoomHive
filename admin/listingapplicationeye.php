@@ -147,6 +147,35 @@ function statusBadgeClass($status) {
 
 $statusLabel = ucfirst($listing['status']);
 
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   listing_photos.photo_path is saved relative to /webprogg —
+   e.g. "uploads/listing_photos/cover/abc.jpg" or
+   "uploads/listing_photos/additional/xyz.jpg". Printed as-is
+   (as this file previously did, with no fix applied at all),
+   the browser resolves that against the CURRENT page's folder
+   (/webprogg/admin/) instead of the site root, so both the
+   cover photo and every gallery thumbnail 404'd here — even
+   though the same photo_path values render fine on pages that
+   already apply this fix (mylistings.php, pendingtenants.php,
+   listingpayment.php, booking-details.php, hostprofile.php).
+   This forces every photo path back to an absolute, site-root
+   path so it loads correctly from any page.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^https?://#i', $path)) {
+        return $path; // full remote URL — leave it alone
+    }
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
+}
+
 /* ---------- Inline icon helper (same set as listingapplication.php) ---------- */
 function icon($name, $class = '') {
     $icons = [
@@ -548,10 +577,11 @@ function icon($name, $class = '') {
                     <h3><?= icon('image') ?> Uploaded Photos</h3>
 
                     <?php if (!empty($coverPhoto)): ?>
+                        <?php $resolvedCover = resolve_photo($coverPhoto, ''); ?>
                         <div class="eye-cover-wrap">
                             <span class="eye-cover-label">Cover Photo</span>
-                            <img class="eye-cover-photo" src="<?= htmlspecialchars($coverPhoto) ?>" alt="Cover photo for <?= htmlspecialchars($listing['title']) ?>">
-                            <a class="eye-cover-expand" href="<?= htmlspecialchars($coverPhoto) ?>" target="_blank" rel="noopener">
+                            <img class="eye-cover-photo" src="<?= htmlspecialchars($resolvedCover) ?>" alt="Cover photo for <?= htmlspecialchars($listing['title']) ?>">
+                            <a class="eye-cover-expand" href="<?= htmlspecialchars($resolvedCover) ?>" target="_blank" rel="noopener">
                                 <?= icon('expand') ?> Full Size
                             </a>
                         </div>
@@ -569,8 +599,9 @@ function icon($name, $class = '') {
                     <?php if (!empty($additionalPhotos)): ?>
                         <div class="eye-photo-grid">
                             <?php foreach ($additionalPhotos as $i => $photoPath): ?>
-                                <a class="eye-photo-thumb" href="<?= htmlspecialchars($photoPath) ?>" target="_blank" rel="noopener">
-                                    <img src="<?= htmlspecialchars($photoPath) ?>" alt="Photo <?= $i + 1 ?> for <?= htmlspecialchars($listing['title']) ?>">
+                                <?php $resolvedPhoto = resolve_photo($photoPath, ''); ?>
+                                <a class="eye-photo-thumb" href="<?= htmlspecialchars($resolvedPhoto) ?>" target="_blank" rel="noopener">
+                                    <img src="<?= htmlspecialchars($resolvedPhoto) ?>" alt="Photo <?= $i + 1 ?> for <?= htmlspecialchars($listing['title']) ?>">
                                 </a>
                             <?php endforeach; ?>
                         </div>

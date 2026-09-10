@@ -85,6 +85,33 @@ $listingsStmt->execute(['id' => $_SESSION['user_id']]);
 $listings = $listingsStmt->fetchAll();
 
 /* -----------------------------------------------------
+   PER-LISTING BOOKINGS COUNT
+   Same rule as hostprofile.php: confirmed/completed only
+   (pending is still just an application, not a real booking).
+   Views and Rating still have no backing table/column, so
+   those stay as "—" for now.
+----------------------------------------------------- */
+$listingBookingCounts = [];
+foreach ($listings as $l) {
+    $listingBookingCounts[$l['id']] = 0;
+}
+
+if (!empty($listings)) {
+    $bookingCountsStmt = $pdo->prepare(
+        "SELECT b.listing_id, COUNT(*) AS booking_count
+         FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE l.user_id = :id
+           AND b.status IN ('confirmed', 'completed')
+         GROUP BY b.listing_id"
+    );
+    $bookingCountsStmt->execute(['id' => $_SESSION['user_id']]);
+    foreach ($bookingCountsStmt->fetchAll() as $row) {
+        $listingBookingCounts[(int) $row['listing_id']] = (int) $row['booking_count'];
+    }
+}
+
+/* -----------------------------------------------------
    PENDING TENANTS COUNT
    Same badge count as hostprofile.php's sidebar — how many
    tenant applications across all listings are still sitting
@@ -102,6 +129,41 @@ $pending_tenants_count = (int) $pendingTenantsCountStmt->fetchColumn();
 /* Small helper so we're not repeating htmlspecialchars() everywhere */
 function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   Uploaded photo_path values (listing_photos.photo_path) are
+   saved relative to /webprogg — e.g. "uploads/listings/abc.jpg".
+   Printed as-is, the browser resolves that against the CURRENT
+   page's folder instead of the site root, which is why cover
+   photos 404 here even though the host's own avatar (already
+   stored as a full "/webprogg/..." path by uploadavatar.php)
+   works fine.
+
+   FIX: the old version trusted ANY leading "/" as proof the
+   path was already a correct, absolute site-root path. But
+   some rows were saved as "/uploads/listing_photos/xyz.jpg"
+   (leading slash, no "webprogg" segment) — that got returned
+   untouched, so the browser looked for it at the actual server
+   root instead of inside /webprogg/, and the image 404'd. Now
+   every path is normalized — strip any leading slash and any
+   accidental leading "webprogg/" segment — and then rebuilt as
+   "/webprogg/..." every single time, so it comes out correct
+   no matter how it was originally saved.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^https?://#i', $path)) {
+        return $path; // full remote URL — leave it alone
+    }
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
 }
 
 /* Maps a listings.status value to a status-pill class (same map as hostprofile.php) */
@@ -178,7 +240,7 @@ $hp_css_version = '3';
                 aria-expanded="false"
             >
                 <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account">
+                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
                 </span>
                 <span>MY ACCOUNT</span>
                 <span class="dropdown-caret">&#9662;</span>
@@ -205,7 +267,13 @@ $hp_css_version = '3';
   <aside class="hp-sidebar">
 
     <div class="hp-sidebar-card">
-      <img src="<?php echo h($host['avatar']); ?>" alt="<?php echo h($host['name']); ?>" class="hp-sidebar-avatar">
+      <div class="hp-profile-photo" style="margin: 0 auto 12px;">
+        <img src="<?php echo h($host['avatar']); ?>" alt="<?php echo h($host['name']); ?>" class="hp-sidebar-avatar" id="hostSidebarAvatarImg">
+        <button type="button" class="hp-photo-edit" id="hostPhotoButton" aria-label="Change profile photo">
+          <img src="/webprogg/images/cameraicon-userprofile.png" alt="">
+        </button>
+        <input type="file" id="hostAvatarFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+      </div>
       <h4><?php echo h($host['name']); ?></h4>
       <span class="hp-host-badge">Host</span>
       <p class="hp-member-since">Member since <?php echo h($host['member_since']); ?></p>
@@ -299,7 +367,11 @@ $hp_css_version = '3';
       <?php else: foreach ($listings as $l): ?>
       <div class="hp-mylisting-card">
         <div class="hp-mylisting-img-wrap">
-          <img class="hp-mylisting-img" src="<?php echo h($l['cover_photo'] ?: '/webprogg/images/listing-placeholder.jpg'); ?>" alt="<?php echo h($l['title']); ?>">
+          <!-- FIX: was falling back to '/webprogg/images/listing-placeholder.jpg',
+               a file that does not exist on disk (wrong case + wrong extension),
+               which produced a broken-image icon overlapping the title. Now
+               points at the same placeholder every other page already uses. -->
+          <img class="hp-mylisting-img" src="<?php echo h(resolve_photo($l['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>" alt="<?php echo h($l['title']); ?>">
           <span class="hp-status <?php echo hp_status_class($l['status']); ?>" style="position:absolute; top:10px; left:10px;">
             <?php echo h(hp_status_label($l['status'])); ?>
           </span>
@@ -323,9 +395,9 @@ $hp_css_version = '3';
             Views <b>&mdash;</b>
           </div>
           <div class="hp-mylisting-stat-line">
-            <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-            Bookings <b>&mdash;</b>
-          </div>
+  <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
+  Bookings <b><?php echo h($listingBookingCounts[$l['id']]); ?></b>
+</div>
           <div class="hp-mylisting-stat-line">
             <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
             Rating <b>&mdash;</b>
@@ -614,6 +686,79 @@ $hp_css_version = '3';
                 'Reject %s\'s application for this listing?',
                 'Rejecting...'
             );
+        });
+    });
+})();
+</script>
+
+<!-- =========================================================
+     SIDEBAR PROFILE PHOTO UPLOAD
+     Same block as hostprofile.php, minus the hostProfileAvatarImg
+     element (this page only has the sidebar copy of the avatar).
+========================================================= -->
+<script>
+(function () {
+    const photoButton  = document.getElementById('hostPhotoButton');
+    const fileInput    = document.getElementById('hostAvatarFileInput');
+    const sidebarImg   = document.getElementById('hostSidebarAvatarImg');
+    const navAvatarImg = document.getElementById('navAccountAvatarImg');
+
+    if (!photoButton || !fileInput || !sidebarImg) return;
+
+    photoButton.addEventListener('click', function () {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', function () {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Please choose a JPG, PNG, or WEBP image.');
+            fileInput.value = '';
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('That image is too large. Please choose one under 5MB.');
+            fileInput.value = '';
+            return;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        const previousSrc = sidebarImg.src;
+        sidebarImg.src = previewUrl;
+        if (navAvatarImg) navAvatarImg.src = previewUrl;
+        photoButton.disabled = true;
+
+        const formData = new FormData();
+        formData.append('avatar', file);
+
+        fetch('/webprogg/upload/uploadavatar.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.success) {
+                sidebarImg.src = data.avatar_url;
+                if (navAvatarImg) navAvatarImg.src = data.avatar_url;
+            } else {
+                sidebarImg.src = previousSrc;
+                if (navAvatarImg) navAvatarImg.src = previousSrc;
+                alert(data.error || 'Could not update your profile photo.');
+            }
+        })
+        .catch(function () {
+            sidebarImg.src = previousSrc;
+            if (navAvatarImg) navAvatarImg.src = previousSrc;
+            alert('Something went wrong uploading your photo. Please try again.');
+        })
+        .finally(function () {
+            URL.revokeObjectURL(previewUrl);
+            photoButton.disabled = false;
+            fileInput.value = '';
         });
     });
 })();

@@ -1,148 +1,178 @@
 <?php
 /* =========================================================
-   ROOMHIVE — AVATAR UPLOAD
+   ROOMHIVE — UPLOAD AVATAR
    uploadavatar.php
-   Handles the AJAX call from userprofile.php's camera icon.
-   Validates the file, stores it, updates users.avatar_path,
-   deletes the old uploaded avatar (if any), returns JSON.
+
+   Called via fetch() from userprofile.php / hostprofile.php
+   (the camera-icon button on the profile photo). Always
+   responds with JSON — even on failure — because the
+   frontend does `res.json()` unconditionally; ANY stray
+   output before our json_encode() (a PHP notice, a debug
+   echo left in db_connect.php, etc.) corrupts the response
+   body and makes res.json() throw, which is exactly what
+   produces that generic "Something went wrong" alert.
+
+   To guarantee this file only ever outputs valid JSON, we
+   buffer everything from the very first line and discard
+   whatever landed in that buffer right before we send our
+   real response.
 ========================================================= */
 
-session_start();
-header('Content-Type: application/json');
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+ob_start();
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Not logged in.']);
+/* Don't let PHP print warnings/notices as HTML into the
+   buffer either — log them instead, keep the response clean. */
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
+/* Every response from this file is JSON, no matter what.
+   Defined BEFORE anything else runs (including the
+   db_connect.php require below) so that even a failure
+   during config loading gets caught by the shutdown
+   handler right after it. */
+function respond($success, $data = []) {
+    // Discard ANY stray output that snuck into the buffer
+    // (debug echoes, notices, BOM/whitespace, etc.) before
+    // we send the real, clean JSON body.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json');
+    echo json_encode(array_merge(['success' => $success], $data));
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['avatar'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'No file received.']);
-    exit;
+/* Last-resort net: if something fatal happens ANYWHERE below
+   (a missing file, a missing class, a typo, etc.) PHP would
+   otherwise print an HTML error — or nothing at all — instead
+   of JSON. Registered first, before db_connect.php even loads,
+   so a fatal error during that require is caught too. */
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        respond(false, ['error' => 'Server error while uploading: ' . $error['message']]);
+    }
+});
+
+session_start();
+
+$dbConnectPath = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+if (!file_exists($dbConnectPath)) {
+    respond(false, ['error' => 'Server misconfiguration: db_connect.php not found at ' . $dbConnectPath]);
+}
+require_once $dbConnectPath;
+
+/* -----------------------------------------------------
+   AUTH GUARD
+   No redirect here (this is an AJAX endpoint, not a page) —
+   just fail the JSON response.
+----------------------------------------------------- */
+if (!isset($_SESSION['user_id'])) {
+    respond(false, ['error' => 'You must be logged in to update your photo.']);
+}
+
+/* -----------------------------------------------------
+   BASIC UPLOAD CHECKS
+----------------------------------------------------- */
+try {
+
+if (!isset($_FILES['avatar']) || !is_uploaded_file($_FILES['avatar']['tmp_name'])) {
+    respond(false, ['error' => 'No photo was received. Please try again.']);
 }
 
 $file = $_FILES['avatar'];
 
 if ($file['error'] !== UPLOAD_ERR_OK) {
-    echo json_encode(['success' => false, 'error' => 'Upload failed. Please try again.']);
-    exit;
+    respond(false, ['error' => 'Upload failed (error code ' . $file['error'] . '). Please try again.']);
 }
 
-/* ---- Size limit: 5MB ---- */
-$maxBytes = 5 * 1024 * 1024;
+$maxBytes = 5 * 1024 * 1024; // 5MB, matches the client-side check
 if ($file['size'] > $maxBytes) {
-    echo json_encode(['success' => false, 'error' => 'Image must be under 5MB.']);
-    exit;
+    respond(false, ['error' => 'That image is too large. Please choose one under 5MB.']);
 }
 
-/* ---- Real MIME check (never trust the client-sent type) ---- */
-$finfo    = finfo_open(FILEINFO_MIME_TYPE);
-$mimeType = finfo_file($finfo, $file['tmp_name']);
-finfo_close($finfo);
-
-$allowed = [
+/* -----------------------------------------------------
+   VALIDATE THE ACTUAL FILE CONTENT
+   Never trust the client-supplied MIME type or the file
+   extension alone — inspect the real bytes.
+----------------------------------------------------- */
+$allowedMimeToExt = [
     'image/jpeg' => 'jpg',
     'image/png'  => 'png',
     'image/webp' => 'webp',
 ];
 
-if (!isset($allowed[$mimeType])) {
-    echo json_encode(['success' => false, 'error' => 'Only JPG, PNG, or WEBP images are allowed.']);
-    exit;
+$finfo    = new finfo(FILEINFO_MIME_TYPE);
+$realMime = $finfo->file($file['tmp_name']);
+
+if (!isset($allowedMimeToExt[$realMime])) {
+    respond(false, ['error' => 'Please upload a JPG, PNG, or WEBP image.']);
 }
 
-/* ---- Re-encode through GD to strip anything malicious ---- */
-switch ($mimeType) {
-    case 'image/jpeg':
-        $img = @imagecreatefromjpeg($file['tmp_name']);
-        break;
-    case 'image/png':
-        $img = @imagecreatefrompng($file['tmp_name']);
-        break;
-    case 'image/webp':
-        $img = @imagecreatefromwebp($file['tmp_name']);
-        break;
-}
+$extension = $allowedMimeToExt[$realMime];
 
-if (!$img) {
-    echo json_encode(['success' => false, 'error' => 'That file isn\'t a valid image.']);
-    exit;
-}
+/* -----------------------------------------------------
+   SAVE THE FILE
+----------------------------------------------------- */
+$uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/avatars';
 
-/* ---- Resize down to a sane max (square-ish avatar, 500px) ---- */
-$targetSize = 500;
-$width  = imagesx($img);
-$height = imagesy($img);
-$size   = min($width, $height);
-$srcX   = (int) (($width - $size) / 2);
-$srcY   = (int) (($height - $size) / 2);
-
-$canvas = imagecreatetruecolor($targetSize, $targetSize);
-imagealphablending($canvas, false);
-imagesavealpha($canvas, true);
-imagecopyresampled($canvas, $img, 0, 0, $srcX, $srcY, $targetSize, $targetSize, $size, $size);
-
-$userId   = (int) $_SESSION['user_id'];
-$ext      = $allowed[$mimeType];
-$filename = 'avatar_' . $userId . '_' . time() . '.' . $ext;
-$destDir  = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/avatars/';
-$destPath = $destDir . $filename;
-
-if (!is_dir($destDir)) {
-    mkdir($destDir, 0755, true);
-}
-
-$saved = false;
-switch ($ext) {
-    case 'jpg':
-        $saved = imagejpeg($canvas, $destPath, 85);
-        break;
-    case 'png':
-        $saved = imagepng($canvas, $destPath, 6);
-        break;
-    case 'webp':
-        $saved = imagewebp($canvas, $destPath, 85);
-        break;
-}
-
-imagedestroy($img);
-imagedestroy($canvas);
-
-if (!$saved) {
-    echo json_encode(['success' => false, 'error' => 'Could not save the image.']);
-    exit;
-}
-
-$newAvatarPath = '/webprogg/uploads/avatars/' . $filename;
-
-/* ---- Fetch old avatar so we can delete it after a successful DB update ---- */
-$oldStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
-$oldStmt->execute(['id' => $userId]);
-$oldAvatar = $oldStmt->fetchColumn();
-
-$updateStmt = $pdo->prepare("UPDATE users SET avatar_path = :avatar WHERE id = :id");
-$updateStmt->execute(['avatar' => $newAvatarPath, 'id' => $userId]);
-
-/* Clean up the old uploaded file (skip if they never had one).
-   Handles both the old-style stored value ("uploads/avatars/x.png",
-   from before the folder reorg) and the new root-relative style
-   ("/webprogg/uploads/avatars/x.png"). */
-if ($oldAvatar) {
-    $oldRelative = ltrim($oldAvatar, '/');
-    if (strpos($oldRelative, 'webprogg/') === 0) {
-        $oldRelative = substr($oldRelative, strlen('webprogg/'));
-    }
-    if (strpos($oldRelative, 'uploads/avatars/') === 0) {
-        $oldFullPath = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/' . $oldRelative;
-        if (is_file($oldFullPath)) {
-            @unlink($oldFullPath);
-        }
+if (!is_dir($uploadDir)) {
+    if (!mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+        respond(false, ['error' => 'Server could not create the upload folder. Contact support.']);
     }
 }
 
-echo json_encode([
-    'success'     => true,
-    'avatar_url'  => $newAvatarPath . '?v=' . time(), // cache-bust
-]);
+$filename   = 'avatar_' . $_SESSION['user_id'] . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
+$targetPath = $uploadDir . '/' . $filename;
+$publicPath = '/webprogg/uploads/avatars/' . $filename;
+
+if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+    respond(false, ['error' => 'Could not save the uploaded photo. Please try again.']);
+}
+
+/* -----------------------------------------------------
+   UPDATE THE DATABASE
+----------------------------------------------------- */
+try {
+    $stmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $previous = $stmt->fetchColumn();
+
+    $updateStmt = $pdo->prepare("UPDATE users SET avatar_path = :avatar_path WHERE id = :id");
+    $updateStmt->execute([
+        'avatar_path' => $publicPath,
+        'id'          => $_SESSION['user_id'],
+    ]);
+} catch (Throwable $e) {
+    /* DB update failed — remove the file we just saved so we
+       don't leave an orphaned upload with nothing pointing to it. */
+    @unlink($targetPath);
+    respond(false, ['error' => 'Could not update your profile. Please try again.']);
+}
+
+/* -----------------------------------------------------
+   CLEAN UP THE OLD AVATAR FILE
+   Only delete files that live in our own uploads folder —
+   never touch /webprogg/images/default-avatar.png or
+   anything else outside that directory.
+----------------------------------------------------- */
+if (!empty($previous) && str_starts_with($previous, '/webprogg/uploads/avatars/')) {
+    $previousFullPath = $_SERVER['DOCUMENT_ROOT'] . $previous;
+    if (is_file($previousFullPath)) {
+        @unlink($previousFullPath);
+    }
+}
+
+/* Keep the session's cached avatar path in sync too, same as
+   the pattern already used at the top of userprofile.php /
+   hostprofile.php. */
+$_SESSION['avatar_path'] = $publicPath;
+
+respond(true, ['avatar_url' => $publicPath]);
+
+} catch (Throwable $e) {
+    // Any unexpected exception (e.g. the `fileinfo` PHP
+    // extension not being enabled, so `finfo` doesn't exist)
+    // lands here instead of printing an HTML fatal error.
+    respond(false, ['error' => 'Server error while uploading. Please try again.']);
+}

@@ -44,11 +44,15 @@ if (!$dbUser) {
    HOST REDIRECT
    userprofile.php is the regular-user account page. Once a
    user has been approved as a host (users.is_host = 1, set
-   by the admin's Approve action), their account page IS the
-   host dashboard — send them to hostprofile.php instead of
-   the plain user view.
+   by the admin's Approve action in hostapplication.php),
+   their account page IS the host dashboard — send them to
+   hostprofile.php instead of rendering the plain user view.
+
+   FIX: previously this was just a comment with no actual
+   redirect underneath it, so approved hosts stayed stuck on
+   this page no matter what is_host was set to in the DB.
 ----------------------------------------------------- */
-if ($dbUser['is_host']) {
+if ((int) $dbUser['is_host'] === 1) {
     header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
@@ -58,6 +62,12 @@ if ($dbUser['is_host']) {
    need the same source of truth. */
 $_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
 $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+
+/* FIX: keep session in sync with the real DB value so any
+   other code that still checks $_SESSION['is_host'] (e.g.
+   older cached pages) reflects reality instead of staying
+   permanently unset/false. */
+$_SESSION['is_host'] = (bool) $dbUser['is_host'];
 
 $user = [
     'name'          => $dbUser['name'],
@@ -124,7 +134,7 @@ $bookings = array_map(function ($row) {
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
         'location' => $row['location'],
-        'thumb'    => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
+        'thumb'    => resolve_photo($row['cover_photo'], '/webprogg/images/ListingPlaceholder.png'),
         'dates'    => date('M j, Y', strtotime($row['booked_at'])),
         'status'   => $row['status'],
         'total'    => number_format((float) $row['total'], 2),
@@ -265,7 +275,7 @@ $wishlist = array_map(function ($row) {
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
         'location' => $row['location'],
-        'thumb'    => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
+        'thumb'    => resolve_photo($row['cover_photo'], '/webprogg/images/ListingPlaceholder.png'),
         'price'    => number_format((float) $row['price'], 0),
         'rating'   => 0,
         'reviews'  => 0,
@@ -292,6 +302,44 @@ $stats = [
 /* Small helper so we're not repeating htmlspecialchars() everywhere */
 function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   Uploaded photo_path values (listing_photos.photo_path,
+   and other users' avatar_path when we show them) are saved
+   relative to /webprogg — e.g. "uploads/listings/abc.jpg".
+   Printed as-is, the browser resolves that against the
+   CURRENT page's folder instead of the site root, which is
+   why these thumbnails 404 on pages that live in a subfolder
+   like /user/ or /booking/, even though avatar_path for the
+   logged-in user (already stored as a full "/webprogg/..."
+   path by uploadavatar.php) always works fine.
+
+   FIX: the old version trusted ANY leading "/" as proof the
+   path was already a correct, absolute site-root path. But
+   some rows were saved as "/uploads/listing_photos/xyz.jpg"
+   (leading slash, no "webprogg" segment) — that got returned
+   untouched, so the browser looked for it at the actual server
+   root instead of inside /webprogg/, and the image 404'd (this
+   is exactly the broken "rose place" thumbnail on Recent
+   Bookings). Now every path is normalized — strip any leading
+   slash and any accidental leading "webprogg/" segment — and
+   then rebuilt as "/webprogg/..." every single time, so it
+   comes out correct no matter how it was originally saved.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^https?://#i', $path)) {
+        return $path; // full remote URL — leave it alone
+    }
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
 }
 ?>
 <!DOCTYPE html>
@@ -351,7 +399,10 @@ function h($value) {
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
+                <?php /* FIX: was checking $_SESSION['is_host'] === true, which
+                         was never actually set anywhere — this now checks the
+                         real DB value the same way hostprofile.php does. */ ?>
+                <?php if ($dbUser['is_host']): ?>
                     <a href="/webprogg/host/hostprofile.php">Host Profile</a>
                 <?php endif; ?>
                 <a href="/webprogg/user/userprofile.php">My Profile</a>

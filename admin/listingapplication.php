@@ -23,7 +23,7 @@ if (
 /* ---------- Sidebar navigation ---------- */
 $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
-    ['label' => 'Users',                'icon' => 'users',      'href' => '#'],
+    ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
     ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '#'],
     ['label' => 'Listings',             'icon' => 'listing',    'href' => '#'],
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php', 'active' => true],
@@ -38,20 +38,31 @@ $navItems = [
 $notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
 
 /* =========================================================
-   HANDLE APPROVE / REJECT
+   HANDLE LISTING ACTIONS
    ========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
 
     $targetId = (int) $_POST['id'];
     $action   = $_POST['action'];
 
+    /* -----------------------------------------
+       ACCEPT / REJECT
+       Can change the decision at any time
+       ----------------------------------------- */
     if (in_array($action, ['approve', 'reject'], true)) {
 
-        $newStatus = $action === 'approve' ? 'approved' : 'rejected';
+        $newStatus = $action === 'approve'
+            ? 'approved'
+            : 'rejected';
 
-        $pdo->prepare(
-            "UPDATE listings SET status = :status, updated_at = NOW() WHERE id = :id"
-        )->execute([
+        $stmt = $pdo->prepare("
+            UPDATE listings
+            SET status = :status,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
             'status' => $newStatus,
             'id'     => $targetId,
         ]);
@@ -60,6 +71,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
             'filter' => $_GET['filter'] ?? 'all',
             'page'   => $_GET['page'] ?? 1,
             'id'     => $targetId,
+        ]));
+        exit();
+    }
+
+    /* -----------------------------------------
+       DELETE LISTING APPLICATION
+       ----------------------------------------- */
+    if ($action === 'delete') {
+
+        $stmt = $pdo->prepare("
+            DELETE FROM listings
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            'id' => $targetId,
+        ]);
+
+        header('Location: /webprogg/admin/listingapplication.php?' . http_build_query([
+            'filter' => $_GET['filter'] ?? 'all',
+            'page'   => $_GET['page'] ?? 1,
         ]));
         exit();
     }
@@ -174,6 +206,8 @@ function icon($name, $class = '') {
         'chevron-right' => '<path d="m9 6 6 6-6 6"/>',
         'inbox' => '<path d="M3 12h4.5l1.5 3h6l1.5-3H21"/><path d="M5.5 5.5h13l2.5 6.5v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"/>',
         'tag' => '<path d="M11.5 3h6.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-.3.7l-9 9a1 1 0 0 1-1.4 0l-6.5-6.5a1 1 0 0 1 0-1.4l9-9a1 1 0 0 1 .7-.3Z"/><circle cx="15.5" cy="7.5" r="1.3"/>',
+        'more-vertical' => '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+        'trash' => '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/>',
     ];
     $path = $icons[$name] ?? '';
     return '<svg class="icon '.$class.'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'.$path.'</svg>';
@@ -309,7 +343,84 @@ function emptyState($text) {
                                                 <span class="badge <?= statusBadgeClass($l['status']) ?>"><?= htmlspecialchars($l['status']) ?></span>
                                             </td>
                                             <td>
-                                                <a class="btn-view" href="<?= eyeLink($l['id'], $filter, $page) ?>" onclick="event.stopPropagation()" aria-label="View listing"><?= icon('eye') ?></a>
+                                                <div class="action-buttons">
+
+                                                    <!-- Eye -->
+                                                    <a
+                                                        class="btn-view"
+                                                        href="<?= eyeLink($l['id'], $filter, $page) ?>"
+                                                        onclick="event.stopPropagation()"
+                                                        aria-label="View listing"
+                                                    >
+                                                        <?= icon('eye') ?>
+                                                    </a>
+
+                                                    <!-- Vertical divider -->
+                                                    <span class="action-divider"></span>
+
+                                                    <!-- Three-dot menu -->
+                                                    <div class="action-menu">
+
+                                                        <button
+                                                            type="button"
+                                                            class="btn-more"
+                                                            onclick="event.stopPropagation(); toggleActionMenu(this)"
+                                                            aria-label="More actions"
+                                                        >
+                                                            <?= icon('more-vertical') ?>
+                                                        </button>
+
+                                                        <div class="action-dropdown">
+
+                                                            <!-- ACCEPT -->
+                                                            <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="id" value="<?= $l['id'] ?>">
+                                                                <input type="hidden" name="action" value="approve">
+
+                                                                <button
+                                                                    type="submit"
+                                                                    class="dropdown-item accept-item"
+                                                                    onclick="return confirm('Accept this listing?')"
+                                                                >
+                                                                    <?= icon('check-circle') ?>
+                                                                    <span>Accept</span>
+                                                                </button>
+                                                            </form>
+
+                                                            <!-- REJECT -->
+                                                            <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="id" value="<?= $l['id'] ?>">
+                                                                <input type="hidden" name="action" value="reject">
+
+                                                                <button
+                                                                    type="submit"
+                                                                    class="dropdown-item reject-item"
+                                                                    onclick="return confirm('Reject this listing?')"
+                                                                >
+                                                                    <?= icon('x-circle') ?>
+                                                                    <span>Reject</span>
+                                                                </button>
+                                                            </form>
+
+                                                            <!-- DELETE -->
+                                                            <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="id" value="<?= $l['id'] ?>">
+                                                                <input type="hidden" name="action" value="delete">
+
+                                                                <button
+                                                                    type="submit"
+                                                                    class="dropdown-item delete-item"
+                                                                    onclick="return confirm('Delete this listing application permanently?')"
+                                                                >
+                                                                    <?= icon('trash') ?>
+                                                                    <span>Delete</span>
+                                                                </button>
+                                                            </form>
+
+                                                        </div>
+                                                    </div>
+
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -393,22 +504,41 @@ function emptyState($text) {
                                 <span class="info-value"><?= htmlspecialchars($selected['date']) ?> <?= htmlspecialchars($selected['time']) ?></span>
                             </div>
 
-                            <?php if ($selected['status'] === 'Pending'): ?>
+                            <?php if (true): ?>
                                 <div class="detail-actions">
-                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
                                         <input type="hidden" name="id" value="<?= $selected['id'] ?>">
                                         <input type="hidden" name="action" value="reject">
-                                        <button type="submit" class="btn-reject" onclick="return confirm('Reject the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Reject Listing</button>
+
+                                        <button
+                                            type="submit"
+                                            class="btn-reject"
+                                            onclick="return confirm('Reject this listing?')"
+                                        >
+                                            Reject Listing
+                                        </button>
                                     </form>
-                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+
+                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
                                         <input type="hidden" name="id" value="<?= $selected['id'] ?>">
                                         <input type="hidden" name="action" value="approve">
-                                        <button type="submit" class="btn-approve" onclick="return confirm('Approve the listing \'<?= htmlspecialchars(addslashes($selected['title'])) ?>\'?')">Approve Listing</button>
+
+                                        <button
+                                            type="submit"
+                                            class="btn-approve"
+                                            onclick="return confirm('Approve this listing?')"
+                                        >
+                                            Approve Listing
+                                        </button>
                                     </form>
+
                                 </div>
-                                <div class="detail-note"><?= icon('lock') ?>Approving publishes this listing on RoomHive. The host will be notified of your decision.</div>
-                            <?php else: ?>
-                                <div class="detail-note"><?= icon('lock') ?>This listing has already been <?= strtolower($selected['status']) ?>.</div>
+
+                                <div class="detail-note">
+                                    <?= icon('lock') ?>
+                                    You can change the listing decision at any time.
+                                </div>
                             <?php endif; ?>
                         <?php endif; ?>
                     </div>
@@ -417,6 +547,107 @@ function emptyState($text) {
         </div>
     </div>
 </div>
+
+<script>
+/*
+ * Action menu (the "..." three-dot button on each row).
+ *
+ * Fix: previously the dropdown stayed inside the table row it belonged
+ * to. Even though the CSS says `position: fixed`, once the row (or any
+ * ancestor) creates its own stacking/positioning context, a "fixed"
+ * child can end up being laid out relative to that ancestor instead of
+ * the real viewport — which is exactly what caused the dropdown to
+ * expand the row's height and made it look like several rows had their
+ * menus open inline at once.
+ *
+ * The reliable fix is to physically move the dropdown to <body> the
+ * moment it opens (so nothing about the table can affect it), position
+ * it with real viewport coordinates, and move it back to its original
+ * spot in the row when it closes. Only one menu is ever open at a time.
+ */
+
+function toggleActionMenu(button) {
+    const menu = button.nextElementSibling;
+    if (!menu) return;
+
+    const isOpen = menu.classList.contains('show');
+
+    // Always close whatever is currently open first.
+    closeAllActionMenus();
+
+    if (isOpen) return; // it was already open -> just close it, done above
+
+    openActionMenu(menu, button);
+}
+
+function openActionMenu(menu, button) {
+    // Remember where this dropdown actually lives in the table so we
+    // can put it back later.
+    menu._homeParent = menu.parentNode;
+    menu._homeNext   = menu.nextSibling;
+    menu._homeButton = button;
+
+    // Detach it to <body> so `position: fixed` is guaranteed to be
+    // relative to the real viewport, not some ancestor in the table.
+    document.body.appendChild(menu);
+
+    menu.classList.add('show');
+    positionActionMenu(menu, button);
+}
+
+function positionActionMenu(menu, button) {
+    const rect = button.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+
+    let left = rect.right - menuWidth;
+    let top = rect.bottom + 7;
+
+    // Keep it on-screen if the button is near the left/bottom edge.
+    if (left < 8) left = 8;
+    if (top + menuHeight > window.innerHeight - 8) {
+        top = rect.top - menuHeight - 7; // flip above the button
+    }
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+}
+
+function closeAllActionMenus() {
+    document.querySelectorAll('.action-dropdown.show').forEach(function (menu) {
+        menu.classList.remove('show');
+        menu.style.left = '';
+        menu.style.top = '';
+
+        // Put it back exactly where it came from in the table row.
+        if (menu._homeParent) {
+            if (menu._homeNext && menu._homeNext.parentNode === menu._homeParent) {
+                menu._homeParent.insertBefore(menu, menu._homeNext);
+            } else {
+                menu._homeParent.appendChild(menu);
+            }
+            menu._homeParent = null;
+            menu._homeNext = null;
+            menu._homeButton = null;
+        }
+    });
+}
+
+/* Close menus when clicking elsewhere, scrolling, or resizing. */
+document.addEventListener('click', function (event) {
+    if (!event.target.closest('.action-menu') && !event.target.closest('.action-dropdown')) {
+        closeAllActionMenus();
+    }
+});
+
+window.addEventListener('scroll', function () {
+    closeAllActionMenus();
+}, true);
+
+window.addEventListener('resize', function () {
+    closeAllActionMenus();
+});
+</script>
 
 </body>
 </html>

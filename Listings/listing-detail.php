@@ -93,8 +93,13 @@ $galleryImages = array_map(function ($row) {
     /*
      * Your actual listing image folders:
      *
-     * /webprogg/host/uploads/listing_photos/cover/
-     * /webprogg/host/uploads/listing_photos/additional/
+     * /webprogg/uploads/listing_photos/cover/
+     * /webprogg/uploads/listing_photos/additional/
+     *
+     * (host-step3.php writes here using an ABSOLUTE path built
+     * from $_SERVER['DOCUMENT_ROOT'] and stores the RELATIVE
+     * path "uploads/listing_photos/..." in the DB — no leading
+     * "/webprogg/" and no "host/" segment.)
      */
 
     // If database already contains the full web path
@@ -102,23 +107,30 @@ $galleryImages = array_map(function ($row) {
         return '/' . $path;
     }
 
-    // If database contains host/uploads/...
+    // If database contains host/uploads/... (legacy rows saved
+    // before the host-step3.php path fix — those files really do
+    // live under /webprogg/host/uploads/...)
     if (stripos($path, 'host/uploads/') === 0) {
         return '/webprogg/' . $path;
     }
 
     // If database contains uploads/listing_photos/...
+    // FIX: this must resolve to /webprogg/uploads/listing_photos/...
+    // to match where host-step3.php actually writes the file on
+    // disk. The old code prepended "/webprogg/host/" here, which
+    // pointed at a directory that doesn't exist, so every newly
+    // uploaded photo 404'd on this page.
     if (stripos($path, 'uploads/listing_photos/') === 0) {
-        return '/webprogg/host/' . $path;
+        return '/webprogg/' . $path;
     }
 
     // If database contains only the filename
     if (stripos($path, 'cover_') === 0) {
-        return '/webprogg/host/uploads/listing_photos/cover/' . basename($path);
+        return '/webprogg/uploads/listing_photos/cover/' . basename($path);
     }
 
     // Fallback
-    return '/webprogg/host/uploads/listing_photos/' . $path;
+    return '/webprogg/uploads/listing_photos/' . $path;
 
 }, $photoRows);
 
@@ -152,20 +164,52 @@ $hostReviews = count($hostReviewRatings);
 /* Whether this listing is currently bookable (approved AND
    no active booking) — used to decide whether to show the
    "Send Inquiry" button or an "Already booked" state. */
+/* =========================================================
+   LISTING AVAILABILITY
+   The listing remains available for inquiry if it is approved.
+   Individual confirmed/pending booking dates are disabled in
+   the calendar below.
+========================================================= */
+
 $availabilityStmt = $pdo->prepare(
     "SELECT 1
      FROM listings l
      WHERE l.id = :id
        AND l.status = 'approved'
-       AND NOT EXISTS (
-           SELECT 1 FROM bookings b
-           WHERE b.listing_id = l.id
-             AND b.status IN ('pending', 'confirmed')
-       )
      LIMIT 1"
 );
-$availabilityStmt->execute(['id' => $listingId]);
+
+$availabilityStmt->execute([
+    'id' => $listingId
+]);
+
 $isBookable = (bool) $availabilityStmt->fetchColumn();
+
+
+/* =========================================================
+   GET UNAVAILABLE DATES
+   Both CONFIRMED bookings and PENDING holds block dates on
+   the calendar — a pending booking means someone else is
+   mid-checkout for those dates, so they shouldn't look free.
+   The authoritative double-booking guard still lives in
+   book.php (transaction + row lock at insert time); this
+   query is only for what the calendar displays.
+========================================================= */
+
+$unavailableDatesStmt = $pdo->prepare(
+    "SELECT checkin_date, checkout_date, status
+     FROM bookings
+     WHERE listing_id = :listing_id
+       AND status IN ('confirmed', 'pending')
+       AND checkin_date IS NOT NULL
+     ORDER BY checkin_date ASC"
+);
+
+$unavailableDatesStmt->execute([
+    'listing_id' => $listingId
+]);
+
+$unavailableRanges = $unavailableDatesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
 
@@ -252,7 +296,8 @@ $galleryCount = count($listing['gallery']);
     <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css">
     <link rel="stylesheet" href="/webprogg/assets/listing-detail.css">
-
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
 
 <body>
@@ -636,21 +681,40 @@ $galleryCount = count($listing['gallery']);
 
                     <label>Select dates</label>
 
-                    <div class="rd-dates-row">
+                    <!-- LONG TERM -->
+                    <div class="rd-long-term">
+                        <label class="rd-long-term-label">
+                            <input
+                                type="checkbox"
+                                id="rd-long-term"
+                                name="long_term"
+                                value="1"
+                                form="rd-inquiry-form"
+                            >
+                            <span>Long Term</span>
+                        </label>
+                    </div>
 
-                        <div class="rd-date-field">
+                    <div class="rd-date-summary" id="rd-date-summary">
+
+                        <div class="rd-date-summary-field">
                             <span>Check-in</span>
-                            <input type="date" id="rd-checkin" name="checkin_date" form="rd-inquiry-form" min="<?= date('Y-m-d') ?>" required>
+                            <strong id="rd-checkin-display">Select date</strong>
                         </div>
 
                         <span class="rd-date-sep">&ndash;</span>
 
-                        <div class="rd-date-field">
+                        <div class="rd-date-summary-field" id="rd-checkout-summary-field">
                             <span>Check-out</span>
-                            <input type="date" id="rd-checkout" name="checkout_date" form="rd-inquiry-form" min="<?= date('Y-m-d', strtotime('+1 day')) ?>" required>
+                            <strong id="rd-checkout-display">Select date</strong>
                         </div>
 
                     </div>
+
+                    <div id="rd-calendar"></div>
+
+                    <input type="hidden" id="rd-checkin" name="checkin_date" form="rd-inquiry-form">
+                    <input type="hidden" id="rd-checkout" name="checkout_date" form="rd-inquiry-form">
 
                 </div>
 
@@ -675,7 +739,7 @@ $galleryCount = count($listing['gallery']);
 
                 <?php elseif ($isOwnListing): ?>
 
-                    <form action="/webprogg/booking/book.php" method="POST">
+                    <form action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button type="submit" class="rd-btn rd-btn-primary">
                             List Now
@@ -690,7 +754,7 @@ $galleryCount = count($listing['gallery']);
 
                 <?php else: ?>
 
-                    <form id="rd-inquiry-form" action="/webprogg/booking/book.php" method="POST">
+                    <form id="rd-inquiry-form" action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button type="submit" class="rd-btn rd-btn-primary">
                             Send Inquiry
@@ -926,8 +990,23 @@ $galleryCount = count($listing['gallery']);
      PAGE JAVASCRIPT
 ========================== -->
 
-<script>
+<!-- Flatpickr must load BEFORE the inline script below, since
+     that script calls flatpickr() as soon as it runs. -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
+<script>
+/* =========================================================
+   ROOMHIVE — UNAVAILABLE BOOKING DATES
+   Includes both confirmed bookings and pending holds.
+========================================================= */
+
+const roomHiveUnavailableRanges = <?= json_encode(
+    $unavailableRanges,
+    JSON_HEX_TAG |
+    JSON_HEX_APOS |
+    JSON_HEX_AMP |
+    JSON_HEX_QUOT
+) ?>;
 /* =========================
    BACK BUTTON
 ========================== */
@@ -1107,38 +1186,224 @@ $galleryCount = count($listing['gallery']);
 
 })();
 
-/* =========================
-   DATE PICKERS
-========================== */
+/* =========================================================
+   ROOMHIVE — FLATPICKR RANGE CALENDAR
+   A single inline calendar. Guests click a start date and an
+   end date to select a range (or one date, in Long Term mode).
+   Disables dates already occupied by confirmed bookings or
+   pending holds. The final availability check still happens
+   server-side in book.php — this is display/UX only.
+========================================================= */
 
 (function () {
 
-    const checkinInput  = document.getElementById('rd-checkin');
+    const calendarEl = document.getElementById('rd-calendar');
+    const checkinInput = document.getElementById('rd-checkin');
     const checkoutInput = document.getElementById('rd-checkout');
+    const longTermInput = document.getElementById('rd-long-term');
+    const checkinDisplay = document.getElementById('rd-checkin-display');
+    const checkoutDisplay = document.getElementById('rd-checkout-display');
+    const checkoutSummaryField = document.getElementById('rd-checkout-summary-field');
 
-    if (!checkinInput || !checkoutInput) {
+    if (!calendarEl || !checkinInput || !checkoutInput || !longTermInput) {
         return;
     }
 
-    checkinInput.addEventListener('change', function () {
+    const unavailableRanges = Array.isArray(roomHiveUnavailableRanges)
+        ? roomHiveUnavailableRanges
+        : [];
 
-        if (!checkinInput.value) {
-            return;
+    /* flatpickr's {from, to} disable range is INCLUSIVE of both
+       ends. A guest only actually occupies the nights from
+       check-in up to (but not including) checkout — they leave
+       on the checkout day, so that day should stay bookable for
+       someone else. Subtracting one day from checkout_date here
+       keeps the checkout date itself selectable instead of
+       blocking it along with the nights that were really taken. */
+    function roomHiveSubtractOneDay(dateStr) {
+
+        const d = new Date(dateStr + 'T00:00:00');
+        d.setDate(d.getDate() - 1);
+
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+
+        return year + '-' + month + '-' + day;
+
+    }
+
+    const disabledRanges = unavailableRanges
+        .filter(function (range) {
+            return range.checkin_date;
+        })
+        .map(function (range) {
+
+            let to = range.checkin_date;
+
+            if (range.checkout_date) {
+
+                const adjusted = roomHiveSubtractOneDay(range.checkout_date);
+
+                // Guard against a same-day or invalid checkout_date
+                // collapsing the range below check-in.
+                to = adjusted >= range.checkin_date
+                    ? adjusted
+                    : range.checkin_date;
+
+            }
+
+            return {
+                from: range.checkin_date,
+                to: to
+            };
+
+        });
+
+    function formatDisplay(dateStr) {
+
+        if (!dateStr) {
+            return 'Select date';
         }
 
-        // Checkout can't be before (or same day as) check-in
-        const nextDay = new Date(checkinInput.value);
-        nextDay.setDate(nextDay.getDate() + 1);
+        const d = new Date(dateStr + 'T00:00:00');
 
-        const minCheckout = nextDay.toISOString().split('T')[0];
-        checkoutInput.min = minCheckout;
+        return d.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
 
-        // If the currently selected checkout is now invalid, clear it
-        if (checkoutInput.value && checkoutInput.value <= checkinInput.value) {
-            checkoutInput.value = '';
+    }
+
+    function resetSelection() {
+
+        checkinInput.value = '';
+        checkoutInput.value = '';
+        checkinDisplay.textContent = 'Select date';
+        checkoutDisplay.textContent = 'Select date';
+
+    }
+
+    let calendar = null;
+
+    function buildCalendar(isLongTerm) {
+
+        if (calendar) {
+            calendar.destroy();
         }
+
+        resetSelection();
+
+        calendar = flatpickr(calendarEl, {
+
+            inline: true,
+            mode: isLongTerm ? 'single' : 'range',
+            minDate: 'today',
+            dateFormat: 'Y-m-d',
+            disable: disabledRanges,
+            showMonths: 1,
+
+            onChange: function (selectedDates) {
+
+                if (isLongTerm) {
+
+                    if (selectedDates.length) {
+                        checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
+                        checkinDisplay.textContent = formatDisplay(checkinInput.value);
+                    }
+
+                    return;
+
+                }
+
+                if (selectedDates.length === 2) {
+
+                    checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
+                    checkoutInput.value = flatpickr.formatDate(selectedDates[1], 'Y-m-d');
+                    checkinDisplay.textContent = formatDisplay(checkinInput.value);
+                    checkoutDisplay.textContent = formatDisplay(checkoutInput.value);
+
+                } else if (selectedDates.length === 1) {
+
+                    checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
+                    checkoutInput.value = '';
+                    checkinDisplay.textContent = formatDisplay(checkinInput.value);
+                    checkoutDisplay.textContent = 'Select date';
+
+                } else {
+
+                    resetSelection();
+
+                }
+
+            }
+
+        });
+
+    }
+
+    buildCalendar(false);
+
+    longTermInput.addEventListener('change', function () {
+
+        const isLongTerm = longTermInput.checked;
+
+        if (checkoutSummaryField) {
+            checkoutSummaryField.style.display = isLongTerm ? 'none' : '';
+        }
+
+        buildCalendar(isLongTerm);
 
     });
+
+    /* =====================================================
+       FORM VALIDATION
+    ===================================================== */
+
+    const inquiryForm = document.getElementById('rd-inquiry-form');
+
+    if (inquiryForm) {
+
+        inquiryForm.addEventListener('submit', function (event) {
+
+            /*
+             * Check-in is always required.
+             */
+            if (!checkinInput.value) {
+
+                event.preventDefault();
+
+                alert('Please select a check-in date.');
+
+                return;
+
+            }
+
+            /*
+             * Long Term does not need checkout.
+             */
+            if (longTermInput.checked) {
+                checkoutInput.value = '';
+                return;
+            }
+
+            /*
+             * Normal booking requires checkout.
+             */
+            if (!checkoutInput.value) {
+
+                event.preventDefault();
+
+                alert('Please select a check-out date, or choose Long Term.');
+
+                return;
+
+            }
+
+        });
+
+    }
 
 })();
 
@@ -1213,10 +1478,9 @@ if (rdAboutText && rdShowMoreBtn) {
 
     });
 
-}
+}       
 
 </script>
-
 <!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
 <script src="/webprogg/assets/javaScript.js"></script>
 

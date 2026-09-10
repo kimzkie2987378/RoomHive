@@ -1,3 +1,14 @@
-   <FilesMatch "\.(?!(jpg|jpeg|png|webp)$)[^.]+$">
-       Deny from all
-   </FilesMatch>
+<IfModule mod_authz_core.c>
+    # Apache 2.4+ syntax
+    <FilesMatch "\.(?!(jpg|jpeg|png|webp)$)[^.]+$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    # Apache 2.2 fallback (only used if mod_authz_core isn't loaded)
+    <FilesMatch "\.(?!(jpg|jpeg|png|webp)$)[^.]+$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>

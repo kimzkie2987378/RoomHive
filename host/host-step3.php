@@ -304,13 +304,41 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
          * Save the uploaded photos to disk and record them in
          * the listing_photos table, attached to the listing
          * created in host-step2.php.
+         *
+         * -------------------------------------------------
+         * FIX: paths must be resolved against the site's
+         * document root, not against PHP's current working
+         * directory. The old code used a *relative* path
+         * ("uploads/listing_photos/cover/") for both writing
+         * the file to disk AND creating the directory. A
+         * relative path here resolves against wherever PHP's
+         * CWD happens to be when the script runs (typically
+         * the directory the script lives in, i.e.
+         * /webprogg/host/), NOT the site root. That silently
+         * wrote files to
+         *     /webprogg/host/uploads/listing_photos/...
+         * while every other page (mylistings.php,
+         * pendingtenants.php, listingpayment.php,
+         * booking-details.php) reads photo_path back out of
+         * the DB and rebuilds it as
+         *     /webprogg/uploads/listing_photos/...
+         * via resolve_photo(). Those two paths never matched,
+         * so uploaded photos always 404'd everywhere except
+         * this page's own live preview.
+         *
+         * FIX: write to disk using an ABSOLUTE path built from
+         * $_SERVER['DOCUMENT_ROOT'], but keep storing a
+         * *relative* path (no leading "/webprogg/") in the
+         * `photo_path` column — that's the format
+         * resolve_photo() on every other page already expects
+         * and correctly turns into "/webprogg/uploads/...".
+         * -------------------------------------------------
          */
 
         $listingId = $_SESSION["host_application"]["listing_id"];
 
-        $coverUploadDirectory = "uploads/listing_photos/cover/";
-
-        $additionalUploadDirectory = "uploads/listing_photos/additional/";
+        $coverUploadDirectory      = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/listing_photos/cover/';
+        $additionalUploadDirectory = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/listing_photos/additional/';
 
 
         if (!is_dir($coverUploadDirectory)) {
@@ -341,20 +369,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             "." .
             $coverExtension;
 
-        $coverPath = $coverUploadDirectory . $coverFileName;
+        // Where the file is actually written on disk.
+        $coverDiskPath = $coverUploadDirectory . $coverFileName;
+
+        // What gets stored in the DB — relative, matching the
+        // format resolve_photo() expects on every other page.
+        $coverDbPath = "uploads/listing_photos/cover/" . $coverFileName;
 
 
-        if (move_uploaded_file($coverFile["tmp_name"], $coverPath)) {
+        if (move_uploaded_file($coverFile["tmp_name"], $coverDiskPath)) {
 
             $pdo->prepare(
                 "INSERT INTO listing_photos (listing_id, photo_path, photo_type, sort_order)
                  VALUES (:listing_id, :photo_path, 'cover', 0)"
             )->execute([
                 'listing_id' => $listingId,
-                'photo_path' => $coverPath,
+                'photo_path' => $coverDbPath,
             ]);
 
-            $_SESSION["host_application"]["cover_photo"] = $coverPath;
+            $_SESSION["host_application"]["cover_photo"] = $coverDbPath;
 
         }
 
@@ -379,21 +412,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 "." .
                 $extension;
 
-            $path = $additionalUploadDirectory . $fileName;
+            $diskPath = $additionalUploadDirectory . $fileName;
+            $dbPath   = "uploads/listing_photos/additional/" . $fileName;
 
 
-            if (move_uploaded_file($file["tmp_name"], $path)) {
+            if (move_uploaded_file($file["tmp_name"], $diskPath)) {
 
                 $pdo->prepare(
                     "INSERT INTO listing_photos (listing_id, photo_path, photo_type, sort_order)
                      VALUES (:listing_id, :photo_path, 'additional', :sort_order)"
                 )->execute([
                     'listing_id' => $listingId,
-                    'photo_path' => $path,
+                    'photo_path' => $dbPath,
                     'sort_order' => $sortOrder,
                 ]);
 
-                $savedAdditionalPaths[] = $path;
+                $savedAdditionalPaths[] = $dbPath;
 
                 $sortOrder++;
 

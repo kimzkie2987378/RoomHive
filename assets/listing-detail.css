@@ -462,41 +462,75 @@
   margin-bottom: 8px;
 }
 
-.rd-dates-row {
+/* =========================
+   DATE SUMMARY (above the calendar)
+========================== */
+
+.rd-date-summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
-.rd-date-field {
+.rd-date-summary-field {
   flex: 1;
   border: 1px solid #e0e0e0;
   border-radius: 10px;
   padding: 8px 10px;
 }
 
-.rd-date-field span {
+.rd-date-summary-field span {
   display: block;
   font-size: 0.7rem;
   color: #999;
 }
 
-.rd-date-field input {
-  border: none;
-  width: 100%;
-  font-family: inherit;
+.rd-date-summary-field strong {
+  display: block;
   font-size: 0.85rem;
-  padding: 2px 0;
-  background: transparent;
-}
-
-.rd-date-field input:focus {
-  outline: none;
+  color: #333;
+  font-weight: 600;
 }
 
 .rd-date-sep {
   color: #ccc;
+}
+
+/* =========================
+   INLINE CALENDAR
+========================== */
+
+#rd-calendar {
+  margin-bottom: 16px;
+}
+
+#rd-calendar .flatpickr-calendar {
+  width: 100%;
+  box-shadow: none;
+  border: 1px solid #eee;
+  border-radius: 10px;
+}
+
+#rd-calendar .flatpickr-days,
+#rd-calendar .dayContainer {
+  width: 100%;
+  max-width: 100%;
+}
+
+#rd-calendar .flatpickr-day.selected,
+#rd-calendar .flatpickr-day.startRange,
+#rd-calendar .flatpickr-day.endRange {
+  background: #f7941d;
+  border-color: #f7941d;
+}
+
+#rd-calendar .flatpickr-day.inRange {
+  background: #fff4e8;
+  border-color: #fff4e8;
+  box-shadow:
+    -5px 0 0 #fff4e8,
+    5px 0 0 #fff4e8;
 }
 
 .rd-guests {
@@ -511,6 +545,35 @@
   font-family: inherit;
   font-size: 0.88rem;
   color: #333;
+}
+
+/* =========================
+   LONG TERM CHECKBOX
+========================== */
+
+.rd-long-term {
+  margin-bottom: 10px;
+}
+
+.rd-long-term-label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  color: #444 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  margin-bottom: 0 !important;
+}
+
+.rd-long-term-label input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #f7941d;
+  cursor: pointer;
 }
 
 .rd-btn {

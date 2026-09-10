@@ -28,29 +28,6 @@ if (!$dbUser) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
-
-/* -----------------------------------------------------
-   HOST GUARD
-   This page is host-only. Anyone logged in but not yet a
-   host gets redirected instead of seeing an empty dashboard
-   meant for hosts.
-
-   DEBUG NOTE: if you land here unexpectedly, it's because
-   $dbUser['is_host'] came back 0 (or NULL) for your account —
-   check with:
-       SELECT id, name, is_host FROM users WHERE id = <your id>;
-   This has nothing to do with a missing file; it's purely
-   what's stored in the `is_host` column for that row.
-
-   Redirecting to becomeahost.php once that page exists on
-   your server — for now this points to myaccount.php so the
-   guard doesn't 404 while that page is still being built.
------------------------------------------------------ */
-if (!$dbUser['is_host']) {
-    header("Location: /webprogg/host/becomeahost.php");
-    exit;
-}
-
 /* -----------------------------------------------------
    HOST DATA
    phone/location ARE real columns (set on becomeahost.php),
@@ -129,14 +106,154 @@ $pending_tenants_count = (int) $pendingTenantsCountStmt->fetchColumn();
    the same missing table, so each listing shows "—" for those
    columns for now.
 ----------------------------------------------------- */
-$total_views    = 0;
-$total_bookings = 0;
-$occupancy_rate = 0;
-$total_earnings = 0;
+$total_views = 0; // still no page-view tracking table
+
+/* -----------------------------------------------------
+   BOOKING-BASED METRICS
+   Bookings = confirmed/completed only (not pending — those
+   are still just applications). Earnings = paid confirmed/
+   completed bookings. Occupancy = nights booked in the last
+   30 days as a % of 30, since listings have no fixed total
+   availability window in this schema.
+----------------------------------------------------- */
+$hostBookingsStmt = $pdo->prepare(
+    "SELECT b.listing_id, b.total, b.paid_at, b.checkin_date, b.checkout_date
+     FROM bookings b
+     JOIN listings l ON l.id = b.listing_id
+     WHERE l.user_id = :id
+       AND b.status IN ('confirmed', 'completed')"
+);
+
+$hostBookingsStmt->execute(['id' => $_SESSION['user_id']]);
+$hostBookings = $hostBookingsStmt->fetchAll();
+
+/* Overlap (in nights) between a booking's stay and the
+   30-day occupancy window. Null checkout (long-term/
+   ongoing) counts as occupying through the end of the
+   window. */
+function hp_overlap_nights($checkin, $checkout, DateTime $windowStart, DateTime $windowEnd) {
+    if (empty($checkin)) {
+        return 0;
+    }
+    $start = new DateTime($checkin);
+    $end   = !empty($checkout) ? new DateTime($checkout) : (clone $windowEnd)->modify('+1 day');
+
+    $overlapStart = max($start, $windowStart);
+    $overlapEnd   = min($end, $windowEnd);
+
+    if ($overlapEnd <= $overlapStart) {
+        return 0;
+    }
+    return $overlapStart->diff($overlapEnd)->days;
+}
+/* -----------------------------------------------------
+   PER-LISTING BOOKINGS COUNT
+   Same rule as hostprofile.php: confirmed/completed only
+   (pending is still just an application, not a real booking).
+   Views and Rating still have no backing table/column, so
+   those stay as "—" for now.
+----------------------------------------------------- */
+$listingBookingCounts = [];
+foreach ($listings as $l) {
+    $listingBookingCounts[$l['id']] = 0;
+}
+
+if (!empty($listings)) {
+    $bookingCountsStmt = $pdo->prepare(
+        "SELECT b.listing_id, COUNT(*) AS booking_count
+         FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE l.user_id = :id
+           AND b.status IN ('confirmed', 'completed')
+         GROUP BY b.listing_id"
+    );
+    $bookingCountsStmt->execute(['id' => $_SESSION['user_id']]);
+    foreach ($bookingCountsStmt->fetchAll() as $row) {
+        $listingBookingCounts[(int) $row['listing_id']] = (int) $row['booking_count'];
+    }
+}
+
+$occupancyWindowDays = 30;
+$windowStart = new DateTime("-{$occupancyWindowDays} days");
+$windowEnd   = new DateTime('today');
+
+/* Per-listing tallies, seeded so every listing shows real
+   zeros instead of missing keys if it has no bookings. */
+$listingStats = [];
+foreach ($listings as $l) {
+    $listingStats[$l['id']] = [
+        'bookings'        => 0,
+        'earnings'        => 0.0,
+        'occupied_nights' => 0,
+    ];
+}
+
+foreach ($hostBookings as $b) {
+    $lid = (int) $b['listing_id'];
+    if (!isset($listingStats[$lid])) {
+        continue;
+    }
+
+    $listingStats[$lid]['bookings']++;
+
+    if (!empty($b['paid_at'])) {
+        $listingStats[$lid]['earnings'] += (float) $b['total'];
+    }
+
+    $listingStats[$lid]['occupied_nights'] += hp_overlap_nights(
+        $b['checkin_date'],
+        $b['checkout_date'],
+        $windowStart,
+        $windowEnd
+    );
+}
+
+$total_bookings        = 0;
+$total_earnings        = 0.0;
+$total_occupied_nights = 0;
+
+foreach ($listingStats as $stats) {
+    $total_bookings        += $stats['bookings'];
+    $total_earnings        += $stats['earnings'];
+    $total_occupied_nights += $stats['occupied_nights'];
+}
+
+$occupancy_rate = $listings_total > 0
+    ? (int) round(min(100, ($total_occupied_nights / ($occupancyWindowDays * $listings_total)) * 100))
+    : 0;
 
 /* Small helper so we're not repeating htmlspecialchars() everywhere */
 function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   Listing cover photos (listing_photos.photo_path) are saved
+   relative to /webprogg — e.g. "uploads/listing_photos/cover/abc.jpg".
+   Printed as-is (as this file previously did, with no fix
+   applied), the browser resolves that against the CURRENT
+   page's folder instead of the site root, so cover photos in
+   the "My Listings" table 404'd and showed as broken images —
+   even though this page's OWN avatar (already stored as a
+   full "/webprogg/..." path by uploadavatar.php) worked fine.
+   Same fix already applied on mylistings.php / pendingtenants.php
+   / listingpayment.php / booking-details.php — normalize any
+   leading slash / accidental "webprogg/" segment, then rebuild
+   as an absolute "/webprogg/..." path every time.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^https?://#i', $path)) {
+        return $path; // full remote URL — leave it alone
+    }
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
 }
 
 /* Maps a listings.status value to a small status-pill class */
@@ -218,12 +335,11 @@ function hp_status_label($status) {
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
+    <?php if ($dbUser['is_host']): ?>
+        <a href="/webprogg/host/hostprofile.php">My Profile</a>
+    <?php endif; ?>
+    <a href="/webprogg/auth/logout.php">Logout</a>
+</div>
 
         </div>
 
@@ -460,17 +576,22 @@ function hp_status_label($status) {
             <div class="hp-listing-row">
 
               <div class="hp-listing-info">
-                <img src="<?php echo h($listing['cover_photo'] ?: '/webprogg/images/ListingPlaceholder.png'); ?>" alt="<?php echo h($listing['title']); ?>">
+                <img src="<?php echo h(resolve_photo($listing['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>" alt="<?php echo h($listing['title']); ?>">
                 <div>
                   <h4><?php echo h($listing['title']); ?></h4>
                   <p><?php echo h($listing['location']); ?></p>
                 </div>
               </div>
 
-              <span class="hp-listing-metric">&mdash;</span>
-              <span class="hp-listing-metric">&mdash;</span>
-              <span class="hp-listing-metric">&mdash;</span>
-
+              <?php
+$stats = $listingStats[$listing['id']];
+$listingOccupancy = $occupancyWindowDays > 0
+    ? (int) round(min(100, ($stats['occupied_nights'] / $occupancyWindowDays) * 100))
+    : 0;
+?>
+<span class="hp-listing-metric"><?php echo h($stats['bookings']); ?></span>
+<span class="hp-listing-metric"><?php echo h($listingOccupancy); ?>%</span>
+<span class="hp-listing-metric">&#8369; <?php echo h(number_format($stats['earnings'], 2)); ?></span>
               <div class="hp-listing-actions">
                 <span class="hp-status <?php echo hp_status_class($listing['status']); ?>">
                   <?php echo h(hp_status_label($listing['status'])); ?>
@@ -590,15 +711,6 @@ function hp_status_label($status) {
             <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
-        </div>
-
-        <!-- QUICK LINKS -->
-        <div class="footer-links">
-            <span class="footer-heading">QUICK LINKS</span>
-            <a href="/webprogg/index.php">About Us</a>
-            <a href="/webprogg/misc/contacts.php">Contact</a>
-            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
-            <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
 
         <!-- GET THE APP -->

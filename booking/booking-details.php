@@ -58,6 +58,32 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+   listing_photos.photo_path is saved relative to /webprogg —
+   e.g. "uploads/listing_photos/cover/abc.jpg". Printed as-is,
+   the browser resolves that against the CURRENT page's folder
+   (/webprogg/booking/) instead of the site root, so the cover
+   photo 404s here even though the same photo_path value works
+   fine on pages that already run it through this same fix
+   (mylistings.php, pendingtenants.php, listingpayment.php).
+   This forces every photo path back to an absolute, site-root
+   path so it loads correctly from any page.
+----------------------------------------------------- */
+function resolve_photo($path, $fallback) {
+    if (empty($path)) {
+        return $fallback;
+    }
+    if (preg_match('#^(https?://|/)#i', $path)) {
+        return $path; // already absolute — leave it alone
+    }
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
+}
+
 function bd_status_label($status) {
     switch ($status) {
         case 'confirmed': return 'Accepted';
@@ -118,7 +144,7 @@ $guests       = $booking['guests'] ?? null;
                 <div class="bd-listing-row">
                     <img
                         class="bd-listing-photo"
-                        src="<?php echo h($booking['cover_photo'] ?: '/webprogg/images/ListingPlaceholder.png'); ?>"
+                        src="<?php echo h(resolve_photo($booking['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>"
                         alt="<?php echo h($booking['listing_title']); ?>"
                     >
                     <div>
