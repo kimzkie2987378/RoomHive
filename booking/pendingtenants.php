@@ -65,9 +65,34 @@ $notification_count = 0; // TODO: wire up once a notifications table exists
    this host owns — the same rows the 3-dot menus on
    mylistings.php / hostprofile.php can accept or reject,
    just gathered into one dedicated queue here.
+
+   b.amount_paid + b.paid_at are pulled here too (same columns
+   process-payment.php / listingpayment.php / booking-details.php
+   already use for the "Amount Paid" / "Balance Due" figures):
+     - amount_paid vs total is what actually determines whether
+       a booking is fully paid — NOT whether paid_at is set.
+       paid_at only marks the moment the reservation fee cleared
+       (see process-payment.php's EXPIRY NOTE), so a booking can
+       have paid_at set and STILL owe a balance, e.g. the ₱1,000
+       reservation fee paid against a ₱3,000 total.
+     - paid_at is still useful as "the exact time a payment was
+       sent" for display, since a balance payment doesn't update
+       it (also per process-payment.php) — it's the timestamp of
+       the tenant's first/only payment either way.
+
+   ALIGNMENT FIX: amount_paid is now pulled through
+   COALESCE(b.amount_paid, 0) so a NULL in that column (e.g. an
+   older row inserted before amount_paid existed, or any write
+   path that leaves it unset) reads as 0 here — the same
+   "unpaid until proven otherwise" assumption booking-details.php
+   makes via `(float) ($booking['amount_paid'] ?? 0)`. Without
+   this, a NULL amount_paid could silently produce a different
+   payment badge here than on booking-details.php for the exact
+   same row.
 ----------------------------------------------------- */
 $pendingStmt = $pdo->prepare(
-    "SELECT b.id AS booking_id, b.total, b.booked_at,
+    "SELECT b.id AS booking_id, b.total, COALESCE(b.amount_paid, 0) AS amount_paid,
+            b.booked_at, b.paid_at,
             b.checkin_date, b.checkout_date, b.guests,
             l.id AS listing_id, l.title AS listing_title, l.location AS listing_location, l.price,
             p.photo_path AS cover_photo,
@@ -102,6 +127,13 @@ function h($value) {
    a full "/webprogg/..." path by uploadavatar.php) works
    fine. This forces every photo path back to an absolute,
    site-root path so it loads correctly from any page.
+
+   ALIGNMENT FIX: also strips a leading "webprogg/" if the
+   stored value already includes it (matches the same guard
+   booking-details.php added), so a path like
+   "webprogg/uploads/listings/abc.jpg" doesn't turn into
+   "/webprogg/webprogg/uploads/listings/abc.jpg" here while
+   rendering correctly there.
 ----------------------------------------------------- */
 function resolve_photo($path, $fallback) {
     if (empty($path)) {
@@ -110,13 +142,92 @@ function resolve_photo($path, $fallback) {
     if (preg_match('#^(https?://|/)#i', $path)) {
         return $path; // already absolute — leave it alone
     }
-    return '/webprogg/' . ltrim($path, '/');
+    $normalized = ltrim($path, '/');
+    if (stripos($normalized, 'webprogg/') === 0) {
+        $normalized = substr($normalized, strlen('webprogg/'));
+    }
+    return '/webprogg/' . $normalized;
 }
 
-/* Same "Not specified" fallback booking-details.php uses for these
-   optional fields (a host's own "List Now" booking never has them). */
-function pt_date_or_unspecified($value) {
-    return !empty($value) ? date('M j, Y', strtotime($value)) : 'Not specified';
+/* -----------------------------------------------------
+   DATE LABELS
+   `checkout_date` is NULL for a Long Term inquiry (book.php
+   clears it when the "Long Term" checkbox was checked), so a
+   missing checkout here doesn't mean "no data" — it means the
+   tenant asked for an open-ended stay starting on check-in.
+   That's a real, meaningful state, so it gets its own label
+   instead of being lumped in with "Not specified".
+----------------------------------------------------- */
+
+/* Single check-in date, e.g. "September 11, 2026". */
+function pt_checkin_label($checkin) {
+    return !empty($checkin) ? date('F j, Y', strtotime($checkin)) : 'Not specified';
+}
+
+/* Single check-out date — "Long Term" when there's a check-in
+   but no check-out, "Not specified" when there's neither. */
+function pt_checkout_label($checkin, $checkout) {
+    if (!empty($checkout)) {
+        return date('F j, Y', strtotime($checkout));
+    }
+    return !empty($checkin) ? 'Long Term' : 'Not specified';
+}
+
+/* Combined "Check-in - Check-out" range for the card's date
+   line, e.g.:
+     "September 11, 2026 - September 13, 2026"   (normal stay)
+     "September 11, 2026 - Long Term"             (long term)
+     "Not specified"                              (neither set) */
+function pt_date_range_label($checkin, $checkout) {
+    if (empty($checkin)) {
+        return 'Not specified';
+    }
+    return date('F j, Y', strtotime($checkin)) . ' - ' . pt_checkout_label($checkin, $checkout);
+}
+
+/* -----------------------------------------------------
+   PAYMENT FIGURES + LABELS
+   ALIGNMENT FIX: this used to be three separate small
+   functions (pt_payment_remaining / pt_payment_status_label /
+   pt_payment_status_class) that each independently recomputed
+   `total - amount_paid`. They agreed with booking-details.php
+   mathematically, but keeping three separate call sites for
+   the same subtraction is exactly how these two pages could
+   drift apart the next time only one of them gets edited.
+
+   This is now ONE function, pt_payment_breakdown(), that
+   mirrors booking-details.php's own variable names and
+   rounding line-for-line:
+
+       $totalAmount = (float) $booking['total'];
+       $amountPaid  = (float) ($booking['amount_paid'] ?? 0);
+       $balanceDue  = max(0, round($totalAmount - $amountPaid, 2));
+
+   and returns everything the card/modal need (remaining
+   amount, status label, badge class, "is it actually fully
+   paid" flag) computed from that single balance figure — so
+   there's exactly one place doing this math for this page, and
+   it's the same math booking-details.php does.
+----------------------------------------------------- */
+function pt_payment_breakdown($total, $amountPaid) {
+    $totalAmount = (float) $total;
+    $amountPaid  = (float) ($amountPaid ?? 0);
+    $balanceDue  = max(0, round($totalAmount - $amountPaid, 2));
+    $isFullyPaid = $balanceDue <= 0.005;
+
+    return [
+        'balance_due'   => $balanceDue,
+        'is_fully_paid' => $isFullyPaid,
+        'status_label'  => $isFullyPaid ? 'Fully Paid' : ('₱' . number_format($balanceDue, 2) . ' Pending'),
+        'status_class'  => $isFullyPaid ? 'pt-payment-paid' : 'pt-payment-pending',
+    ];
+}
+
+/* Exact date + time the tenant's payment was sent (their first
+   payment — a later balance payment doesn't move paid_at, see
+   process-payment.php), e.g. "Sep 11, 2026, 2:59 PM". */
+function pt_payment_time_label($paidAt) {
+    return !empty($paidAt) ? date('M j, Y, g:i A', strtotime($paidAt)) : 'Not paid yet';
 }
 
 /* Cache-buster for the stylesheet, same pattern as mylistings.php. */
@@ -286,7 +397,13 @@ $hp_css_version = '3';
           <p>Once a tenant applies for one of your spaces, they'll show up here for you to accept or reject.</p>
         </div>
 
-      <?php else: foreach ($pendingApplications as $app): ?>
+      <?php else: foreach ($pendingApplications as $app):
+        $dateRangeLabel = pt_date_range_label($app['checkin_date'], $app['checkout_date']);
+        $payment        = pt_payment_breakdown($app['total'], $app['amount_paid']);
+        $paymentStatus    = $payment['status_label'];
+        $paymentStatusCls = $payment['status_class'];
+        $paymentTime      = pt_payment_time_label($app['paid_at']);
+      ?>
 
         <div
             class="pt-card"
@@ -297,8 +414,12 @@ $hp_css_version = '3';
             data-tenant-name="<?php echo h($app['tenant_name']); ?>"
             data-tenant-email="<?php echo h($app['tenant_email']); ?>"
             data-tenant-avatar="<?php echo h(resolve_photo($app['tenant_avatar'], '/webprogg/images/default-avatar.png')); ?>"
-            data-checkin="<?php echo h(pt_date_or_unspecified($app['checkin_date'])); ?>"
-            data-checkout="<?php echo h(pt_date_or_unspecified($app['checkout_date'])); ?>"
+            data-checkin="<?php echo h(pt_checkin_label($app['checkin_date'])); ?>"
+            data-checkout="<?php echo h(pt_checkout_label($app['checkin_date'], $app['checkout_date'])); ?>"
+            data-daterange="<?php echo h($dateRangeLabel); ?>"
+            data-payment-status="<?php echo h($paymentStatus); ?>"
+            data-payment-class="<?php echo h($paymentStatusCls); ?>"
+            data-payment-time="<?php echo h($paymentTime); ?>"
             data-guests="<?php echo h($app['guests'] !== null && $app['guests'] !== '' ? $app['guests'] : 'Not specified'); ?>"
             data-applied="<?php echo h(date('M j, Y', strtotime($app['booked_at']))); ?>"
             data-total="<?php echo h(number_format((float) $app['total'], 2)); ?>"
@@ -335,6 +456,37 @@ $hp_css_version = '3';
             <p class="pt-applied-date">
               Applied <?php echo h(date('M j, Y', strtotime($app['booked_at']))); ?>
             </p>
+          </div>
+
+          <!-- =========================================
+               PAYMENT — sits to the LEFT of the stay dates.
+               Top: status badge — "Fully Paid" once
+               amount_paid covers total, otherwise the exact
+               amount still owed (e.g. "\u{20B1}2,000.00 Pending"),
+               same figures booking-details.php's Balance Due
+               already uses (same pt_payment_breakdown() /
+               $balanceDue math on both pages now).
+               Bottom: the exact date + time the tenant's
+               payment was sent (or "Not paid yet" if nothing's
+               been paid at all).
+          ========================================== -->
+          <div class="pt-payment">
+            <span class="pt-payment-status <?php echo h($paymentStatusCls); ?>">
+              <?php echo h($paymentStatus); ?>
+            </span>
+            <span class="pt-payment-time"><?php echo h($paymentTime); ?></span>
+          </div>
+
+          <!-- =========================================
+               STAY DATES — sits between the payment column
+               and the price/actions. Shows
+               "Check-in - Check-out", or "Check-in - Long Term"
+               when the tenant applied without a checkout date
+               (book.php's Long Term option).
+          ========================================== -->
+          <div class="pt-dates">
+            <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
+            <span><?php echo h($dateRangeLabel); ?></span>
           </div>
 
           <div class="pt-actions">
@@ -393,6 +545,18 @@ $hp_css_version = '3';
         </div>
 
         <h3 class="pt-modal-heading" id="ptModalTitle">Application Details</h3>
+
+        <!-- Payment status + exact time, same info as the card. -->
+        <div class="pt-modal-payment">
+          <span class="pt-modal-payment-status" id="ptModalPaymentStatus"></span>
+          <span class="pt-modal-payment-time" id="ptModalPaymentTime"></span>
+        </div>
+
+        <!-- Combined stay-dates line, same format as the card. -->
+        <div class="pt-modal-daterange">
+          <span class="pt-modal-muted">Dates</span>
+          <strong id="ptModalDateRange"></strong>
+        </div>
 
         <div class="pt-modal-grid">
           <div class="pt-modal-detail">
@@ -571,6 +735,68 @@ $hp_css_version = '3';
 
     .pt-applied-date { margin: 8px 0 0; font-size: 11px; color: #999999; }
 
+    /* PAYMENT — sits to the left of the stay dates on the card */
+    .pt-payment {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        flex-basis: 100%;
+        max-width: 170px;
+        padding: 8px 12px;
+        text-align: center;
+    }
+
+    .pt-payment-status {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .pt-payment-paid {
+        background: #E6F6EC;
+        color: #1E7A3D;
+        border: 1px solid #2ECC71;
+    }
+    .pt-payment-pending {
+        background: #FFF4E0;
+        color: #8A5A10;
+        border: 1px solid #F7941D;
+    }
+
+    .pt-payment-time {
+        font-size: 11px;
+        color: #777777;
+    }
+
+    @media (min-width: 720px) {
+        .pt-payment { flex-basis: auto; }
+    }
+
+    /* STAY DATES — sits between pt-payment and pt-actions */
+    .pt-dates {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-basis: 100%;
+        max-width: 220px;
+        padding: 8px 12px;
+        border-left: 1px solid #EEF1F6;
+        border-right: 1px solid #EEF1F6;
+        font-size: 12px;
+        font-weight: 600;
+        color: #14142B;
+        text-align: center;
+        justify-content: center;
+    }
+    .pt-dates img { width: 14px; height: 14px; flex-shrink: 0; }
+
+    @media (min-width: 720px) {
+        .pt-dates { flex-basis: auto; }
+    }
+
     .pt-actions {
         display: flex;
         flex-direction: column;
@@ -654,6 +880,39 @@ $hp_css_version = '3';
     .pt-modal-tenant-email { margin: 0; font-size: 12px; color: #777777; }
 
     .pt-modal-heading { margin: 0 0 12px; font-size: 15px; color: #14142B; }
+
+    .pt-modal-payment {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: #FAFAFD;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+    }
+    .pt-modal-payment-status {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .pt-modal-payment-time {
+        font-size: 12px;
+        color: #777777;
+    }
+
+    .pt-modal-daterange {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        background: #FAFAFD;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+    }
 
     .pt-modal-grid {
         display: grid;
@@ -759,6 +1018,13 @@ $hp_css_version = '3';
         document.getElementById('ptModalTenantAvatar').src = card.getAttribute('data-tenant-avatar');
         document.getElementById('ptModalTenantName').textContent = card.getAttribute('data-tenant-name');
         document.getElementById('ptModalTenantEmail').textContent = card.getAttribute('data-tenant-email');
+
+        var paymentStatusEl = document.getElementById('ptModalPaymentStatus');
+        paymentStatusEl.textContent = card.getAttribute('data-payment-status');
+        paymentStatusEl.className = 'pt-modal-payment-status ' + card.getAttribute('data-payment-class');
+        document.getElementById('ptModalPaymentTime').textContent = card.getAttribute('data-payment-time');
+
+        document.getElementById('ptModalDateRange').textContent = card.getAttribute('data-daterange');
         document.getElementById('ptModalCheckin').textContent = card.getAttribute('data-checkin');
         document.getElementById('ptModalCheckout').textContent = card.getAttribute('data-checkout');
         document.getElementById('ptModalGuests').textContent = card.getAttribute('data-guests');

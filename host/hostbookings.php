@@ -129,6 +129,29 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/* -----------------------------------------------------
+   PHOTO PATH RESOLUTION
+   `listing_photos.photo_path` is stored RELATIVE (e.g.
+   "uploads/listing_photos/cover/cover_123_abc.jpg"), not
+   rooted at "/webprogg/...". That's on purpose (see the
+   FIX note in host-step3.php) — but it means every page
+   that PRINTS a photo_path into an <img src> has to prefix
+   it with "/webprogg/" first, or the browser resolves it
+   relative to the current page's own folder instead of the
+   site root (e.g. "/webprogg/host/uploads/..." instead of
+   "/webprogg/uploads/..."), and the image 404s.
+
+   This page was missing that step — it printed cover_photo
+   straight from the DB. resolve_photo() fixes that the same
+   way mylistings.php / pendingtenants.php / etc. already do.
+----------------------------------------------------- */
+function resolve_photo($path) {
+    if (!$path) {
+        return null;
+    }
+    return '/webprogg/' . ltrim($path, '/');
+}
+
 /* Cache-buster for the stylesheet so browsers don't keep serving a
    stale cached copy after edits (e.g. this fix) are deployed. Bump
    the number any time hostprofile.css changes and you're not seeing
@@ -351,7 +374,7 @@ $hp_css_version = '4';
 
       <?php else: foreach ($filtered as $b):
         $meta = $statusMeta[$b['status']] ?? ['label' => ucfirst($b['status']), 'class' => 'hp-badge-yellow'];
-        $imageSrc = $b['cover_photo'] ?: '/webprogg/images/listing-placeholder.jpg';
+        $imageSrc = resolve_photo($b['cover_photo']) ?: '/webprogg/images/listing-placeholder.jpg';
       ?>
       <div class="hp-booking-card">
         <img class="hp-booking-img" src="<?php echo h($imageSrc); ?>" alt="<?php echo h($b['listing_title']); ?>">

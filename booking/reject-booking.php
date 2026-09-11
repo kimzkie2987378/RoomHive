@@ -3,20 +3,28 @@
    ROOMHIVE — REJECT BOOKING
    reject-booking.php
 
-   Called via fetch() from mylistings.php / hostprofile.php
-   when a host clicks "Reject Tenant" in a listing's 3-dot
-   menu. Moves a tenant's application (bookings.status) from
-   'pending' to 'rejected', freeing the listing back up for
-   other applicants.
+   Called via fetch() from mylistings.php / hostprofile.php /
+   pendingtenants.php when a host clicks "Reject" on a tenant's
+   application. Moves bookings.status from 'pending' to
+   'rejected' AND refunds whatever the tenant has paid into this
+   booking so far (bookings.amount_paid) back to the tenant, as a
+   wallet credit.
 
-   NOTE: this assumes the `bookings.status` column accepts a
-   'rejected' value (matching the pattern already used for
-   `listings.status`). If that column is a fixed-value ENUM
-   in the database that doesn't yet include 'rejected', add
-   it first, e.g.:
+   REQUIRES (run once, same as accept-booking.php):
+     ALTER TABLE users
+       ADD COLUMN wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+
      ALTER TABLE bookings
-       MODIFY status ENUM('pending','confirmed','cancelled','rejected')
-       NOT NULL DEFAULT 'pending';
+       ADD COLUMN refunded_amount DECIMAL(10,2) NULL AFTER amount_paid,
+       ADD COLUMN refunded_at DATETIME NULL AFTER refunded_amount;
+
+   NOTE: there's no real payment gateway wired up here (see
+   process-payment.php's own note) — GCash/Maya/card were never
+   actually charged, so this can't push money back out to a real
+   mobile wallet or card. It refunds into the tenant's RoomHive
+   wallet balance instead, the same "simulated money" model
+   process-payment.php already uses for charging in the first
+   place. Swap for a real gateway refund call when one exists.
 
    Expects POST: booking_id
    Responds JSON: { success: bool, message?: string }
@@ -43,44 +51,86 @@ if ($bookingId <= 0) {
     exit;
 }
 
-/* Only the host who owns the listing behind this booking may
-   reject it — and only while it's still pending. */
-$ownershipStmt = $pdo->prepare(
-    "SELECT b.id, b.status, l.user_id AS host_id
-     FROM bookings b
-     JOIN listings l ON l.id = b.listing_id
-     WHERE b.id = :booking_id
-     LIMIT 1"
-);
-$ownershipStmt->execute(['booking_id' => $bookingId]);
-$booking = $ownershipStmt->fetch();
+$pdo->beginTransaction();
 
-if (!$booking) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'Application not found.']);
-    exit;
-}
+try {
+    /* FOR UPDATE locks this row for the duration of the
+       transaction — a double-click or a race with an accept click
+       on the same booking can't both go through, and can't both
+       trigger a refund/payout. */
+    $ownershipStmt = $pdo->prepare(
+        "SELECT b.id, b.status, b.amount_paid, b.user_id AS tenant_id, l.user_id AS host_id
+         FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE b.id = :booking_id
+         FOR UPDATE"
+    );
+    $ownershipStmt->execute(['booking_id' => $bookingId]);
+    $booking = $ownershipStmt->fetch();
 
-if ((int) $booking['host_id'] !== (int) $_SESSION['user_id']) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'You do not have permission to update this application.']);
-    exit;
-}
+    if (!$booking) {
+        $pdo->rollBack();
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Application not found.']);
+        exit;
+    }
 
-if ($booking['status'] !== 'pending') {
-    echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
-    exit;
-}
+    /* Only the host who owns the listing behind this booking may
+       reject it. */
+    if ((int) $booking['host_id'] !== (int) $_SESSION['user_id']) {
+        $pdo->rollBack();
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to update this application.']);
+        exit;
+    }
 
-$updateStmt = $pdo->prepare(
-    "UPDATE bookings
-     SET status = 'rejected'
-     WHERE id = :booking_id AND status = 'pending'"
-);
-$updateStmt->execute(['booking_id' => $bookingId]);
+    /* ...and only while it's still pending, so rejecting twice
+       can't double-refund. */
+    if ($booking['status'] !== 'pending') {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
+        exit;
+    }
 
-if ($updateStmt->rowCount() === 0) {
-    echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
+    $amountPaid = (float) $booking['amount_paid'];
+
+    $updateStmt = $pdo->prepare(
+        "UPDATE bookings
+         SET status = 'rejected',
+             refunded_amount = :refunded_amount,
+             refunded_at = NOW()
+         WHERE id = :booking_id AND status = 'pending'"
+    );
+    $updateStmt->execute([
+        'refunded_amount' => $amountPaid,
+        'booking_id'      => $bookingId,
+    ]);
+
+    if ($updateStmt->rowCount() === 0) {
+        // Someone else / another tab already decided this booking
+        // between our SELECT and our UPDATE.
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
+        exit;
+    }
+
+    /* Refund whatever was paid — normally the ₱1,000 reservation
+       fee — back into the tenant's RoomHive wallet balance. */
+    if ($amountPaid > 0) {
+        $pdo->prepare(
+            "UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :tenant_id"
+        )->execute([
+            'amount'    => $amountPaid,
+            'tenant_id' => $booking['tenant_id'],
+        ]);
+    }
+
+    $pdo->commit();
+
+} catch (Exception $e) {
+    $pdo->rollBack();
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Could not reject this application. Please try again.']);
     exit;
 }
 
