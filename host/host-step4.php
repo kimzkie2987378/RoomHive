@@ -187,9 +187,6 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
                 </button>
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
-                    <?php if ($isHostApproved): ?>
-                        <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                    <?php endif; ?>
                     <a href="/webprogg/user/userprofile.php">My Profile</a>
                     <a href="/webprogg/auth/logout.php">Logout</a>
                 </div>

@@ -1,0 +1,647 @@
+/* =========================================================
+   ROOMHIVE — MY ACCOUNT / MESSAGES
+   usermessages.css
+   Uses the design tokens defined in userprofile.css
+   (--up-orange, --up-navy, --up-border, --up-radius, etc).
+   Load this AFTER userprofile.css.
+========================================================= */
+
+.up-msg-card {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  height: 640px;
+}
+
+/* =========================================================
+   LIST PANE (header + search + tabs + scrollable list)
+========================================================= */
+
+.up-msg-list-pane {
+  width: 330px;
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  border-right: 1px solid var(--up-border);
+}
+
+.up-msg-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 18px 18px 14px;
+}
+
+.up-msg-list-header h2 {
+  margin: 0;
+  color: var(--up-navy);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.up-msg-compose {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f4f4f5;
+  color: var(--up-navy);
+
+  border-radius: 50%;
+  text-decoration: none;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.up-msg-compose:hover {
+  background: var(--up-orange-light);
+  color: var(--up-orange);
+}
+
+.up-msg-compose svg {
+  width: 15px;
+  height: 15px;
+}
+
+.up-msg-search-wrap {
+  position: relative;
+  margin: 0 18px 14px;
+}
+
+.up-msg-search-wrap svg {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  transform: translateY(-50%);
+
+  width: 14px;
+  height: 14px;
+  color: #9a9a9a;
+}
+
+.up-msg-search {
+  width: 100%;
+
+  padding: 9px 14px 9px 34px;
+
+  background: #f4f4f5;
+  border: 1px solid transparent;
+  border-radius: 20px;
+
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--up-navy);
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.up-msg-search::placeholder {
+  color: #9a9a9a;
+}
+
+.up-msg-search:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: var(--up-orange);
+}
+
+.up-msg-tabs {
+  display: flex;
+  gap: 8px;
+
+  padding: 0 18px 14px;
+}
+
+.up-msg-tab {
+  padding: 6px 14px;
+
+  background: #f4f4f5;
+  color: #666666;
+
+  border: none;
+  border-radius: 20px;
+
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.up-msg-tab:hover {
+  background: #ececec;
+}
+
+.up-msg-tab.active {
+  background: var(--up-orange-light);
+  color: var(--up-orange);
+}
+
+/* =========================================================
+   CONVERSATION LIST
+========================================================= */
+
+.up-msg-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.up-msg-list-item {
+  position: relative;
+
+  display: flex;
+  gap: 12px;
+
+  padding: 12px 18px;
+
+  color: inherit;
+  text-decoration: none;
+
+  border-left: 3px solid transparent;
+
+  transition: background 0.15s ease;
+}
+
+.up-msg-list-item:hover {
+  background: var(--up-orange-light);
+}
+
+.up-msg-list-item.active {
+  background: var(--up-orange-light);
+  border-left-color: var(--up-orange);
+}
+
+.up-msg-avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.up-msg-avatar img {
+  width: 48px;
+  height: 48px;
+
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.up-msg-item-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.up-msg-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.up-msg-name {
+  min-width: 0;
+
+  color: var(--up-navy);
+  font-size: 13.5px;
+  font-weight: 600;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.up-msg-list-item.unread .up-msg-name {
+  font-weight: 800;
+}
+
+.up-msg-badge {
+  flex-shrink: 0;
+
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--up-orange);
+  color: #ffffff;
+
+  border-radius: 20px;
+
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.up-msg-listing-tag {
+  display: block;
+  margin: 2px 0 0;
+
+  color: var(--up-text-muted);
+  font-size: 11.5px;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.up-msg-preview {
+  display: block;
+  margin: 3px 0 0;
+
+  color: #888888;
+  font-size: 12.5px;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.up-msg-list-item.unread .up-msg-preview {
+  color: var(--up-navy);
+  font-weight: 600;
+}
+
+.up-msg-list-item.js-hidden {
+  display: none;
+}
+
+/* =========================================================
+   EMPTY / WELCOME STATES
+========================================================= */
+
+.up-msg-welcome {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  padding: 40px 30px;
+  text-align: center;
+}
+
+.up-msg-welcome-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--up-orange-light);
+  border-radius: 50%;
+}
+
+.up-msg-welcome-icon svg {
+  width: 28px;
+  height: 28px;
+  color: var(--up-orange);
+}
+
+.up-msg-welcome h3 {
+  margin: 0;
+  color: var(--up-navy);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.up-msg-welcome p {
+  margin: 0;
+  max-width: 260px;
+
+  color: var(--up-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.up-msg-welcome .up-btn-outline {
+  margin-top: 14px;
+}
+
+.up-msg-card-empty {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 420px;
+}
+
+.up-msg-card-empty .up-msg-list-header {
+  border-bottom: 1px solid var(--up-border);
+}
+
+.up-msg-card-empty .up-msg-welcome {
+  min-height: 340px;
+}
+
+/* =========================================================
+   THREAD
+========================================================= */
+
+.up-msg-thread {
+  flex: 1;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.up-msg-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 14px 22px;
+
+  border-bottom: 1px solid var(--up-border);
+}
+
+.up-msg-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+
+  width: 30px;
+  height: 30px;
+
+  color: var(--up-navy);
+  font-size: 18px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.up-msg-thread-header img.up-msg-thread-avatar {
+  width: 38px;
+  height: 38px;
+
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.up-msg-thread-info {
+  min-width: 0;
+}
+
+.up-msg-thread-name {
+  color: var(--up-navy);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.up-msg-thread-listing {
+  margin: 1px 0 0;
+  color: var(--up-text-muted);
+  font-size: 11.5px;
+}
+
+.up-msg-thread-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.up-msg-icon-btn {
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f4f4f5;
+  color: var(--up-navy);
+
+  border: none;
+  border-radius: 50%;
+  text-decoration: none;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.up-msg-icon-btn:hover {
+  background: var(--up-orange-light);
+  color: var(--up-orange);
+}
+
+.up-msg-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- message body ---- */
+
+.up-msg-thread-body {
+  flex: 1;
+  overflow-y: auto;
+
+  padding: 20px 22px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  background: #fafafa;
+}
+
+.up-msg-day-divider {
+  align-self: center;
+
+  margin: 14px 0 10px;
+  padding: 4px 12px;
+
+  background: #ffffff;
+  border: 1px solid var(--up-border);
+  border-radius: 20px;
+
+  color: var(--up-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.up-msg-row {
+  display: flex;
+  margin-top: 8px;
+}
+
+.up-msg-row.mine {
+  justify-content: flex-end;
+}
+
+.up-msg-row.theirs {
+  justify-content: flex-start;
+}
+
+.up-msg-bubble-wrap {
+  max-width: 62%;
+  display: flex;
+  flex-direction: column;
+}
+
+.up-msg-row.mine .up-msg-bubble-wrap {
+  align-items: flex-end;
+}
+
+.up-msg-row.theirs .up-msg-bubble-wrap {
+  align-items: flex-start;
+}
+
+.up-msg-bubble {
+  padding: 10px 14px;
+
+  border-radius: 18px;
+
+  font-size: 13.5px;
+  line-height: 1.45;
+
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.up-msg-row.theirs .up-msg-bubble {
+  background: #eef0f2;
+  color: var(--up-navy);
+  border-bottom-left-radius: 5px;
+}
+
+.up-msg-row.mine .up-msg-bubble {
+  background: var(--up-navy);
+  color: #ffffff;
+  border-bottom-right-radius: 5px;
+}
+
+.up-msg-time {
+  margin-top: 3px;
+
+  color: #a8a8a8;
+  font-size: 10.5px;
+}
+
+/* ---- composer ---- */
+
+.up-msg-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 14px 22px;
+
+  border-top: 1px solid var(--up-border);
+}
+
+.up-msg-input {
+  flex: 1;
+
+  padding: 11px 16px;
+
+  background: #f4f4f5;
+  border: 1px solid transparent;
+  border-radius: 22px;
+
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--up-navy);
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.up-msg-input::placeholder {
+  color: #9a9a9a;
+}
+
+.up-msg-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: var(--up-orange);
+}
+
+.up-msg-send-btn {
+  flex-shrink: 0;
+
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--up-orange);
+  color: #ffffff;
+
+  border: none;
+  border-radius: 50%;
+
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.up-msg-send-btn:hover {
+  background: #d4901c;
+}
+
+.up-msg-send-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 700px) {
+  .up-msg-card {
+    height: calc(100vh - 260px);
+    min-height: 460px;
+  }
+
+  .up-msg-list-pane {
+    width: 100%;
+    border-right: none;
+  }
+
+  .up-msg-thread {
+    display: none;
+  }
+
+  .up-msg-back {
+    display: flex;
+  }
+
+  /* When a conversation is open, this modifier (added by PHP
+     based on ?conversation=) flips which pane is visible so
+     the page behaves like a single-pane mobile chat view. */
+  .up-msg-card.up-msg-mobile-open .up-msg-list-pane {
+    display: none;
+  }
+
+  .up-msg-card.up-msg-mobile-open .up-msg-thread {
+    display: flex;
+  }
+
+  .up-msg-bubble-wrap {
+    max-width: 80%;
+  }
+}

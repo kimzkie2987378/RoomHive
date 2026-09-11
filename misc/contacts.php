@@ -170,12 +170,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <div class="account-dropdown-menu" id="accountDropdownMenu">
 
-                    <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
-                        <a href="/webprogg/host/hostprofile.php">
-                            Host Profile
-                        </a>
-                    <?php endif; ?>
-
                     <a href="/webprogg/user/userprofile.php">
                         My Profile
                     </a>

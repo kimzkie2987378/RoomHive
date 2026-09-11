@@ -910,17 +910,15 @@ $listingOccupancy = $occupancyWindowDays > 0
      PROFILE PHOTO — UPLOAD ON CAMERA ICON CLICK
      Opens the file picker, shows an instant local preview,
      uploads to uploadavatar.php, then swaps in the real saved
-     image everywhere it appears on this page (profile card,
-     sidebar card, and the navbar icon), or reverts + alerts
-     on failure.
+     image (or reverts + alerts on failure).
 ========================================================= -->
 <script>
 (function () {
-    const photoButton  = document.getElementById('hostPhotoButton');
+    const photoButton = document.getElementById('hostPhotoButton');
     const fileInput    = document.getElementById('hostAvatarFileInput');
     const avatarImg    = document.getElementById('hostProfileAvatarImg');
-    const sidebarImg   = document.getElementById('hostSidebarAvatarImg');
     const navAvatarImg = document.getElementById('navAccountAvatarImg');
+    const sidebarAvatarImg = document.getElementById('hostSidebarAvatarImg');
 
     if (!photoButton || !fileInput || !avatarImg) return;
 
@@ -945,38 +943,42 @@ $listingOccupancy = $occupancyWindowDays > 0
             return;
         }
 
-        // Instant local preview while it uploads
         const previewUrl = URL.createObjectURL(file);
         const previousSrc = avatarImg.src;
         avatarImg.src = previewUrl;
-        if (sidebarImg) sidebarImg.src = previewUrl;
-        if (navAvatarImg) navAvatarImg.src = previewUrl;
+        if (sidebarAvatarImg) sidebarAvatarImg.src = previewUrl;
         photoButton.disabled = true;
 
         const formData = new FormData();
         formData.append('avatar', file);
 
-        fetch('/webprogg/upload/uploadavatar.php', {
+        fetch('/webprogg/user/uploadavatar.php', {
             method: 'POST',
             body: formData
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (!res.ok) {
+                return res.json().catch(function () {
+                    throw new Error('Upload endpoint returned ' + res.status);
+                });
+            }
+            return res.json();
+        })
         .then(function (data) {
             if (data.success) {
                 avatarImg.src = data.avatar_url;
-                if (sidebarImg) sidebarImg.src = data.avatar_url;
                 if (navAvatarImg) navAvatarImg.src = data.avatar_url;
+                if (sidebarAvatarImg) sidebarAvatarImg.src = data.avatar_url;
             } else {
                 avatarImg.src = previousSrc;
-                if (sidebarImg) sidebarImg.src = previousSrc;
-                if (navAvatarImg) navAvatarImg.src = previousSrc;
+                if (sidebarAvatarImg) sidebarAvatarImg.src = previousSrc;
                 alert(data.error || 'Could not update your profile photo.');
             }
         })
-        .catch(function () {
+        .catch(function (err) {
             avatarImg.src = previousSrc;
-            if (sidebarImg) sidebarImg.src = previousSrc;
-            if (navAvatarImg) navAvatarImg.src = previousSrc;
+            if (sidebarAvatarImg) sidebarAvatarImg.src = previousSrc;
+            console.error('[avatar upload]', err);
             alert('Something went wrong uploading your photo. Please try again.');
         })
         .finally(function () {

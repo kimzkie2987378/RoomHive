@@ -37,6 +37,23 @@ $amenityIcons = [
 ];
 
 /* =========================
+   CAPACITY LABELS
+   (mirrors $capacityOptions in host-step2.php so the value
+   the host picked there renders identically here)
+========================== */
+$capacityLabels = [
+    "1"   => "1 Guest",
+    "2"   => "2 Guests",
+    "3"   => "3 Guests",
+    "4"   => "4 Guests",
+    "5"   => "5 Guests",
+    "6"   => "6 Guests",
+    "8"   => "8 Guests",
+    "10"  => "10 Guests",
+    "10+" => "More than 10 Guests"
+];
+
+/* =========================
    RESOLVE LISTING FROM ?id=
    Pulled from the real `listings` table, joined against the
    owning host's user row and their photos/reviews.
@@ -46,8 +63,13 @@ $listingId = isset($_GET['id']) && is_numeric($_GET['id'])
     ? (int) $_GET['id']
     : 0;
 
+/* FIX: also pull u.avatar_path (aliased host_avatar_path) so the
+   "Meet your host" card can show the host's REAL profile photo
+   instead of a hardcoded default image, same as hostprofile.php /
+   userprofile.php already do for the logged-in user's own avatar. */
 $listingStmt = $pdo->prepare(
-    "SELECT l.*, u.name AS host_name, u.email AS host_email, u.created_at AS host_created_at
+    "SELECT l.*, u.name AS host_name, u.email AS host_email, u.created_at AS host_created_at,
+            u.avatar_path AS host_avatar_path
      FROM listings l
      JOIN users u ON u.id = l.user_id
      WHERE l.id = :id
@@ -254,6 +276,14 @@ $listing = [
     'size_sqm'       => (float) $listingRow['size_sqm'],
     'floor'          => $listingRow['floor'],
     'parking'        => $listingRow['parking'],
+
+    // Guest capacity — pulled straight from the value the host
+    // picked on host-step2.php (the `capacity` column on
+    // `listings`), so the detail page can never disagree with
+    // what the host actually set.
+    'capacity'       => $listingRow['capacity'],
+    'capacity_label' => $capacityLabels[$listingRow['capacity']] ?? ($listingRow['capacity'] . ' Guests'),
+
     'rating'         => $listingRating,
     'reviews'        => $listingReviews,
     'verified'       => false,
@@ -262,7 +292,17 @@ $listing = [
     'host'           => [
         'id'            => (int) $listingRow['user_id'],
         'name'          => $listingRow['host_name'],
-        'avatar'        => '/webprogg/images/default-avatar.png',
+
+        // FIX: use the host's real saved avatar_path (same column
+        // hostprofile.php / userprofile.php read) instead of a
+        // hardcoded default image. avatar_path is stored as a full
+        // "/webprogg/..." path by uploadavatar.php, so it's already
+        // web-resolvable as-is — no resolve_photo()-style rewrite
+        // needed like the listing cover photos above.
+        'avatar'        => !empty($listingRow['host_avatar_path'])
+                                ? $listingRow['host_avatar_path']
+                                : '/webprogg/images/default-avatar.png',
+
         'superhost'     => false,
         'member_since'  => date('F Y', strtotime($listingRow['host_created_at'])),
         'rating'        => $hostRating,
@@ -651,7 +691,12 @@ $galleryCount = count($listing['gallery']);
 
                     </div>
 
-                    <a href="#" class="rd-host-profile-btn">
+                    <!-- FIX: was href="#" (dead link). Point at the
+                         public host-profile route, keyed by host id.
+                         Rename the target file/path below to match
+                         whatever this project's actual public host
+                         profile page is called. -->
+                    <a href="/webprogg/host/hostpublicprofile.php?id=<?= (int) $listing['host']['id'] ?>" class="rd-host-profile-btn">
                         View Host Profile
                     </a>
 
@@ -718,16 +763,37 @@ $galleryCount = count($listing['gallery']);
 
                 </div>
 
+                <!-- =============================================
+                     GUESTS
+                     Was previously a free <select> the guest could
+                     pick any number from — that let a renter choose
+                     more guests than the space's actual capacity.
+                     Now it's a fixed, read-only display driven by
+                     the `capacity` value the host set on
+                     host-step2.php, with a hidden field so the
+                     value still posts to listingpayment.php exactly
+                     like before.
+                ============================================== -->
+
                 <div class="rd-guests">
 
-                    <label for="rd-guests-select">Guests</label>
+                    <label>Guests</label>
 
-                    <select id="rd-guests-select" name="guests" form="rd-inquiry-form">
-                        <option value="1">1 Guest</option>
-                        <option value="2">2 Guests</option>
-                        <option value="3">3 Guests</option>
-                        <option value="4+">4+ Guests</option>
-                    </select>
+                    <div class="rd-guests-display" id="rd-guests-display">
+                        <?= htmlspecialchars($listing['capacity_label'], ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+
+                    <span class="rd-guests-note">
+                        Max capacity person
+                    </span>
+
+                    <input
+                        type="hidden"
+                        id="rd-guests-value"
+                        name="guests"
+                        value="<?= htmlspecialchars($listing['capacity'], ENT_QUOTES, 'UTF-8') ?>"
+                        form="rd-inquiry-form"
+                    >
 
                 </div>
 

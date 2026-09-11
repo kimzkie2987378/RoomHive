@@ -6,6 +6,7 @@
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
 /* -----------------------------------------------------
    AUTH GUARD
@@ -47,27 +48,16 @@ if (!$dbUser) {
    by the admin's Approve action in hostapplication.php),
    their account page IS the host dashboard — send them to
    hostprofile.php instead of rendering the plain user view.
-
-   FIX: previously this was just a comment with no actual
-   redirect underneath it, so approved hosts stayed stuck on
-   this page no matter what is_host was set to in the DB.
 ----------------------------------------------------- */
 if ((int) $dbUser['is_host'] === 1) {
     header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
 
-/* Keep the navbar's account icon in sync too — it's a
-   separate <img> from the big profile photo below, so both
-   need the same source of truth. */
-$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
-
-/* FIX: keep session in sync with the real DB value so any
-   other code that still checks $_SESSION['is_host'] (e.g.
-   older cached pages) reflects reality instead of staying
-   permanently unset/false. */
-$_SESSION['is_host'] = (bool) $dbUser['is_host'];
+/* Keep the navbar's account icon in sync, and mirror is_host
+   into the session for any older code that still checks
+   $_SESSION['is_host'] directly. */
+$navAvatar = sync_user_session($dbUser);
 
 $user = [
     'name'          => $dbUser['name'],
@@ -113,7 +103,7 @@ $average_rating = count($reviews) > 0
    Real query against `bookings`, joined to `listings` for
    the title/location and `listing_photos` for the cover
    thumbnail. Most recent 3 shown here; full history lives
-   on mybookings.php.
+   on userbookings.php.
 ----------------------------------------------------- */
 $bookingsStmt = $pdo->prepare(
     "SELECT b.id, b.total, b.status, b.booked_at,
@@ -134,7 +124,7 @@ $bookings = array_map(function ($row) {
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
         'location' => $row['location'],
-        'thumb'    => resolve_photo($row['cover_photo'], '/webprogg/images/ListingPlaceholder.png'),
+        'thumb'    => resolve_photo($row['cover_photo']),
         'dates'    => date('M j, Y', strtotime($row['booked_at'])),
         'status'   => $row['status'],
         'total'    => number_format((float) $row['total'], 2),
@@ -275,7 +265,7 @@ $wishlist = array_map(function ($row) {
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
         'location' => $row['location'],
-        'thumb'    => resolve_photo($row['cover_photo'], '/webprogg/images/ListingPlaceholder.png'),
+        'thumb'    => resolve_photo($row['cover_photo']),
         'price'    => number_format((float) $row['price'], 0),
         'rating'   => 0,
         'reviews'  => 0,
@@ -299,48 +289,7 @@ $stats = [
     ['icon' => 'totalspenticon-userprofile.png',   'value' => '&#8369; ' . $total_spent_all_time, 'label' => 'Total Spent All Time'],
 ];
 
-/* Small helper so we're not repeating htmlspecialchars() everywhere */
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-/* -----------------------------------------------------
-   PHOTO PATH FIX
-   Uploaded photo_path values (listing_photos.photo_path,
-   and other users' avatar_path when we show them) are saved
-   relative to /webprogg — e.g. "uploads/listings/abc.jpg".
-   Printed as-is, the browser resolves that against the
-   CURRENT page's folder instead of the site root, which is
-   why these thumbnails 404 on pages that live in a subfolder
-   like /user/ or /booking/, even though avatar_path for the
-   logged-in user (already stored as a full "/webprogg/..."
-   path by uploadavatar.php) always works fine.
-
-   FIX: the old version trusted ANY leading "/" as proof the
-   path was already a correct, absolute site-root path. But
-   some rows were saved as "/uploads/listing_photos/xyz.jpg"
-   (leading slash, no "webprogg" segment) — that got returned
-   untouched, so the browser looked for it at the actual server
-   root instead of inside /webprogg/, and the image 404'd (this
-   is exactly the broken "rose place" thumbnail on Recent
-   Bookings). Now every path is normalized — strip any leading
-   slash and any accidental leading "webprogg/" segment — and
-   then rebuilt as "/webprogg/..." every single time, so it
-   comes out correct no matter how it was originally saved.
------------------------------------------------------ */
-function resolve_photo($path, $fallback) {
-    if (empty($path)) {
-        return $fallback;
-    }
-    if (preg_match('#^https?://#i', $path)) {
-        return $path; // full remote URL — leave it alone
-    }
-    $normalized = ltrim($path, '/');
-    if (stripos($normalized, 'webprogg/') === 0) {
-        $normalized = substr($normalized, strlen('webprogg/'));
-    }
-    return '/webprogg/' . $normalized;
-}
+$activeSidebar = 'overview';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -374,7 +323,7 @@ function resolve_photo($path, $fallback) {
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
-        <a href="notifications.php" class="nav-bell">
+        <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
@@ -399,9 +348,6 @@ function resolve_photo($path, $fallback) {
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php /* FIX: was checking $_SESSION['is_host'] === true, which
-                         was never actually set anywhere — this now checks the
-                         real DB value the same way hostprofile.php does. */ ?>
                 <?php if ($dbUser['is_host']): ?>
                     <a href="/webprogg/host/hostprofile.php">Host Profile</a>
                 <?php endif; ?>
@@ -441,53 +387,21 @@ function resolve_photo($path, $fallback) {
 ========================================================= -->
 <main class="up-dashboard">
 
-  <!-- SIDEBAR -->
-  <aside class="up-sidebar">
-    <a href="/webprogg/user/userprofile.php" class="up-side-link active">
-      <img src="/webprogg/images/overviewicon-userprofile.png" alt="">
-      Overview
-    </a>
-    <a href="/webprogg/booking/userbookings.php" class="up-side-link">
-      <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-      My Bookings
-    </a>
-    <a href="/webprogg/user/userwishlist.php" class="up-side-link">
-      <img src="/webprogg/images/wihlistedicon-userprofile.png" alt="">
-      Wishlist
-    </a>
-    <a href="payments.php" class="up-side-link">
-      <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
-      Payments
-    </a>
-    <a href="reviews.php" class="up-side-link">
-      <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
-      Reviews
-    </a>
-    <a href="messages.php" class="up-side-link">
-      <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
-      Messages
-    </a>
-    <a href="editprofile.php" class="up-side-link">
-      <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
-      Profile &amp; Account
-    </a>
-    <a href="notificationsettings.php" class="up-side-link">
-      <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
-      Notification Settings
-    </a>
-    <a href="savedsearches.php" class="up-side-link">
-      <img src="/webprogg/images/savedsearchesicon-userprofile.png" alt="">
-      Saved Searches
-    </a>
-    <a href="helpcenter.php" class="up-side-link">
-      <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-      Help Center
-    </a>
-    <a href="/webprogg/auth/logout.php" class="up-side-link up-side-logout">
-      <img src="/webprogg/images/logouticon-userprofile.png" alt="">
-      Log Out
-    </a>
-  </aside>
+  <?php
+  /* FIX: this sidebar previously hand-rolled its own links and
+     had drifted badly out of sync with the real filenames:
+       - Reviews    -> "userreview  s.php" (literal typo/extra
+                        spaces in the filename — 404)
+       - Messages   -> "messages.php" (should be
+                        usermessages.php — 404)
+       - Notification Settings -> "notificationsettings.php"
+                        (should be usernotificationsettings.php
+                        — 404)
+     The shared partial below is the single source of truth,
+     so this class of bug can't reappear here or on any other
+     /my-account page. */
+  require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
+  ?>
 
   <!-- CENTER + RIGHT COLUMNS -->
   <div class="up-content">
@@ -535,7 +449,7 @@ function resolve_photo($path, $fallback) {
         <p><?php echo $user['about'] !== '' ? h($user['about']) : 'No bio added yet.'; ?></p>
       </div>
 
-      <button type="button" class="up-btn-outline up-edit-profile" id="editProfileButton">Edit Profile</button>
+      <a href="/webprogg/user/editprofile.php" class="up-btn-outline up-edit-profile" id="editProfileButton">Edit Profile</a>
     </section>
 
     <!-- STATS ROW -->
@@ -599,7 +513,7 @@ function resolve_photo($path, $fallback) {
         <div class="up-card up-payment-summary">
           <div class="up-card-header">
             <h3>Payment Summary</h3>
-            <a href="payments.php" class="up-link-view-all">View All</a>
+            <a href="/webprogg/user/userpayments.php" class="up-link-view-all">View All</a>
           </div>
 
           <!-- WEEK / ALL TIME TOGGLE -->
@@ -642,7 +556,7 @@ function resolve_photo($path, $fallback) {
         <div class="up-card up-payment-methods">
           <div class="up-card-header">
             <h3>Payment Methods</h3>
-            <a href="payments.php" class="up-link-view-all">Manage</a>
+            <a href="/webprogg/user/userpayments.php" class="up-link-view-all">Manage</a>
           </div>
 
           <?php if (empty($payment_methods)): ?>
@@ -682,14 +596,14 @@ function resolve_photo($path, $fallback) {
               <?php echo $two_factor_enabled ? 'Enabled' : 'Disabled'; ?>
             </span>
           </div>
-          <a href="security.php" class="up-btn-outline up-manage-security">Manage Security</a>
+          <a href="/webprogg/user/security.php" class="up-btn-outline up-manage-security">Manage Security</a>
         </div>
 
         <div class="up-need-help">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Our support team is here to assist you 24/7.</p>
-            <a href="helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
+            <a href="/webprogg/user/helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
           </div>
           <img src="/webprogg/images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
         </div>
@@ -902,24 +816,30 @@ function resolve_photo($path, $fallback) {
         const formData = new FormData();
         formData.append('avatar', file);
 
-        fetch('/webprogg/upload/uploadavatar.php', {
+        fetch('/webprogg/user/uploadavatar.php', {
             method: 'POST',
             body: formData
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (!res.ok) {
+                return res.json().catch(function () {
+                    throw new Error('Upload endpoint returned ' + res.status);
+                });
+            }
+            return res.json();
+        })
         .then(function (data) {
             if (data.success) {
                 avatarImg.src = data.avatar_url;
-                // Keep the navbar's account icon in sync too — it's a
-                // separate <img> from the profile photo above.
                 if (navAvatarImg) navAvatarImg.src = data.avatar_url;
             } else {
                 avatarImg.src = previousSrc;
                 alert(data.error || 'Could not update your profile photo.');
             }
         })
-        .catch(function () {
+        .catch(function (err) {
             avatarImg.src = previousSrc;
+            console.error('[avatar upload]', err);
             alert('Something went wrong uploading your photo. Please try again.');
         })
         .finally(function () {
@@ -971,7 +891,7 @@ function resolve_photo($path, $fallback) {
 
             btn.disabled = true;
 
-            fetch('togglewishlist.php', {
+            fetch('/webprogg/user/togglewishlist.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'listing_id=' + encodeURIComponent(listingId)

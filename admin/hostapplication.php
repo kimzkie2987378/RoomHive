@@ -69,13 +69,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
          * Approving here is the ONLY place is_host gets set to
          * true. host-step4.php no longer flips it on its own —
          * the applicant just sees "awaiting approval" until an
-         * admin does this. Rejecting leaves is_host untouched
-         * (it should already be 0/false for a first-time
-         * applicant).
+         * admin does this.
+         *
+         * Rejecting explicitly demotes the account back to a
+         * regular user (is_host = 0). This matters for the case
+         * where an already-approved host somehow has a new
+         * pending application rejected — without this, is_host
+         * would stay 1 and they'd keep landing on
+         * hostprofile.php instead of userprofile.php. For a
+         * first-time applicant this is a no-op since is_host is
+         * already 0.
          */
-        if ($newStatus === 'approved' && $applicantUserId) {
-            $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
-                ->execute(['id' => $applicantUserId]);
+        if ($applicantUserId) {
+            if ($newStatus === 'approved') {
+                $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
+                    ->execute(['id' => $applicantUserId]);
+            } elseif ($newStatus === 'rejected') {
+                $pdo->prepare("UPDATE users SET is_host = 0 WHERE id = :id")
+                    ->execute(['id' => $applicantUserId]);
+            }
         }
 
         header('Location: /webprogg/admin/hostapplication.php?' . http_build_query([

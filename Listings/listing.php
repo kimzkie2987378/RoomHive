@@ -799,6 +799,12 @@
                 display: none !important;
             }
 
+            /* SAVE THIS SEARCH BUTTON */
+            .rh-save-search-btn:disabled {
+                opacity: 0.7;
+                cursor: default;
+            }
+
         </style>
 
     </head>
@@ -893,12 +899,6 @@
                         class="account-dropdown-menu"
                         id="accountDropdownMenu"
                     >
-
-                        <?php if (isset($_SESSION['is_host']) && $_SESSION['is_host'] === true): ?>
-                            <a href="/webprogg/host/hostprofile.php">
-                                Host Profile
-                            </a>
-                        <?php endif; ?>
 
                         <a href="/webprogg/user/userprofile.php">
                             My Profile
@@ -1332,10 +1332,46 @@
             <div class="listings-main">
 
                 <!-- =========================
-                    SAVED-ONLY TOGGLE
+                    SAVED-ONLY TOGGLE + SAVE THIS SEARCH
                 ========================== -->
 
                 <div class="rh-results-bar">
+
+                    <?php if ($isLoggedIn): ?>
+
+                        <!-- SAVE THIS SEARCH
+                            Posts the currently-applied filters (read
+                            straight from the same PHP variables the
+                            filter bar above renders from) to
+                            save-search.php. Guests never see this —
+                            saved_searches.user_id is NOT NULL. -->
+
+                        <button
+                            type="button"
+                            class="rh-saved-toggle rh-save-search-btn"
+                            id="rh-save-search-btn"
+                            data-location="<?= htmlspecialchars($selectedLocation, ENT_QUOTES, 'UTF-8') ?>"
+                            data-category="<?= htmlspecialchars($selectedCategory, ENT_QUOTES, 'UTF-8') ?>"
+                            data-q="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>"
+                            data-price-min="<?= htmlspecialchars($priceMin, ENT_QUOTES, 'UTF-8') ?>"
+                            data-price-max="<?= htmlspecialchars($priceMax, ENT_QUOTES, 'UTF-8') ?>"
+                            data-amenities="<?= htmlspecialchars(implode(',', $selectedAmenities), ENT_QUOTES, 'UTF-8') ?>"
+                        >
+                            <span class="rh-heart-icon">&#128190;</span>
+                            Save this search
+                        </button>
+
+                    <?php else: ?>
+
+                        <a
+                            class="rh-saved-toggle"
+                            href="/webprogg/auth/loginform.php"
+                        >
+                            <span class="rh-heart-icon">&#128190;</span>
+                            Save this search
+                        </a>
+
+                    <?php endif; ?>
 
                     <button
                         type="button"
@@ -2010,6 +2046,71 @@
         });
 
         form.submit();
+    }
+
+
+    /* =========================
+    SAVE THIS SEARCH
+    (only rendered as a <button> for logged-in users —
+    guests get a plain link to the login page instead,
+    so this listener has nothing to attach to for them)
+    ========================== */
+
+    const saveSearchBtn = document.getElementById('rh-save-search-btn');
+
+    if (saveSearchBtn) {
+
+        saveSearchBtn.addEventListener('click', function () {
+
+            const label = window.prompt('Name this search (optional):', '');
+
+            if (label === null) {
+                return; // user cancelled the prompt
+            }
+
+            const amenitiesRaw = saveSearchBtn.dataset.amenities;
+            const amenities = amenitiesRaw ? amenitiesRaw.split(',') : [];
+
+            const body = new URLSearchParams();
+            body.append('label', label);
+            body.append('location', saveSearchBtn.dataset.location);
+            body.append('category', saveSearchBtn.dataset.category);
+            body.append('q', saveSearchBtn.dataset.q);
+            body.append('price_min', saveSearchBtn.dataset.priceMin);
+            body.append('price_max', saveSearchBtn.dataset.priceMax);
+            amenities.forEach(function (amenity) {
+                body.append('amenities[]', amenity);
+            });
+
+            saveSearchBtn.disabled = true;
+
+            fetch('/webprogg/SavedSearches/save-search.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+
+                    saveSearchBtn.disabled = false;
+
+                    if (data.ok) {
+                        saveSearchBtn.innerHTML = '<span class="rh-heart-icon">&#128190;</span> Saved!';
+                        setTimeout(function () {
+                            saveSearchBtn.innerHTML = '<span class="rh-heart-icon">&#128190;</span> Save this search';
+                        }, 1500);
+                    } else {
+                        alert(data.error || 'Could not save search.');
+                    }
+
+                })
+                .catch(function () {
+                    saveSearchBtn.disabled = false;
+                    alert('Could not save search.');
+                });
+
+        });
+
     }
 
     </script>

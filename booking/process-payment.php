@@ -3,8 +3,13 @@
    ROOMHIVE — PROCESS PAYMENT
    process-payment.php
 
-   Flow: listingpayment.php (Step 2: choose method) -> THIS FILE
-   -> booking-details.php (booking created).
+   Flow A (new inquiry): listingpayment.php (Step 2: choose
+   method) -> THIS FILE -> booking-details.php (booking created).
+
+   Flow B (pay remaining balance): booking-details.php's "Pay
+   Remaining Balance" button -> listingpayment.php (pay_balance
+   mode) -> THIS FILE -> booking-details.php (amount_paid topped
+   up on the SAME booking, no new row inserted).
 
    THIS FILE HAS TWO STAGES, controlled by the hidden "stage"
    field, so it doesn't need a second physical file:
@@ -15,37 +20,42 @@
        - maya  -> Maya mobile-prompt screen (green)
        - card  -> card entry form (dark navy)
      Each screen's form posts back to this SAME file with
-     stage=confirm plus whatever that method collected.
+     stage=confirm plus whatever that method collected, and
+     carries booking_id / payment_purpose through as hidden
+     fields so Stage 2 knows which flow it's finishing.
 
    STAGE 2 — "confirm" (the method-specific form's submit)
-     Validates input for the chosen method, inserts a row into
-     `bookings` (status starts 'pending' — matches the actual
-     schema enum('pending','confirmed','cancelled','completed')),
-     then redirects to booking-details.php for that new booking.
+     Validates input for the chosen method, then either:
+       - payment_purpose = "reservation" (default): inserts a
+         new row into `bookings` (status starts 'pending'),
+         with total = the listing's real price and
+         amount_paid = the reservation fee just charged.
+       - payment_purpose = "balance": tops up amount_paid on
+         the EXISTING booking named by booking_id, by exactly
+         whatever is still owed (re-derived from the DB here,
+         never trusted from the client).
+     Redirects to booking-details.php for that booking either way.
 
    NOTE: There is no real payment gateway wired up here (no
    GCash/Maya/card-processor API calls) — this simulates the
    UX so the booking flow is complete end-to-end. Swap the
-   "TODO: real gateway call" block for actual API calls when
+   "TODO: real gateway call" blocks for actual API calls when
    you're ready to integrate one.
 
-   EXPIRY NOTE: the booking inserted here has paid_at set to
-   NOW() at the same moment as booked_at, since this is the
-   point a (simulated) charge actually succeeds. That's what
-   exempts it from roomhive_expire_stale_bookings()'s 10-minute
-   unpaid-hold sweep (see booking_helpers.php) — once a tenant
-   gets this far, the listing stays reserved for them until the
-   host explicitly accepts or cancels it, not on a timer.
+   EXPIRY NOTE: a newly-created booking gets paid_at = NOW() at
+   the same moment as booked_at, since this is the point a
+   (simulated) charge actually succeeds. That's what exempts it
+   from roomhive_expire_stale_bookings()'s 10-minute unpaid-hold
+   sweep (see booking_helpers.php) — once a tenant gets this
+   far, the listing stays reserved for them until the host
+   explicitly accepts or cancels it, not on a timer. A balance
+   payment doesn't touch paid_at — the booking was already past
+   that hold the moment the reservation fee cleared.
 
-   FIX (checkin/checkout field-name mismatch):
-   listingpayment.php sends hidden fields named checkin_date /
-   checkout_date. This file previously read $_POST['checkin']
-   and $_POST['checkout'] — keys that never existed in the
-   POST body — so $checkin/$checkout were always empty and
-   every booking was inserted with null dates. All reads,
-   the "change payment method" link, and the three
-   method-specific forms below now consistently use
-   checkin_date / checkout_date end-to-end.
+   REQUIRES the amount_paid column added to `bookings`:
+     ALTER TABLE bookings
+       ADD COLUMN amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0.00
+       AFTER total;
 ========================================================= */
 
 session_start();
@@ -63,14 +73,17 @@ function h($value) {
 /* -----------------------------------------------------
    INBOUND DATA (carried through both stages as hidden
    fields — listing_id/checkin_date/checkout_date/guests/
-   payment_method never change once Stage 1 renders)
+   payment_method/booking_id/payment_purpose never change
+   once Stage 1 renders)
 ----------------------------------------------------- */
-$listingId     = isset($_POST['listing_id']) && is_numeric($_POST['listing_id']) ? (int) $_POST['listing_id'] : 0;
-$checkin       = $_POST['checkin_date']  ?? '';
-$checkout      = $_POST['checkout_date'] ?? '';
-$guests        = $_POST['guests']   ?? '1';
-$paymentMethod = $_POST['payment_method'] ?? '';
-$stage         = $_POST['stage'] ?? 'review';
+$listingId      = isset($_POST['listing_id']) && is_numeric($_POST['listing_id']) ? (int) $_POST['listing_id'] : 0;
+$checkin        = $_POST['checkin_date']  ?? '';
+$checkout       = $_POST['checkout_date'] ?? '';
+$guests         = $_POST['guests']   ?? '1';
+$paymentMethod  = $_POST['payment_method'] ?? '';
+$stage          = $_POST['stage'] ?? 'review';
+$paymentPurpose = ($_POST['payment_purpose'] ?? 'reservation') === 'balance' ? 'balance' : 'reservation';
+$bookingId      = isset($_POST['booking_id']) && is_numeric($_POST['booking_id']) ? (int) $_POST['booking_id'] : null;
 
 $validMethods = ['gcash', 'maya', 'card'];
 if (!in_array($paymentMethod, $validMethods, true)) {
@@ -100,13 +113,65 @@ if ($listing === false) {
 }
 
 /* Same reservation fee shown as "Total Due Today" on
-   listingpayment.php — keep these in sync, or better, move
-   this to a shared config/settings table. */
-$totalDueToday = 1000.00;
+   listingpayment.php for a brand-new inquiry — keep these in
+   sync, or better, move this to a shared config/settings
+   table. */
+$reservationFee = 1000.00;
+
+/* -----------------------------------------------------
+   IF THIS IS A BALANCE PAYMENT, LOAD + VALIDATE THE
+   EXISTING BOOKING NOW (both stages need it: Stage 1 to
+   show the correct "Amount to Pay", Stage 2 to charge and
+   record it).
+----------------------------------------------------- */
+$balanceBooking  = null;
+$balanceDueNow   = null;
+
+if ($paymentPurpose === 'balance') {
+
+    if ($bookingId === null) {
+        header('Location: /webprogg/booking/userbookings.php');
+        exit;
+    }
+
+    $balanceStmt = $pdo->prepare(
+        "SELECT id, user_id, listing_id, total, amount_paid, status
+         FROM bookings
+         WHERE id = :id
+         LIMIT 1"
+    );
+    $balanceStmt->execute(['id' => $bookingId]);
+    $balanceBooking = $balanceStmt->fetch();
+
+    $balanceIsValid = $balanceBooking !== false
+        && (int) $balanceBooking['user_id'] === (int) $_SESSION['user_id']
+        && (int) $balanceBooking['listing_id'] === $listingId
+        && in_array($balanceBooking['status'], ['pending', 'confirmed'], true);
+
+    if (!$balanceIsValid) {
+        header('Location: /webprogg/booking/userbookings.php');
+        exit;
+    }
+
+    $balanceDueNow = round((float) $balanceBooking['total'] - (float) $balanceBooking['amount_paid'], 2);
+
+    if ($balanceDueNow <= 0.005) {
+        // Already settled — nothing left to charge.
+        header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId);
+        exit;
+    }
+}
+
+/* The amount this screen is actually asking for right now —
+   the flat reservation fee for a new inquiry, or the exact
+   remaining balance for a balance payment. Always
+   server-derived, never taken from the client. */
+$amountDue = $paymentPurpose === 'balance' ? $balanceDueNow : $reservationFee;
 
 /* =========================================================
    STAGE 2 — CONFIRM: validate method-specific input, then
-   create the booking and redirect.
+   either create the booking (reservation) or top up
+   amount_paid on the existing one (balance), and redirect.
 ========================================================= */
 if ($stage === 'confirm') {
 
@@ -146,27 +211,97 @@ if ($stage === 'confirm') {
            charge succeeded. Right now we simulate an instant
            successful charge. */
 
-        /* paid_at = NOW() alongside booked_at: this is the
-           moment payment actually clears (simulated), so this
-           hold is exempt from the 10-minute unpaid-hold expiry
-           from here on — see booking_helpers.php. */
-        $insertStmt = $pdo->prepare(
-            "INSERT INTO bookings (listing_id, user_id, total, status, booked_at, paid_at, checkin_date, checkout_date, guests)
-             VALUES (:listing_id, :user_id, :total, 'pending', NOW(), NOW(), :checkin_date, :checkout_date, :guests)"
-        );
-        $insertStmt->execute([
-            'listing_id'    => $listingId,
-            'user_id'       => $_SESSION['user_id'],
-            'total'         => $totalDueToday,
-            'checkin_date'  => $checkin ?: null,
-            'checkout_date' => $checkout ?: null,
-            'guests'        => $guests,
-        ]);
+        if ($paymentPurpose === 'balance') {
 
-        $newBookingId = (int) $pdo->lastInsertId();
+            /* ---------------------------------------------
+               PAY REMAINING BALANCE — top up the existing
+               booking's amount_paid. Re-lock + re-check the
+               remaining balance right before writing, so two
+               submits in a row (double-click, back-button
+               replay) can't double-charge past the total.
+            --------------------------------------------- */
+            $pdo->beginTransaction();
 
-        header('Location: /webprogg/booking/booking-details.php?id=' . $newBookingId . '&paid=1');
-        exit;
+            $lockStmt = $pdo->prepare(
+                "SELECT id, user_id, listing_id, total, amount_paid, status
+                 FROM bookings
+                 WHERE id = :id
+                 FOR UPDATE"
+            );
+            $lockStmt->execute(['id' => $bookingId]);
+            $lockedBooking = $lockStmt->fetch();
+
+            $stillValid = $lockedBooking !== false
+                && (int) $lockedBooking['user_id'] === (int) $_SESSION['user_id']
+                && (int) $lockedBooking['listing_id'] === $listingId
+                && in_array($lockedBooking['status'], ['pending', 'confirmed'], true);
+
+            if (!$stillValid) {
+                $pdo->rollBack();
+                header('Location: /webprogg/booking/userbookings.php');
+                exit;
+            }
+
+            $remainingNow = round((float) $lockedBooking['total'] - (float) $lockedBooking['amount_paid'], 2);
+
+            if ($remainingNow <= 0.005) {
+                // Someone else / another tab already settled it.
+                $pdo->rollBack();
+                header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId . '&paid=1');
+                exit;
+            }
+
+            $updateStmt = $pdo->prepare(
+                "UPDATE bookings
+                 SET amount_paid = amount_paid + :amount
+                 WHERE id = :id"
+            );
+            $updateStmt->execute([
+                'amount' => $remainingNow,
+                'id'     => $bookingId,
+            ]);
+
+            $pdo->commit();
+
+            header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId . '&paid=1');
+            exit;
+
+        } else {
+
+            /* ---------------------------------------------
+               NEW INQUIRY — insert a fresh booking.
+               total        = the listing's real price (what's
+                              ultimately owed for this stay).
+               amount_paid  = the reservation fee charged today.
+               paid_at = NOW() alongside booked_at: this is the
+               moment payment actually clears (simulated), so
+               this hold is exempt from the 10-minute
+               unpaid-hold expiry from here on — see
+               booking_helpers.php.
+            --------------------------------------------- */
+            $roomTotal = (float) $listing['price'];
+
+            $insertStmt = $pdo->prepare(
+                "INSERT INTO bookings
+                    (listing_id, user_id, total, amount_paid, status, booked_at, paid_at, checkin_date, checkout_date, guests)
+                 VALUES
+                    (:listing_id, :user_id, :total, :amount_paid, 'pending', NOW(), NOW(), :checkin_date, :checkout_date, :guests)"
+            );
+            $insertStmt->execute([
+                'listing_id'    => $listingId,
+                'user_id'       => $_SESSION['user_id'],
+                'total'         => $roomTotal,
+                'amount_paid'   => $reservationFee,
+                'checkin_date'  => $checkin ?: null,
+                'checkout_date' => $checkout ?: null,
+                'guests'        => $guests,
+            ]);
+
+            $newBookingId = (int) $pdo->lastInsertId();
+
+            header('Location: /webprogg/booking/booking-details.php?id=' . $newBookingId . '&paid=1');
+            exit;
+        }
     }
 
     /* Validation failed — fall through and re-render Stage 1
@@ -179,6 +314,22 @@ $methodLabels = [
     'maya'  => 'Maya',
     'card'  => 'Credit/Debit Card',
 ];
+
+/* "Change payment method" needs a different destination
+   depending on which flow this is — a balance payment goes
+   back to the pay_balance screen, a new inquiry goes back to
+   Step 1's checkin/checkout/guests. */
+if ($paymentPurpose === 'balance') {
+    $changeMethodUrl = '/webprogg/booking/listingpayment.php'
+        . '?listing_id=' . rawurlencode((string) $listingId)
+        . '&pay_balance=' . rawurlencode((string) $bookingId);
+} else {
+    $changeMethodUrl = '/webprogg/booking/listingpayment.php'
+        . '?listing_id=' . rawurlencode((string) $listingId)
+        . '&checkin_date=' . rawurlencode($checkin)
+        . '&checkout_date=' . rawurlencode($checkout)
+        . '&guests=' . rawurlencode($guests);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -193,14 +344,12 @@ $methodLabels = [
 
 <main class="pp-page">
 
-    <a
-        href="/webprogg/booking/listingpayment.php?listing_id=<?php echo h($listingId); ?>&checkin_date=<?php echo h($checkin); ?>&checkout_date=<?php echo h($checkout); ?>&guests=<?php echo h($guests); ?>"
-        class="pp-back-link"
-    >
+    <a href="<?php echo h($changeMethodUrl); ?>" class="pp-back-link">
         &#8592; Change payment method
     </a>
 
-    <!-- STEP TRACKER (still Step 2 — this is "make payment" within it) -->
+    <!-- STEP TRACKER (still Step 2 — this is "make payment" within it; skipped for a balance payment, which isn't part of the inquiry flow) -->
+    <?php if ($paymentPurpose !== 'balance'): ?>
     <div class="pp-steps">
         <div class="pp-step pp-step-done"><span class="pp-step-circle">1</span><span class="pp-step-label">Details</span></div>
         <div class="pp-step-line pp-step-line-done"></div>
@@ -208,6 +357,9 @@ $methodLabels = [
         <div class="pp-step-line"></div>
         <div class="pp-step"><span class="pp-step-circle">3</span><span class="pp-step-label">Confirmation</span></div>
     </div>
+    <?php else: ?>
+    <p class="pp-balance-heading">Paying remaining balance on booking #<?php echo h($bookingId); ?></p>
+    <?php endif; ?>
 
     <div class="pp-card pp-card-<?php echo h($paymentMethod); ?>">
 
@@ -233,8 +385,8 @@ $methodLabels = [
             </div>
 
             <div class="pp-amount-box pp-amount-gcash">
-                <span>Amount to Pay</span>
-                <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
+                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+                <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
             <form method="POST" action="/webprogg/booking/process-payment.php" class="pp-form">
@@ -243,6 +395,10 @@ $methodLabels = [
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
+                <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
+                <?php if ($paymentPurpose === 'balance'): ?>
+                    <input type="hidden" name="booking_id" value="<?php echo h($bookingId); ?>">
+                <?php endif; ?>
                 <input type="hidden" name="stage" value="confirm">
 
                 <label class="pp-field">
@@ -276,8 +432,8 @@ $methodLabels = [
             </div>
 
             <div class="pp-amount-box pp-amount-maya">
-                <span>Amount to Pay</span>
-                <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
+                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+                <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
             <form method="POST" action="/webprogg/booking/process-payment.php" class="pp-form">
@@ -286,6 +442,10 @@ $methodLabels = [
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
+                <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
+                <?php if ($paymentPurpose === 'balance'): ?>
+                    <input type="hidden" name="booking_id" value="<?php echo h($bookingId); ?>">
+                <?php endif; ?>
                 <input type="hidden" name="stage" value="confirm">
 
                 <label class="pp-field">
@@ -319,8 +479,8 @@ $methodLabels = [
             </div>
 
             <div class="pp-amount-box pp-amount-card">
-                <span>Amount to Pay</span>
-                <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
+                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+                <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
             <form method="POST" action="/webprogg/booking/process-payment.php" class="pp-form">
@@ -329,6 +489,10 @@ $methodLabels = [
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
+                <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
+                <?php if ($paymentPurpose === 'balance'): ?>
+                    <input type="hidden" name="booking_id" value="<?php echo h($bookingId); ?>">
+                <?php endif; ?>
                 <input type="hidden" name="stage" value="confirm">
 
                 <label class="pp-field">
@@ -380,7 +544,7 @@ $methodLabels = [
                 </div>
 
                 <button type="submit" class="pp-btn-confirm pp-btn-card">
-                    Pay &#8369; <?php echo h(number_format($totalDueToday, 0)); ?>
+                    Pay &#8369; <?php echo h(number_format($amountDue, 0)); ?>
                 </button>
             </form>
 
@@ -406,6 +570,14 @@ $methodLabels = [
         font-size: 13px;
     }
     .pp-back-link:hover { text-decoration: underline; }
+
+    .pp-balance-heading {
+        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #14142B;
+        margin: 0 0 20px;
+    }
 
     .pp-steps { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 24px; }
     .pp-step { display: flex; flex-direction: column; align-items: center; gap: 6px; }

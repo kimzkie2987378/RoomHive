@@ -2,6 +2,12 @@
 /* =========================================================
    ROOMHIVE — BOOKING DETAILS
    booking-details.php
+
+   UPDATED: now shows Amount Paid vs. Balance Due (instead of
+   a single lump Total), and offers a "Pay Remaining Balance"
+   button when there's still money owed on a pending/confirmed
+   booking. Relies on a new bookings.amount_paid column — see
+   the ALTER TABLE note below.
 ========================================================= */
 
 session_start();
@@ -109,6 +115,26 @@ $canCancel = in_array($booking['status'], ['pending', 'confirmed'], true);
 $checkinDate  = !empty($booking['checkin_date']) ? date('M j, Y', strtotime($booking['checkin_date'])) : null;
 $checkoutDate = !empty($booking['checkout_date']) ? date('M j, Y', strtotime($booking['checkout_date'])) : null;
 $guests       = $booking['guests'] ?? null;
+
+/* -----------------------------------------------------
+   PAID vs. PENDING BALANCE
+   Requires a bookings.amount_paid column:
+
+     ALTER TABLE bookings
+       ADD COLUMN amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0.00
+       AFTER total;
+
+   process-payment.php should increment this column each time
+   a payment (initial reservation fee OR a later balance
+   payment) is confirmed, instead of only ever writing `total`.
+----------------------------------------------------- */
+$totalAmount = (float) $booking['total'];
+$amountPaid  = (float) ($booking['amount_paid'] ?? 0);
+$balanceDue  = max(0, round($totalAmount - $amountPaid, 2));
+
+/* Only offer to collect a balance on bookings that are still
+   "live" — no point paying toward a rejected/cancelled one. */
+$hasBalance = $balanceDue > 0.005 && in_array($booking['status'], ['pending', 'confirmed'], true);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -185,10 +211,34 @@ $guests       = $booking['guests'] ?? null;
 
                 </div>
 
+                <!-- PAYMENT BREAKDOWN: Total / Paid / Balance Due -->
                 <div class="bd-total-row">
                     <span class="bd-muted">Total</span>
-                    <strong>&#8369; <?php echo h(number_format((float) $booking['total'], 2)); ?></strong>
+                    <strong>&#8369; <?php echo h(number_format($totalAmount, 2)); ?></strong>
                 </div>
+
+                <div class="bd-total-row">
+                    <span class="bd-muted">Amount Paid</span>
+                    <strong>&#8369; <?php echo h(number_format($amountPaid, 2)); ?></strong>
+                </div>
+
+                <?php if ($hasBalance): ?>
+                    <div class="bd-total-row bd-balance-row">
+                        <span class="bd-muted">Balance Due</span>
+                        <strong class="bd-balance-amount">&#8369; <?php echo h(number_format($balanceDue, 2)); ?></strong>
+                    </div>
+
+                    <p class="bd-notice bd-notice-pending">
+                        You still have a pending balance of &#8369;<?php echo h(number_format($balanceDue, 2)); ?> for this booking.
+                    </p>
+
+                    <a
+                        href="/webprogg/booking/listingpayment.php?listing_id=<?php echo h($booking['listing_id']); ?>&pay_balance=<?php echo h($booking['id']); ?>"
+                        class="bd-btn bd-btn-pay-balance"
+                    >
+                        Pay Remaining Balance (&#8369;<?php echo h(number_format($balanceDue, 2)); ?>)
+                    </a>
+                <?php endif; ?>
 
                 <?php if ($booking['status'] === 'rejected'): ?>
                     <p class="bd-notice bd-notice-rejected">
@@ -198,11 +248,11 @@ $guests       = $booking['guests'] ?? null;
                     <p class="bd-notice">
                         This booking was cancelled.
                     </p>
-                <?php elseif ($booking['status'] === 'pending'): ?>
+                <?php elseif ($booking['status'] === 'pending' && !$hasBalance): ?>
                     <p class="bd-notice bd-notice-pending">
                         Waiting on the host to accept or reject this application.
                     </p>
-                <?php elseif ($booking['status'] === 'confirmed'): ?>
+                <?php elseif ($booking['status'] === 'confirmed' && !$hasBalance): ?>
                     <p class="bd-notice bd-notice-confirmed">
                         The host has accepted this application.
                     </p>
@@ -324,8 +374,15 @@ $guests       = $booking['guests'] ?? null;
         justify-content: space-between;
         padding-top: 14px;
         border-top: 1px solid #EEF1F6;
-        margin-bottom: 16px;
+        margin-bottom: 0;
     }
+    .bd-total-row:last-of-type { margin-bottom: 16px; }
+
+    .bd-balance-row {
+        border-top: 1px dashed #EEF1F6;
+        padding-top: 10px;
+    }
+    .bd-balance-amount { color: #A3282E; }
 
     .bd-notice {
         padding: 10px 14px;
@@ -349,11 +406,21 @@ $guests       = $booking['guests'] ?? null;
         text-align: center;
         text-decoration: none;
         border: 1px solid transparent;
+        box-sizing: border-box;
     }
     .bd-btn-cancel { background: #FDECEC; color: #A3282E; border-color: #E14B4B; width: 100%; }
     .bd-btn-cancel:hover { background: #FCDADA; }
     .bd-btn-outline { background: #fff; color: #14142B; border-color: #EEF1F6; width: 100%; margin-top: 10px; }
     .bd-btn-outline:hover { background: #F6F7FB; }
+
+    .bd-btn-pay-balance {
+        background: #FFA726;
+        color: #fff;
+        border-color: #FFA726;
+        width: 100%;
+        margin-bottom: 12px;
+    }
+    .bd-btn-pay-balance:hover { background: #FB983F; }
 
     .bd-host-card h3 { margin: 0 0 10px; font-size: 15px; color: #14142B; }
     .bd-host-name { margin: 0; font-weight: 600; color: #14142B; }

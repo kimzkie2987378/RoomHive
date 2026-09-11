@@ -332,12 +332,14 @@
   font-size: 0.92rem;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3; /* standard property, wider support */
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .rd-about-text.rd-expanded {
-  -webkit-line-clamp: unset;
+  -webkit-line-clamp: none; /* "none" is the spec's actual reset value */
+  line-clamp: none;
   display: block;
   overflow: visible;
 }

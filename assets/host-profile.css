@@ -1,0 +1,295 @@
+/* =========================
+   host-profile.css
+   Styles scoped to hostpublicprofile.php.
+   Nav bar / footer come from style.css, same as the other pages.
+
+   The one deliberate signature on this page is the hexagon motif —
+   it's a literal nod to "Hive" and is only used structurally: the
+   avatar frame and the small trust badges. Listing cards below
+   reuse the site's existing .listing-box styling so this page still
+   feels native, not like a separate microsite.
+========================== */
+
+.hp-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  font-family: "Poppins", sans-serif;
+  color: #333;
+}
+
+.hp-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-bottom: 18px;
+}
+
+.hp-back-link:hover {
+  color: #f7941d;
+}
+
+/* =========================
+   HERO
+========================== */
+
+.hp-hero {
+  position: relative;
+  background: #2d2013;
+  border-radius: 20px;
+  overflow: hidden;
+  padding: 40px 36px;
+  margin-bottom: 32px;
+
+  /* Faint tiled hex-line texture. Kept low-opacity and confined to
+     the hero band, not the whole page — a texture, not wallpaper. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cg fill='none' stroke='%23f7941d' stroke-opacity='0.12' stroke-width='1.5'%3E%3Cpath d='M28 0 56 16 56 50 28 66 0 50 0 16Z'/%3E%3Cpath d='M28 66 56 82 56 100'/%3E%3Cpath d='M28 66 0 82 0 100'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 112px 200px;
+}
+
+.hp-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+/* Hexagon avatar frame — clip-path'd photo inside a slightly larger
+   hex outline, so the outline reads as a frame rather than a random
+   border. */
+
+.hp-avatar-frame {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hp-avatar-frame::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  background: #f7941d;
+  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+}
+
+.hp-avatar {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  object-fit: cover;
+  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+  background: #fdf8f0;
+}
+
+.hp-hero-text {
+  flex: 1;
+  min-width: 220px;
+}
+
+.hp-name {
+  font-size: 1.9rem;
+  font-weight: 600;
+  color: #fdf8f0;
+  margin: 0 0 4px;
+}
+
+.hp-joined {
+  color: #d9c9b0;
+  font-size: 0.9rem;
+  margin: 0 0 16px;
+}
+
+.hp-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Small solid hexagon used inside badges/rows — a shape, not an
+   icon font, so it stays crisp at any size and needs no asset. */
+
+.hp-hex {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+}
+
+.hp-hex-sm {
+  width: 14px;
+  height: 14px;
+  color: #f7941d;
+}
+
+.hp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.hp-badge-verified {
+  background: rgba(47, 158, 92, 0.16);
+  color: #7ee2a8;
+}
+
+.hp-badge-superhost {
+  background: rgba(247, 148, 29, 0.18);
+  color: #ffbf73;
+}
+
+.hp-rating {
+  color: #fdf8f0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.hp-rating-count {
+  font-weight: 400;
+  color: #d9c9b0;
+}
+
+.hp-rating-empty {
+  color: #d9c9b0;
+  font-weight: 400;
+}
+
+/* =========================
+   BODY LAYOUT
+========================== */
+
+.hp-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .hp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hp-hero {
+    padding: 32px 24px;
+  }
+}
+
+.hp-main h2 {
+  font-size: 1.15rem;
+  color: #222;
+  margin: 0 0 12px;
+}
+
+.hp-about {
+  margin-bottom: 32px;
+}
+
+.hp-about-text {
+  color: #555;
+  line-height: 1.65;
+  font-size: 0.93rem;
+  max-width: 62ch;
+}
+
+.hp-about-empty {
+  color: #999;
+  font-style: italic;
+}
+
+/* =========================
+   LISTINGS GRID
+   .listing-box, .rh-card-media, .listing-box-info etc. are the
+   same classes listing.php uses — defined once in style.css, so
+   the cards here match the ones a renter has already seen.
+========================== */
+
+.hp-listings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.hp-listings-empty {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+/* =========================
+   SIDEBAR
+========================== */
+
+.hp-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.hp-card h3 {
+  font-size: 1rem;
+  color: #222;
+  margin: 0 0 14px;
+}
+
+.hp-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: 0.85rem;
+}
+
+.hp-detail-row:last-of-type {
+  border-bottom: none;
+}
+
+.hp-detail-row span:nth-child(2) {
+  flex: 1;
+  color: #777;
+}
+
+.hp-detail-row strong {
+  color: #222;
+}
+
+.hp-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  border: none;
+  margin-top: 16px;
+}
+
+.hp-btn-primary {
+  background: #f7941d;
+  color: #fff;
+}
+
+.hp-btn-primary:hover {
+  background: #e6850f;
+}
