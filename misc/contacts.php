@@ -1,29 +1,46 @@
 <?php
 session_start();
 
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
+// Default notification count (used for guests or if query fails)
+ $notification_count = 0;
+
 if ($isLoggedIn && isset($_SESSION['user_id'])) {
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
-    $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
-    $avatarStmt->execute(['id' => $_SESSION['user_id']]);
-    $avatarRow = $avatarStmt->fetch();
-    $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+
+    // Single query: fetch avatar + unread notification count
+    $userStmt = $pdo->prepare(
+        "SELECT u.avatar_path,
+                (SELECT COUNT(*)
+                   FROM notifications n
+                  WHERE n.user_id = u.id
+                    AND n.is_read = 0) AS unread_count
+           FROM users u
+          WHERE u.id = :id
+          LIMIT 1"
+    );
+    $userStmt->execute(['id' => $_SESSION['user_id']]);
+    $userRow = $userStmt->fetch();
+
+    $_SESSION['avatar_path'] = $userRow['avatar_path'] ?? null;
+    $notification_count = (int)($userRow['unread_count'] ?? 0);
 }
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 // =========================================================
 // ROOMHIVE - CONTACTS PAGE
 // =========================================================
 
 // Current year
-$currentYear = date("Y");
+ $currentYear = date("Y");
 
 // Navigation links
-$navigation = [
+ $navigation = [
      "HOME" => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
     "LISTINGS" => "/webprogg/listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
@@ -33,8 +50,8 @@ $navigation = [
 ];
 
 // Form status
-$successMessage = "";
-$errorMessage = "";
+ $successMessage = "";
+ $errorMessage = "";
 
 // =========================================================
 // HANDLE CONTACT FORM
@@ -114,92 +131,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
      NAVIGATION BAR
 ========================================================= -->
 
-<header class="navbar">
-
-    <!-- LOGO -->
-    <div class="logo">
-
-        <a href="<?php echo $isLoggedIn ? '/webprogg/user/myaccount.php' : '/webprogg/index.php'; ?>">
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-            >
-
-        </a>
-
-    </div>
-
-
-    <!-- NAVIGATION -->
-    <nav class="nav-links">
-
-        <?php foreach ($navigation as $name => $link): ?>
-
-            <a
-                href="<?php echo htmlspecialchars($link); ?>"
-                class="<?php echo ($name === 'CONTACTS') ? 'active' : ''; ?>"
-            >
-
-                <?php echo htmlspecialchars($name); ?>
-
-            </a>
-
-        <?php endforeach; ?>
-
-
-        <?php if ($isLoggedIn): ?>
-
-            <!-- MY ACCOUNT DROPDOWN -->
-            <div class="account-dropdown">
-
-                <button
-                    type="button"
-                    class="my-account"
-                    id="accountDropdownToggle"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                    onclick="toggleAccountMenu()"
-                >
-                    <span class="account-circle">
-                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account">
-                    </span>
-                    <span>MY PROFILE</span>
-                    <span class="dropdown-caret">&#9662;</span>
-                </button>
-
-                <div class="account-dropdown-menu" id="accountDropdownMenu">
-
-                    <a href="/webprogg/user/userprofile.php">
-                        My Profile
-                    </a>
-
-                    <a href="/webprogg/auth/logout.php">
-                        Logout
-                    </a>
-
-                </div>
-
-            </div>
-
-        <?php else: ?>
-
-            <!-- LIST YOUR SPACE -->
-
-            <a
-                href="/webprogg/auth/loginform.php"
-                class="list-space"
-            >
-
-                LIST YOUR SPACE
-
-            </a>
-
-        <?php endif; ?>
-
-    </nav>
-
-</header>
+<?php
+ $guestCtaHref = '/webprogg/host/becomeahost.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
+?>
 
 <?php if ($isLoggedIn): ?>
 <style>

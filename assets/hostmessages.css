@@ -1,0 +1,620 @@
+/* =========================================================
+   ROOMHIVE — HOST DASHBOARD / MESSAGES
+   hostmessages.css
+   Mirrors the chat-app layout of usermessages.css, built on
+   the design tokens defined in hostprofile.css
+   (--hp-orange, --hp-navy, --hp-border, --hp-text-muted,
+   --hp-orange-light, etc). Load this AFTER hostprofile.css.
+========================================================= */
+
+.hp-msg-card {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  height: 640px;
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: 12px;
+}
+
+/* =========================================================
+   LIST PANE (header + search + tabs + scrollable list)
+========================================================= */
+
+.hp-msg-list-pane {
+  width: 330px;
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  border-right: 1px solid var(--hp-border);
+}
+
+.hp-msg-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 18px 18px 14px;
+}
+
+.hp-msg-list-header h2 {
+  margin: 0;
+  color: var(--hp-navy);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.hp-msg-search-wrap {
+  position: relative;
+  margin: 0 18px 14px;
+}
+
+.hp-msg-search-wrap svg {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  transform: translateY(-50%);
+
+  width: 14px;
+  height: 14px;
+  color: #9a9a9a;
+}
+
+.hp-msg-search {
+  width: 100%;
+
+  padding: 9px 14px 9px 34px;
+
+  background: #f4f4f5;
+  border: 1px solid transparent;
+  border-radius: 20px;
+
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--hp-navy);
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.hp-msg-search::placeholder {
+  color: #9a9a9a;
+}
+
+.hp-msg-search:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: var(--hp-orange);
+}
+
+.hp-msg-tabs {
+  display: flex;
+  gap: 8px;
+
+  padding: 0 18px 14px;
+}
+
+.hp-msg-tab {
+  padding: 6px 14px;
+
+  background: #f4f4f5;
+  color: #666666;
+
+  border: none;
+  border-radius: 20px;
+
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.hp-msg-tab:hover {
+  background: #ececec;
+}
+
+.hp-msg-tab.active {
+  background: var(--hp-orange-light);
+  color: var(--hp-orange);
+}
+
+/* =========================================================
+   CONVERSATION LIST
+========================================================= */
+
+.hp-msg-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.hp-msg-list-item {
+  position: relative;
+
+  display: flex;
+  gap: 12px;
+
+  padding: 12px 18px;
+
+  color: inherit;
+  text-decoration: none;
+
+  border-left: 3px solid transparent;
+
+  transition: background 0.15s ease;
+}
+
+.hp-msg-list-item:hover {
+  background: var(--hp-orange-light);
+}
+
+.hp-msg-list-item.active {
+  background: var(--hp-orange-light);
+  border-left-color: var(--hp-orange);
+}
+
+.hp-msg-avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.hp-msg-avatar img {
+  width: 48px;
+  height: 48px;
+
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.hp-msg-item-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.hp-msg-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hp-msg-name {
+  min-width: 0;
+
+  color: var(--hp-navy);
+  font-size: 13.5px;
+  font-weight: 600;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hp-msg-list-item.unread .hp-msg-name {
+  font-weight: 800;
+}
+
+.hp-msg-badge {
+  flex-shrink: 0;
+
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--hp-orange);
+  color: #ffffff;
+
+  border-radius: 20px;
+
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.hp-msg-listing-tag {
+  display: block;
+  margin: 2px 0 0;
+
+  color: var(--hp-text-muted);
+  font-size: 11.5px;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hp-msg-preview {
+  display: block;
+  margin: 3px 0 0;
+
+  color: #888888;
+  font-size: 12.5px;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hp-msg-list-item.unread .hp-msg-preview {
+  color: var(--hp-navy);
+  font-weight: 600;
+}
+
+.hp-msg-list-item.js-hidden {
+  display: none;
+}
+
+/* =========================================================
+   EMPTY / WELCOME STATES
+========================================================= */
+
+.hp-msg-welcome {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  padding: 40px 30px;
+  text-align: center;
+}
+
+.hp-msg-welcome-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--hp-orange-light);
+  border-radius: 50%;
+}
+
+.hp-msg-welcome-icon svg {
+  width: 28px;
+  height: 28px;
+  color: var(--hp-orange);
+}
+
+.hp-msg-welcome h3 {
+  margin: 0;
+  color: var(--hp-navy);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.hp-msg-welcome p {
+  margin: 0;
+  max-width: 260px;
+
+  color: var(--hp-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hp-msg-card-empty {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 420px;
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: 12px;
+}
+
+.hp-msg-card-empty .hp-msg-list-header {
+  border-bottom: 1px solid var(--hp-border);
+}
+
+.hp-msg-card-empty .hp-msg-welcome {
+  min-height: 340px;
+}
+
+/* =========================================================
+   THREAD
+========================================================= */
+
+.hp-msg-thread {
+  flex: 1;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.hp-msg-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 14px 22px;
+
+  border-bottom: 1px solid var(--hp-border);
+}
+
+.hp-msg-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+
+  width: 30px;
+  height: 30px;
+
+  color: var(--hp-navy);
+  font-size: 18px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.hp-msg-thread-header img.hp-msg-thread-avatar {
+  width: 38px;
+  height: 38px;
+
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.hp-msg-thread-info {
+  min-width: 0;
+}
+
+.hp-msg-thread-name {
+  color: var(--hp-navy);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.hp-msg-thread-listing {
+  margin: 1px 0 0;
+  color: var(--hp-text-muted);
+  font-size: 11.5px;
+}
+
+.hp-msg-thread-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hp-msg-icon-btn {
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f4f4f5;
+  color: var(--hp-navy);
+
+  border: none;
+  border-radius: 50%;
+  text-decoration: none;
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.hp-msg-icon-btn:hover {
+  background: var(--hp-orange-light);
+  color: var(--hp-orange);
+}
+
+.hp-msg-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- message body ---- */
+
+.hp-msg-thread-body {
+  flex: 1;
+  overflow-y: auto;
+
+  padding: 20px 22px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  background: #fafafa;
+}
+
+.hp-msg-day-divider {
+  align-self: center;
+
+  margin: 14px 0 10px;
+  padding: 4px 12px;
+
+  background: #ffffff;
+  border: 1px solid var(--hp-border);
+  border-radius: 20px;
+
+  color: var(--hp-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.hp-msg-row {
+  display: flex;
+  margin-top: 8px;
+}
+
+.hp-msg-row.mine {
+  justify-content: flex-end;
+}
+
+.hp-msg-row.theirs {
+  justify-content: flex-start;
+}
+
+.hp-msg-bubble-wrap {
+  max-width: 62%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hp-msg-row.mine .hp-msg-bubble-wrap {
+  align-items: flex-end;
+}
+
+.hp-msg-row.theirs .hp-msg-bubble-wrap {
+  align-items: flex-start;
+}
+
+.hp-msg-bubble {
+  padding: 10px 14px;
+
+  border-radius: 18px;
+
+  font-size: 13.5px;
+  line-height: 1.45;
+
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.hp-msg-row.theirs .hp-msg-bubble {
+  background: #eef0f2;
+  color: var(--hp-navy);
+  border-bottom-left-radius: 5px;
+}
+
+.hp-msg-row.mine .hp-msg-bubble {
+  background: var(--hp-navy);
+  color: #ffffff;
+  border-bottom-right-radius: 5px;
+}
+
+.hp-msg-time {
+  margin-top: 3px;
+
+  color: #a8a8a8;
+  font-size: 10.5px;
+}
+
+/* ---- composer ---- */
+
+.hp-msg-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 14px 22px;
+
+  border-top: 1px solid var(--hp-border);
+}
+
+.hp-msg-input {
+  flex: 1;
+
+  padding: 11px 16px;
+
+  background: #f4f4f5;
+  border: 1px solid transparent;
+  border-radius: 22px;
+
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--hp-navy);
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.hp-msg-input::placeholder {
+  color: #9a9a9a;
+}
+
+.hp-msg-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: var(--hp-orange);
+}
+
+.hp-msg-send-btn {
+  flex-shrink: 0;
+
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--hp-orange);
+  color: #ffffff;
+
+  border: none;
+  border-radius: 50%;
+
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.hp-msg-send-btn:hover {
+  background: #d4901c;
+}
+
+.hp-msg-send-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 700px) {
+  .hp-msg-card {
+    height: calc(100vh - 260px);
+    min-height: 460px;
+  }
+
+  .hp-msg-list-pane {
+    width: 100%;
+    border-right: none;
+  }
+
+  .hp-msg-thread {
+    display: none;
+  }
+
+  .hp-msg-back {
+    display: flex;
+  }
+
+  /* When a conversation is open, this modifier (added by PHP
+     based on ?c=) flips which pane is visible so the page
+     behaves like a single-pane mobile chat view. */
+  .hp-msg-card.hp-msg-mobile-open .hp-msg-list-pane {
+    display: none;
+  }
+
+  .hp-msg-card.hp-msg-mobile-open .hp-msg-thread {
+    display: flex;
+  }
+
+  .hp-msg-bubble-wrap {
+    max-width: 80%;
+  }
+}

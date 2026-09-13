@@ -18,6 +18,7 @@
   --up-red-bg: #fdecec;
   --up-radius: 14px;
   --up-shadow: 0 4px 20px rgba(28, 42, 56, 0.06);
+  --up-sidebar-active: #f2c318;
 }
 
 .up-welcome,
@@ -278,6 +279,8 @@
 
 /* =========================================================
    SIDEBAR
+   Icons removed per request — text-only nav links now.
+   Default text color: #1c2a38 (navy). Selected/hover: yellow.
 ========================================================= */
 
 .up-sidebar {
@@ -292,34 +295,34 @@
 .up-side-link {
   display: flex;
   align-items: center;
-  gap: 10px;
 
-  padding: 11px 14px;
+  padding: 12px 14px;
 
   border-radius: 8px;
 
-  color: #444444;
-  font-size: 13px;
+  color: var(--up-navy);
+  font-size: 15px;
   font-weight: 600;
   text-decoration: none;
 
   transition: 0.2s ease;
 }
 
+/* Icons are no longer shown in the sidebar. If sidebar.php
+   still renders <img> tags inside .up-side-link, this hides
+   them without needing to touch the markup. */
 .up-side-link img {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
+  display: none;
 }
 
 .up-side-link:hover {
   background: var(--up-orange-light);
-  color: var(--up-orange);
+  color: var(--up-sidebar-active);
 }
 
 .up-side-link.active {
   background: var(--up-orange-light);
-  color: var(--up-orange);
+  color: var(--up-sidebar-active);
   font-weight: 700;
 }
 
@@ -995,6 +998,7 @@
 
   .up-side-link {
     flex: 1 1 auto;
+    justify-content: center;
   }
 
   .up-stats {

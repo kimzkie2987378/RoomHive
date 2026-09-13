@@ -38,6 +38,10 @@ if (isset($_SESSION['user_id'])) {
    without requiring the user to log out and back in. */
 $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
+/* Notification bell badge count — same placeholder used across
+   every logged-in page's navbar until real notifications land. */
+$notification_count = 0;
+
 /*
  * Get the logged-in user's name.
  */
@@ -46,6 +50,19 @@ $userName = $_SESSION['user_name'] ?? 'User';
 // Current page (used to compute the "active" nav class dynamically,
 // the same pattern becomeahost.php uses)
 $currentPage = '/webprogg/user/usershome.php';
+
+/* This page is guarded above, so we always reach here logged in. */
+$isLoggedIn = true;
+$isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
+
+$navigation = [
+    'HOME' => '/webprogg/user/usershome.php',
+    'LISTINGS' => '/webprogg/Listings/listing.php',
+    'HOW IT WORKS' => '/webprogg/host/howitworks.php',
+    'BECOME A HOST' => '/webprogg/host/becomeahost.php',
+    'HIVE CLUB' => '/webprogg/hiveclub.php',
+    'CONTACTS' => '/webprogg/misc/contacts.php',
+];
 
 
   // =========================
@@ -171,122 +188,7 @@ $reasons = [
    <!-- =========================
      NAVIGATION BAR
 ========================== -->
-<nav class="navbar">
-
-    <!-- LOGO -->
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <!-- NAVIGATION LINKS -->
-    <div class="nav-links">
-
-        <?php foreach ($navLinks as $link): ?>
-            <a
-                href="<?php echo htmlspecialchars($link['href']); ?>"
-                class="<?php echo ($link['href'] === $currentPage) ? 'active' : ''; ?>"
-            >
-                <?php echo htmlspecialchars($link['label']); ?>
-            </a>
-        <?php endforeach; ?>
-
-       <!-- MY ACCOUNT DROPDOWN -->
-<div class="account-dropdown js-account-dropdown">
-
-    <button
-        type="button"
-        class="my-account js-account-toggle"
-        aria-haspopup="true"
-        aria-expanded="false"
-    >
-        <span class="account-circle">
-            <img
-                src="<?php echo htmlspecialchars($navAvatar); ?>"
-                alt="My Account"
-            >
-        </span>
-
-        <span>MY PROFILE</span>
-
-        <span class="dropdown-caret">&#9662;</span>
-    </button>
-
-    <div class="account-dropdown-menu">
-
-        <a href="/webprogg/user/userprofile.php">
-            My Profile
-        </a>
-
-        <a href="/webprogg/auth/logout.php">
-            Logout
-        </a>
-
-    </div>
-
-</div>
-
-    </div>
-
-</nav>
-
-<style>
-    .account-dropdown {
-        position: relative;
-    }
-
-    .account-dropdown .my-account {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
-    }
-
-    .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
-        transition: transform 0.15s ease;
-    }
-
-    .account-dropdown.open .dropdown-caret {
-        transform: rotate(180deg);
-    }
-
-    .account-dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 100;
-        margin-top: 8px;
-    }
-
-    .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
-
-    .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: #333;
-        white-space: nowrap;
-    }
-
-    .account-dropdown-menu a:hover {
-        background: #f5f5f5;
-    }
-</style>
-<!-- The dropdown's open/close behavior now lives in javaScript.js
-     (shared by every page instead of a copy-pasted inline script). -->
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
 
     <!-- =========================
          HERO SECTION

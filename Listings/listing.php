@@ -58,6 +58,24 @@
     without requiring the user to log out and back in. */
     $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
+    /* Notification bell badge count — same placeholder used across
+       every logged-in page's navbar until real notifications land. */
+    $notification_count = 0;
+
+    /* =========================
+    NAVIGATION
+    ========================== */
+    $navigation = [
+        "HOME" => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
+        "LISTINGS" => "/webprogg/Listings/listing.php",
+        "HOW IT WORKS" => "/webprogg/host/howitworks.php",
+        "BECOME A HOST" => $isLoggedIn ? "/webprogg/host/becomeahost.php" : "/webprogg/auth/loginform.php",
+        "HIVE CLUB" => "/webprogg/hiveclub.php",
+        "CONTACTS" => "/webprogg/misc/contacts.php"
+    ];
+    $currentPage = $navigation['LISTINGS'];
+    $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
+
     /* =========================
     LISTINGS DATA (category tiles at top of page — unrelated
     to the real $allListings query below, kept as-is)
@@ -815,179 +833,7 @@
         NAVIGATION BAR
     ========================== -->
 
-    <header class="navbar">
-
-        <!-- LOGO -->
-        <a
-            href="<?= $isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php' ?>"
-            class="logo"
-        >
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-            >
-        </a>
-
-        <!-- NAVIGATION -->
-        <nav class="nav-links">
-
-            <!-- HOME -->
-            <a
-                href="<?= $isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php' ?>"
-            >
-                HOME
-            </a>
-
-            <!-- LISTINGS -->
-            <a href="/webprogg/Listings/listing.php" class="active">
-                LISTINGS
-            </a>
-
-            <!-- HOW IT WORKS -->
-            <a href="/webprogg/host/howitworks.php">
-                HOW IT WORKS
-            </a>
-
-            <!-- BECOME A HOST -->
-            <a
-                href="<?= $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php' ?>"
-            >
-                BECOME A HOST
-            </a>
-
-            <!-- HIVE CLUB -->
-            <a href="/webprogg/hiveclub.php">
-                HIVE CLUB
-            </a>
-
-            <!-- CONTACTS -->
-            <a href="/webprogg/misc/contacts.php">
-                CONTACTS
-            </a>
-
-            <?php if ($isLoggedIn): ?>
-
-                <!-- MY ACCOUNT -->
-                <div class="account-dropdown js-account-dropdown">
-
-                    <button
-                        type="button"
-                        class="my-account js-account-toggle"
-                        id="accountDropdownToggle"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                    >
-
-                        <span class="account-circle">
-
-                            <img
-                                src="<?php echo htmlspecialchars($navAvatar); ?>"
-                                alt="My Account"
-                            >
-
-                        </span>
-
-                        <span>MY PROFILE</span>
-
-                        <span class="dropdown-caret">
-                            &#9662;
-                        </span>
-
-                    </button>
-
-                    <div
-                        class="account-dropdown-menu"
-                        id="accountDropdownMenu"
-                    >
-
-                        <a href="/webprogg/user/userprofile.php">
-                            My Profile
-                        </a>
-
-                        <a href="/webprogg/auth/logout.php">
-                            Logout
-                        </a>
-
-                    </div>
-
-                </div>
-
-            <?php else: ?>
-
-                <!-- GUEST -->
-                <a
-                    href="/webprogg/auth/loginform.php"
-                    class="list-space"
-                >
-                    LIST YOUR SPACE
-                </a>
-
-            <?php endif; ?>
-
-        </nav>
-
-    </header>
-
-    <?php if ($isLoggedIn): ?>
-
-    <style>
-    .account-dropdown {
-        position: relative;
-    }
-
-    .account-dropdown .my-account {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
-    }
-
-    .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
-        transition: transform 0.15s ease;
-    }
-
-    .account-dropdown.open .dropdown-caret {
-        transform: rotate(180deg);
-    }
-
-    .account-dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 1000;
-        margin-top: 8px;
-    }
-
-    .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
-
-    .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: #333;
-        white-space: nowrap;
-    }
-
-    .account-dropdown-menu a:hover {
-        background: #f5f5f5;
-    }
-    </style>
-
-    <?php endif; ?>
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
 
     <!-- =========================
         LISTINGS PAGE

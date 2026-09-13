@@ -3,160 +3,119 @@
    ROOMHIVE — HOST BOOKINGS
    hostbookings.php
 
-   Same navbar / sidebar / dashboard shell as hostprofile.php.
+   Uses the shared host dashboard shell (host_init.php +
+   host_navbar.php + host_sidebar.php + host_footer.php).
+
+   SCHEMA NOTE (real `bookings` columns):
+     - NO `total`, NO `booked_at` — ordering uses created_at
+     - amount_paid / host_payout_amount for money
+     - checkin_date / checkout_date / guests DO exist and
+       are shown on each card
 ========================================================= */
 
-session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
-
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
-if (!isset($_SESSION['user_id'])) {
-    header("Location: /webprogg/auth/loginform.php");
-    exit;
-}
-
-$stmt = $pdo->prepare(
-    "SELECT id, name, email, is_host, created_at FROM users WHERE id = :id LIMIT 1"
-);
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
-
-if (!$dbUser) {
-    session_destroy();
-    header("Location: /webprogg/auth/loginform.php");
-    exit;
-}
+require_once __DIR__ . '/host_init.php';
 
 /* -----------------------------------------------------
    HOST GUARD
-   Same reasoning as hostprofile.php — see that file for the
-   full note on why this redirects to hostprofile.php for now.
 ----------------------------------------------------- */
 if (!$dbUser['is_host']) {
-    header("Location: /webprogg/host/hostprofile.php"); // TODO: change back to becomeahost.php once that file exists
+    header("Location: /webprogg/host/hostprofile.php"); // TODO: change to becomeahost.php once appropriate
     exit;
 }
 
 /* -----------------------------------------------------
-   HOST DATA (sidebar card)
------------------------------------------------------ */
-$host = [
-    'name'         => $dbUser['name'],
-    'avatar'       => '/webprogg/images/default-avatar.png',
-    'member_since' => date('F Y', strtotime($dbUser['created_at'])),
-];
-
-$notification_count = 0; // TODO: wire up once a notifications table exists
-
-/* -----------------------------------------------------
    CSRF TOKEN
-   One token per session, reused by every Accept/Decline form
-   on this page and checked by bookingaction.php.
+   One token per session, reused by every Accept/Decline
+   form on this page and checked by bookingaction.php.
 ----------------------------------------------------- */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
-$csrfToken = $_SESSION['csrf_token'];
+ $csrfToken = $_SESSION['csrf_token'];
 
 /* -----------------------------------------------------
    BOOKINGS
-   Real query against the actual schema: bookings belonging to
-   any listing this host owns, joined to the listing (title,
-   location, price, cover photo) and the guest (name).
-
-   Note: `bookings` has no check-in/check-out columns yet —
-   only `booked_at` and `total` — so there's no date-range line
-   on the card. Add start_date/end_date columns to `bookings`
-   later if you want stay length shown here.
+   Real columns only. Amount shown = host's net payout
+   (host_payout_amount), falling back to amount_paid —
+   same convention as earnings.php.
 ----------------------------------------------------- */
-$bookingsStmt = $pdo->prepare(
+ $bookingsStmt = $pdo->prepare(
     "SELECT
         b.id,
         b.status,
-        b.total,
-        b.booked_at,
+        b.amount_paid,
+        b.host_payout_amount,
+        b.checkin_date,
+        b.checkout_date,
+        b.guests,
+        b.created_at,
         l.title    AS listing_title,
         l.location AS listing_location,
         u.name     AS guest_name,
         (SELECT lp.photo_path
          FROM listing_photos lp
          WHERE lp.listing_id = l.id AND lp.photo_type = 'cover'
-         ORDER BY lp.sort_order ASC
+         ORDER BY lp.created_at ASC
          LIMIT 1) AS cover_photo
      FROM bookings b
      INNER JOIN listings l ON l.id = b.listing_id
      INNER JOIN users u    ON u.id = b.user_id
      WHERE l.user_id = :host_id
-     ORDER BY b.booked_at DESC"
+     ORDER BY b.created_at DESC"
 );
-$bookingsStmt->execute(['host_id' => $_SESSION['user_id']]);
-$bookings = $bookingsStmt->fetchAll();
+ $bookingsStmt->execute(['host_id' => $_SESSION['user_id']]);
+ $bookings = $bookingsStmt->fetchAll();
 
 /* Maps the real bookings.status enum to a badge style/label. */
-$statusMeta = [
+ $statusMeta = [
     'pending'   => ['label' => 'Pending Approval', 'class' => 'hp-badge-yellow'],
     'confirmed' => ['label' => 'Confirmed',        'class' => 'hp-badge-green'],
     'completed' => ['label' => 'Completed',        'class' => 'hp-badge-blue'],
     'cancelled' => ['label' => 'Cancelled',        'class' => 'hp-badge-red'],
 ];
 
-$total     = count($bookings);
-$confirmed = count(array_filter($bookings, fn($b) => $b['status'] === 'confirmed'));
-$pending   = count(array_filter($bookings, fn($b) => $b['status'] === 'pending'));
-$cancelled = count(array_filter($bookings, fn($b) => $b['status'] === 'cancelled'));
+ $total     = count($bookings);
+ $pending   = count(array_filter($bookings, fn($b) => $b['status'] === 'pending'));
+ $confirmed = count(array_filter($bookings, fn($b) => $b['status'] === 'confirmed'));
+ $completed = count(array_filter($bookings, fn($b) => $b['status'] === 'completed'));
+ $cancelled = count(array_filter($bookings, fn($b) => $b['status'] === 'cancelled'));
 
-/* Tab filter: ?filter=all|pending|confirmed|cancelled */
-$filter = $_GET['filter'] ?? 'all';
-$filtered = array_filter($bookings, function ($b) use ($filter) {
+/* Tab filter: ?filter=all|pending|confirmed|completed|cancelled */
+ $filter = $_GET['filter'] ?? 'all';
+ $filtered = array_filter($bookings, function ($b) use ($filter) {
     if ($filter === 'pending')   return $b['status'] === 'pending';
     if ($filter === 'confirmed') return $b['status'] === 'confirmed';
+    if ($filter === 'completed') return $b['status'] === 'completed';
     if ($filter === 'cancelled') return $b['status'] === 'cancelled';
     return true;
 });
 
-/* Flash message from bookingaction.php's redirect (?msg=accepted|declined|error) */
-$flash = $_GET['msg'] ?? null;
-$flashText = [
+/* Live search: ?q= matches guest name, listing title, or location */
+ $q = trim($_GET['q'] ?? '');
+if ($q !== '') {
+    $filtered = array_filter($filtered, function ($b) use ($q) {
+        return stripos($b['guest_name'], $q)      !== false
+            || stripos($b['listing_title'], $q)   !== false
+            || stripos($b['listing_location'], $q) !== false;
+    });
+}
+
+/* Helper so tab links preserve an active search */
+ $tabHref = function ($key) use ($q) {
+    return '?filter=' . $key . ($q !== '' ? '&q=' . urlencode($q) : '');
+};
+
+/* Flash from bookingaction.php's redirect (?msg=accepted|declined|error),
+   plus any session flash set by hp_flash_set(). */
+ $flashText = [
     'accepted'  => ['type' => 'success', 'text' => 'Booking accepted.'],
     'declined'  => ['type' => 'success', 'text' => 'Booking declined.'],
     'error'     => ['type' => 'error',   'text' => 'That booking could not be updated. It may have already been handled.'],
-][$flash] ?? null;
+][ $_GET['msg'] ?? '' ] ?? null;
 
-/* Small helper so we're not repeating htmlspecialchars() everywhere */
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
+ $sessionFlash = hp_flash_take();
 
-/* -----------------------------------------------------
-   PHOTO PATH RESOLUTION
-   `listing_photos.photo_path` is stored RELATIVE (e.g.
-   "uploads/listing_photos/cover/cover_123_abc.jpg"), not
-   rooted at "/webprogg/...". That's on purpose (see the
-   FIX note in host-step3.php) — but it means every page
-   that PRINTS a photo_path into an <img src> has to prefix
-   it with "/webprogg/" first, or the browser resolves it
-   relative to the current page's own folder instead of the
-   site root (e.g. "/webprogg/host/uploads/..." instead of
-   "/webprogg/uploads/..."), and the image 404s.
-
-   This page was missing that step — it printed cover_photo
-   straight from the DB. resolve_photo() fixes that the same
-   way mylistings.php / pendingtenants.php / etc. already do.
------------------------------------------------------ */
-function resolve_photo($path) {
-    if (!$path) {
-        return null;
-    }
-    return '/webprogg/' . ltrim($path, '/');
-}
-
-/* Cache-buster for the stylesheet so browsers don't keep serving a
-   stale cached copy after edits (e.g. this fix) are deployed. Bump
-   the number any time hostprofile.css changes and you're not seeing
-   the update reflected live. */
-$hp_css_version = '4';
+ $activePage = 'bookings';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -166,136 +125,18 @@ $hp_css_version = '4';
 <title>My Bookings — RoomHive</title>
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
-<link rel="stylesheet" href="/webprogg/assets/hostprofile.css?v=<?php echo h($hp_css_version); ?>">
+<link rel="stylesheet" href="/webprogg/assets/hostprofile.css?v=5">
 </head>
 <body>
 
-<!-- =========================================================
-     NAVBAR (identical markup/classes to hostprofile.php)
-========================================================= -->
-<header class="navbar">
-
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <a href="notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-
-            <button
-                type="button"
-                class="my-account js-account-toggle"
-                id="accountDropdownToggle"
-                aria-haspopup="true"
-                aria-expanded="false"
-            >
-                <span class="account-circle">
-                    <img src="/webprogg/images/MyAccountIcon.png" alt="My Account">
-                </span>
-                <span>MY ACCOUNT</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <a href="/webprogg/user/myaccount.php">My Account</a>
-                <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-
-        </div>
-
-    </nav>
-
-</header>
+<?php include __DIR__ . '/host_navbar.php'; ?>
 
 <!-- =========================================================
      MAIN DASHBOARD LAYOUT
 ========================================================= -->
 <main class="hp-dashboard hp-dashboard--flush-top">
 
-  <!-- SIDEBAR (identical to hostprofile.php, "Bookings" active) -->
-  <aside class="hp-sidebar">
-
-    <div class="hp-sidebar-card">
-      <img src="<?php echo h($host['avatar']); ?>" alt="<?php echo h($host['name']); ?>" class="hp-sidebar-avatar">
-      <h4><?php echo h($host['name']); ?></h4>
-      <span class="hp-host-badge">Host</span>
-      <p class="hp-member-since">Member since <?php echo h($host['member_since']); ?></p>
-    </div>
-
-    <a href="/webprogg/host/hostprofile.php" class="hp-side-link">
-      <img src="/webprogg/images/overviewicon-userprofile.png" alt="">
-      Overview
-    </a>
-    <a href="/webprogg/user/mylistings.php" class="hp-side-link">
-      <img src="/webprogg/images/mylistingsicon-hostprofile.png" alt="">
-      My Listings
-    </a>
-    <a href="/webprogg/host/hostbookings.php" class="hp-side-link active">
-      <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-      Bookings
-    </a>
-    <a href="earnings.php" class="hp-side-link">
-      <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
-      Earnings
-    </a>
-    <a href="payouts.php" class="hp-side-link">
-      <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
-      Payouts
-    </a>
-    <a href="hostreviews.php" class="hp-side-link">
-      <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
-      Reviews
-    </a>
-    <a href="hostmessages.php" class="hp-side-link">
-      <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
-      Messages
-    </a>
-    <a href="hosteditprofile.php" class="hp-side-link">
-      <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
-      Profile &amp; Account
-    </a>
-    <a href="verification.php" class="hp-side-link">
-      <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
-      Verification
-    </a>
-    <a href="payoutmethods.php" class="hp-side-link">
-      <img src="/webprogg/images/payoutmethodsicon-hostprofile.png" alt="">
-      Payout Methods
-    </a>
-    <a href="hostnotificationsettings.php" class="hp-side-link">
-      <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
-      Notification Settings
-    </a>
-    <a href="hostsecurity.php" class="hp-side-link">
-      <img src="/webprogg/images/lockicon-userprofile.png" alt="">
-      Security
-    </a>
-    <a href="helpcenter.php" class="hp-side-link">
-      <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-      Help Center
-    </a>
-    <a href="/webprogg/auth/logout.php" class="hp-side-link hp-side-logout">
-      <img src="/webprogg/images/logouticon-userprofile.png" alt="">
-      Log Out
-    </a>
-
-  </aside>
+  <?php include __DIR__ . '/host_sidebar.php'; ?>
 
   <!-- CONTENT COLUMN -->
   <div class="hp-content">
@@ -343,17 +184,28 @@ $hp_css_version = '4';
       </div>
     <?php endif; ?>
 
+    <?php if ($sessionFlash): ?>
+      <div class="hp-flash <?php echo $sessionFlash['type'] === 'success' ? 'hp-flash-success' : 'hp-flash-error'; ?>">
+        <?php echo h($sessionFlash['message']); ?>
+      </div>
+    <?php endif; ?>
+
     <div class="hp-controls">
       <div class="hp-tabs">
-        <a class="hp-tab <?php echo $filter === 'all' ? 'active' : ''; ?>" href="?filter=all">All (<?php echo h($total); ?>)</a>
-        <a class="hp-tab <?php echo $filter === 'pending' ? 'active' : ''; ?>" href="?filter=pending">Pending (<?php echo h($pending); ?>)</a>
-        <a class="hp-tab <?php echo $filter === 'confirmed' ? 'active' : ''; ?>" href="?filter=confirmed">Confirmed (<?php echo h($confirmed); ?>)</a>
-        <a class="hp-tab <?php echo $filter === 'cancelled' ? 'active' : ''; ?>" href="?filter=cancelled">Cancelled (<?php echo h($cancelled); ?>)</a>
+        <a class="hp-tab <?php echo $filter === 'all' ? 'active' : ''; ?>" href="<?php echo h($tabHref('all')); ?>">All (<?php echo h($total); ?>)</a>
+        <a class="hp-tab <?php echo $filter === 'pending' ? 'active' : ''; ?>" href="<?php echo h($tabHref('pending')); ?>">Pending (<?php echo h($pending); ?>)</a>
+        <a class="hp-tab <?php echo $filter === 'confirmed' ? 'active' : ''; ?>" href="<?php echo h($tabHref('confirmed')); ?>">Confirmed (<?php echo h($confirmed); ?>)</a>
+        <a class="hp-tab <?php echo $filter === 'completed' ? 'active' : ''; ?>" href="<?php echo h($tabHref('completed')); ?>">Completed (<?php echo h($completed); ?>)</a>
+        <a class="hp-tab <?php echo $filter === 'cancelled' ? 'active' : ''; ?>" href="<?php echo h($tabHref('cancelled')); ?>">Cancelled (<?php echo h($cancelled); ?>)</a>
       </div>
-      <div class="hp-search-wrap">
+
+      <!-- Live search (submit keeps current tab) -->
+      <form class="hp-search-wrap" method="GET" action="/webprogg/host/hostbookings.php">
+        <input type="hidden" name="filter" value="<?php echo h($filter); ?>">
         <img src="/webprogg/images/searchicon-userprofile.png" alt="">
-        <input type="text" placeholder="Search by guest name, property or date...">
-      </div>
+        <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="Search by guest, property or location...">
+      </form>
+
       <button type="button" class="hp-filter-btn">
         <img src="/webprogg/images/filtericon-userprofile.png" alt="">
         Filter
@@ -370,11 +222,20 @@ $hp_css_version = '4';
 
       <?php elseif (empty($filtered)): ?>
 
-        <div class="hp-empty-state">No bookings match this filter yet.</div>
+        <div class="hp-empty-state">
+          <p class="hp-empty-state-title">
+            <?php echo $q !== '' ? 'No bookings match your search.' : 'No bookings in this filter yet.'; ?>
+          </p>
+        </div>
 
       <?php else: foreach ($filtered as $b):
         $meta = $statusMeta[$b['status']] ?? ['label' => ucfirst($b['status']), 'class' => 'hp-badge-yellow'];
-        $imageSrc = resolve_photo($b['cover_photo']) ?: '/webprogg/images/listing-placeholder.jpg';
+
+        /* Host net payout, falling back to what the guest paid */
+        $amount = $b['host_payout_amount'] !== null ? $b['host_payout_amount'] : $b['amount_paid'];
+        $imageSrc = resolve_photo($b['cover_photo'], '/webprogg/images/listing-placeholder.jpg');
+
+        $guestsNum = (int) $b['guests'];
       ?>
       <div class="hp-booking-card">
         <img class="hp-booking-img" src="<?php echo h($imageSrc); ?>" alt="<?php echo h($b['listing_title']); ?>">
@@ -388,17 +249,33 @@ $hp_css_version = '4';
             <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
             <?php echo h($b['guest_name']); ?>
           </div>
+          <?php if (!empty($b['checkin_date'])): ?>
           <div class="hp-booking-meta">
             <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-            Booked <?php echo h(date('M j, Y', strtotime($b['booked_at']))); ?>
+            <?php echo h(date('M j, Y', strtotime($b['checkin_date']))); ?>
+            <?php if (!empty($b['checkout_date'])): ?>
+              &ndash; <?php echo h(date('M j, Y', strtotime($b['checkout_date']))); ?>
+            <?php endif; ?>
+            <?php if ($guestsNum > 0): ?>
+              &middot; <?php echo h($guestsNum); ?> guest<?php echo $guestsNum === 1 ? '' : 's'; ?>
+            <?php endif; ?>
+          </div>
+          <?php endif; ?>
+          <div class="hp-booking-meta">
+            <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
+            Booked <?php echo h(date('M j, Y', strtotime($b['created_at']))); ?>
           </div>
         </div>
 
         <div class="hp-booking-right">
           <div class="hp-booking-status-col">
-            <span class="hp-badge <?php echo $meta['class']; ?>"><?php echo h($meta['label']); ?></span>
-            <p class="hp-booking-rent-label">Total</p>
-            <p class="hp-booking-rent-value">&#8369; <?php echo number_format($b['total'], 2); ?></p>
+            <span class="hp-badge <?php echo h($meta['class']); ?>"><?php echo h($meta['label']); ?></span>
+            <p class="hp-booking-rent-label">Your Payout</p>
+            <p class="hp-booking-rent-value">
+              <?php echo $amount !== null
+                  ? '&#8369; ' . h(number_format((float) $amount, 2))
+                  : '&mdash;'; ?>
+            </p>
           </div>
 
           <?php if ($b['status'] === 'pending'): ?>
@@ -433,74 +310,7 @@ $hp_css_version = '4';
   </div>
 </main>
 
-<!-- =========================================================
-     FOOTER (identical to hostprofile.php)
-========================================================= -->
-<footer class="site-footer">
-
-    <div class="footer-top">
-
-        <div class="footer-brand">
-
-            <a href="/webprogg/user/usershome.php">
-                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
-            </a>
-
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
-
-        </div>
-
-        <div class="footer-links">
-            <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
-            <a href="/webprogg/Listings/listing.php">Featured Stays</a>
-        </div>
-
-        <div class="footer-links">
-            <span class="footer-heading">QUICK LINKS</span>
-            <a href="/webprogg/index.php">About Us</a>
-            <a href="/webprogg/misc/contacts.php">Contact</a>
-            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
-            <a href="/webprogg/hiveclub.php">Hive Club</a>
-        </div>
-
-        <div class="footer-contact">
-            <span class="footer-heading">GET THE APP</span>
-            <div class="footer-app-badges">
-                <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
-                <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
-            </div>
-        </div>
-
-    </div>
-
-    <div class="footer-bottom">
-        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
-    </div>
-
-</footer>
-
-<script src="/webprogg/assets/javaScript.js"></script>
+<?php include __DIR__ . '/host_footer.php'; ?>
 
 </body>
 </html>

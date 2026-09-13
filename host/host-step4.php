@@ -135,6 +135,10 @@ $avatarRow = $avatarStmt->fetch();
 $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
 $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
+
+/* Notification bell badge count — same placeholder used across
+   every logged-in page's navbar until real notifications land. */
+$notification_count = 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -155,108 +159,12 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
 
 <body class="space-success-page">
 
-<header class="navbar">
+<?php
+$guestCtaHref = '/webprogg/host/becomeahost.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
+?>
 
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-
-        <?php foreach ($navigation as $name => $link): ?>
-            <a href="<?php echo htmlspecialchars($link); ?>"
-               class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>">
-                <?php echo htmlspecialchars($name); ?>
-            </a>
-        <?php endforeach; ?>
-
-        <?php if ($isLoggedIn): ?>
-            <div class="account-dropdown">
-                <button
-                    type="button"
-                    class="my-account"
-                    id="accountDropdownToggle"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                >
-                    <span class="account-circle">
-                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account">
-                    </span>
-                    <span>MY PROFILE</span>
-                    <span class="dropdown-caret">&#9662;</span>
-                </button>
-
-                <div class="account-dropdown-menu" id="accountDropdownMenu">
-                    <a href="/webprogg/user/userprofile.php">My Profile</a>
-                    <a href="/webprogg/auth/logout.php">Logout</a>
-                </div>
-            </div>
-        <?php else: ?>
-            <a href="/webprogg/host/becomeahost.php" class="list-space">LIST YOUR SPACE</a>
-        <?php endif; ?>
-
-    </nav>
-
-</header>
-
-<?php if ($isLoggedIn): ?>
 <style>
-    .account-dropdown {
-        position: relative;
-        margin-left: 32px;
-    }
-
-    .account-dropdown .my-account {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
-    }
-
-    .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
-        transition: transform 0.15s ease;
-    }
-
-    .account-dropdown.open .dropdown-caret {
-        transform: rotate(180deg);
-    }
-
-    .account-dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 100;
-        margin-top: 8px;
-    }
-
-    .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
-
-    .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: #333;
-        white-space: nowrap;
-    }
-
-    .account-dropdown-menu a:hover {
-        background: #f5f5f5;
-    }
-
     .pending-approval-badge {
         display: inline-flex;
         align-items: center;
@@ -271,29 +179,6 @@ $fullName = $_SESSION["host_application"]["full_name"] ?? $userName;
         margin: 0 auto 20px;
     }
 </style>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const toggle = document.getElementById('accountDropdownToggle');
-        const dropdown = toggle ? toggle.closest('.account-dropdown') : null;
-
-        if (!toggle || !dropdown) {
-            return;
-        }
-
-        toggle.addEventListener('click', function () {
-            const isOpen = dropdown.classList.toggle('open');
-            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-
-        document.addEventListener('click', function (event) {
-            if (!dropdown.contains(event.target)) {
-                dropdown.classList.remove('open');
-                toggle.setAttribute('aria-expanded', 'false');
-            }
-        });
-    });
-</script>
-<?php endif; ?>
 
 <main class="success-main">
 

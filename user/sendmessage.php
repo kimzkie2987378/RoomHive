@@ -1,87 +1,34 @@
 <?php
 /* =========================================================
-   ROOMHIVE — MY MESSAGES (TENANT INBOX)
+   ROOMHIVE — MY ACCOUNT
    usermessages.php
 
-   Chat-app layout: conversation list + open thread, search,
-   All/Unread tabs, day dividers, unread badges, mark-as-read.
-
-   FIXED vs previous version:
-   - Send failures (bad CSRF, empty body, DB error, not your
-     conversation) now show a visible flash banner instead of
-     silently redirecting as if nothing happened. This is the
-     #1 reason a message can "look sent" but never appear
-     anywhere — including for the host.
-   - Insert explicitly checks rowCount() before touching
-     conversations.last_message_at, and sets created_at itself
-     instead of relying on a DB default that may not exist.
-   - DB errors are caught and logged instead of being silently
-     swallowed by PDO's default error mode.
-
-   SCHEMA AUTO-DETECT: the messages table's timestamp column
-   is `sent_at` OR `created_at`, and the read-flag is `is_read`
-   OR `read_at` depending on schema version. Detected once via
-   SHOW COLUMNS and aliased so the rest of the page never cares.
+   Chat-app style layout (see usermessages.css): a "Chats"
+   pane on the left with search + All/Unread filtering, and
+   the open thread on the right. Assumes a `conversations`
+   table (id, user_id, host_id, listing_id, last_message_at)
+   and a `messages` table (id, conversation_id, sender_id,
+   body, created_at, read_at).
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* functions.php is OPTIONAL — every helper it might provide is
-   re-implemented below under guarded names, so this page works
-   whether or not that file exists. */
-$functionsFile = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
-if (is_file($functionsFile)) {
-    require_once $functionsFile;
-}
-
-/* ---------- Auth ---------- */
+/* -----------------------------------------------------
+   AUTH GUARD
+----------------------------------------------------- */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* ---------- Guarded helpers ---------- */
-if (!function_exists('h')) {
-    function h($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
-}
-if (!function_exists('um_resolve_photo')) {
-    function um_resolve_photo($path, $fallback) {
-        if (empty($path)) return $fallback;
-        if (preg_match('#^https?://#i', $path)) return $path;
-        $n = ltrim($path, '/');
-        if (stripos($n, 'webprogg/') === 0) $n = substr($n, strlen('webprogg/'));
-        return '/webprogg/' . $n;
-    }
-}
-if (!function_exists('um_csrf_token')) {
-    function um_csrf_token() {
-        if (empty($_SESSION['um_csrf'])) $_SESSION['um_csrf'] = bin2hex(random_bytes(32));
-        return $_SESSION['um_csrf'];
-    }
-    function um_csrf_field() {
-        return '<input type="hidden" name="um_csrf" value="' . um_csrf_token() . '">';
-    }
-    function um_csrf_ok($token) {
-        return is_string($token) && isset($_SESSION['um_csrf']) && hash_equals($_SESSION['um_csrf'], $token);
-    }
-}
-
-/* ---------- Flash (NEW): so send failures are visible ---------- */
-if (!function_exists('um_flash_set')) {
-    function um_flash_set($type, $message) {
-        $_SESSION['um_flash'] = ['type' => $type, 'message' => $message];
-    }
-    function um_flash_take() {
-        if (empty($_SESSION['um_flash'])) return null;
-        $f = $_SESSION['um_flash'];
-        unset($_SESSION['um_flash']);
-        return $f;
-    }
-}
-
-/* ---------- User ---------- */
-$stmt = $pdo->prepare("SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1");
+/* -----------------------------------------------------
+   USER DATA
+----------------------------------------------------- */
+$stmt = $pdo->prepare(
+    "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
+);
 $stmt->execute(['id' => $_SESSION['user_id']]);
 $dbUser = $stmt->fetch();
 
@@ -91,105 +38,21 @@ if (!$dbUser) {
     exit;
 }
 
-/* Hosts have their own inbox */
 if ((int) $dbUser['is_host'] === 1) {
-    header("Location: /webprogg/host/hostmessages.php");
+    header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
 
-$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?: '/webprogg/images/default-avatar.png';
+$navAvatar = sync_user_session($dbUser);
+
+$notification_count = 0;
 $activeSidebar = 'messages';
-$me = (int) $_SESSION['user_id'];
-
-/* -----------------------------------------------------
-   MESSAGES SCHEMA AUTO-DETECT
-   Whitelist built off SHOW COLUMNS, so interpolating these
-   values into SQL is safe — they can only ever be one of
-   the known column names, never user input.
------------------------------------------------------ */
-$_msgCols      = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
-$MSG_TIME      = in_array('sent_at', $_msgCols, true) ? 'sent_at' : 'created_at';
-$HAS_IS_READ   = in_array('is_read', $_msgCols, true);
-$HAS_READ_AT   = in_array('read_at', $_msgCols, true);
-$HAS_READ_FLAG = $HAS_IS_READ || $HAS_READ_AT;
-
-$MSG_UNREAD_SQL = $HAS_READ_FLAG
-    ? ($HAS_IS_READ ? 'm.is_read = 0' : 'm.read_at IS NULL')
-    : '1 = 0';
-
-if ($HAS_IS_READ) {
-    $markReadStmt = $pdo->prepare(
-        "UPDATE messages SET is_read = 1
-         WHERE conversation_id = :c AND sender_id != :me AND is_read = 0"
-    );
-} elseif ($HAS_READ_AT) {
-    $markReadStmt = $pdo->prepare(
-        "UPDATE messages SET read_at = NOW()
-         WHERE conversation_id = :c AND sender_id != :me AND read_at IS NULL"
-    );
-} else {
-    $markReadStmt = null;
-}
-
-/* -----------------------------------------------------
-   SEND — self-posting with PRG redirect
-   FIXED: every failure path now sets a flash message
-   instead of failing silently, and the insert is verified.
------------------------------------------------------ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conversation_id'])) {
-    $convId = (int) $_POST['conversation_id'];
-    $body   = trim($_POST['body']);
-
-    if (!um_csrf_ok($_POST['um_csrf'] ?? '')) {
-
-        um_flash_set('error', 'Your session expired — please try sending that again.');
-
-    } elseif ($body === '') {
-
-        um_flash_set('error', 'Message cannot be empty.');
-
-    } else {
-
-        /* Ownership: this conversation must belong to THIS tenant */
-        $own = $pdo->prepare("SELECT id FROM conversations WHERE id = :id AND user_id = :u LIMIT 1");
-        $own->execute(['id' => $convId, 'u' => $me]);
-
-        if (!$own->fetch()) {
-
-            um_flash_set('error', 'That conversation could not be found.');
-
-        } else {
-
-            try {
-                $ins = $pdo->prepare(
-                    "INSERT INTO messages (conversation_id, sender_id, body, $MSG_TIME)
-                     VALUES (:c, :s, :b, NOW())"
-                );
-                $ins->execute(['c' => $convId, 's' => $me, 'b' => $body]);
-
-                if ($ins->rowCount() === 1) {
-                    $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = :id")
-                        ->execute(['id' => $convId]);
-                } else {
-                    um_flash_set('error', 'Your message could not be saved. Please try again.');
-                    error_log('usermessages.php: insert reported rowCount=0 for conversation ' . $convId);
-                }
-            } catch (PDOException $e) {
-                um_flash_set('error', 'Something went wrong sending your message. Please try again.');
-                error_log('usermessages.php send failed: ' . $e->getMessage());
-            }
-        }
-    }
-
-    header('Location: /webprogg/user/usermessages.php?conversation=' . $convId);
-    exit;
-}
-
-$flash = um_flash_take();
 
 /* -----------------------------------------------------
    CONVERSATION LIST
+   Includes h.id (host_id) alongside the host's display info
+   so the thread header can link out to the host's public
+   profile page (hostpublicprofile.php?id=<host_id>).
 ----------------------------------------------------- */
 $conversationsStmt = $pdo->prepare(
     "SELECT c.id, c.listing_id, c.last_message_at,
@@ -197,18 +60,18 @@ $conversationsStmt = $pdo->prepare(
             l.title AS listing_title,
             (SELECT body FROM messages m
               WHERE m.conversation_id = c.id
-              ORDER BY m.$MSG_TIME DESC LIMIT 1) AS last_body,
+              ORDER BY m.created_at DESC LIMIT 1) AS last_body,
             (SELECT COUNT(*) FROM messages m
               WHERE m.conversation_id = c.id
                 AND m.sender_id != :uid2
-                AND $MSG_UNREAD_SQL) AS unread_count
+                AND m.read_at IS NULL) AS unread_count
      FROM conversations c
      JOIN users h ON h.id = c.host_id
      LEFT JOIN listings l ON l.id = c.listing_id
      WHERE c.user_id = :uid
-     ORDER BY COALESCE(c.last_message_at, c.created_at) DESC"
+     ORDER BY c.last_message_at DESC"
 );
-$conversationsStmt->execute(['uid' => $me, 'uid2' => $me]);
+$conversationsStmt->execute(['uid' => $_SESSION['user_id'], 'uid2' => $_SESSION['user_id']]);
 
 $conversations = array_map(function ($row) {
     return [
@@ -217,14 +80,21 @@ $conversations = array_map(function ($row) {
         'listing_title' => $row['listing_title'] ?? '',
         'host_id'       => (int) $row['host_id'],
         'host_name'     => $row['host_name'],
-        'host_avatar'   => um_resolve_photo($row['host_avatar'], '/webprogg/images/default-avatar.png'),
+        'host_avatar'   => resolve_photo($row['host_avatar'], '/webprogg/images/default-avatar.png'),
         'last_body'     => $row['last_body'] ?? '',
+        'last_at'       => $row['last_message_at'],
         'unread'        => (int) $row['unread_count'],
     ];
 }, $conversationsStmt->fetchAll());
 
 /* -----------------------------------------------------
    OPEN THREAD
+   ?conversation=<id> selects which thread to show. On
+   larger screens we default to the most recent conversation
+   so the page never opens empty. On mobile, only an explicit
+   ?conversation param opens the thread pane (see
+   $isExplicitThread) so the visitor lands on the list first,
+   same as a normal chat app.
 ----------------------------------------------------- */
 $isExplicitThread = isset($_GET['conversation']);
 $activeConversationId = $isExplicitThread
@@ -236,42 +106,41 @@ $threadMessages = [];
 
 if ($activeConversationId !== null) {
     foreach ($conversations as $c) {
-        if ($c['id'] === $activeConversationId) { $activeConversation = $c; break; }
+        if ($c['id'] === $activeConversationId) {
+            $activeConversation = $c;
+            break;
+        }
     }
 
     if ($activeConversation) {
         $threadStmt = $pdo->prepare(
-            "SELECT sender_id, body, m.$MSG_TIME AS msg_time
-             FROM messages m
-             WHERE m.conversation_id = :cid
-             ORDER BY m.$MSG_TIME ASC"
+            "SELECT sender_id, body, created_at
+             FROM messages
+             WHERE conversation_id = :cid
+             ORDER BY created_at ASC"
         );
         $threadStmt->execute(['cid' => $activeConversationId]);
         $threadMessages = $threadStmt->fetchAll();
-
-        if ($markReadStmt) {
-            $markReadStmt->execute(['c' => $activeConversationId, 'me' => $me]);
-        }
     }
 }
 
-/* Navbar bell = real unread total (computed AFTER mark-read) */
-$bellStmt = $pdo->prepare(
-    "SELECT COUNT(*)
-     FROM messages m
-     JOIN conversations c ON c.id = m.conversation_id
-     WHERE c.user_id = :u AND m.sender_id != :u2 AND $MSG_UNREAD_SQL"
-);
-$bellStmt->execute(['u' => $me, 'u2' => $me]);
-$notification_count = (int) $bellStmt->fetchColumn();
+/**
+ * Human day-divider label for a message timestamp, the way
+ * most chat apps group messages ("Today", "Yesterday", then
+ * a full date).
+ */
+function message_day_label($timestamp) {
+    $day   = date('Y-m-d', $timestamp);
+    $today = date('Y-m-d');
+    $yesterday = date('Y-m-d', strtotime('-1 day'));
 
-if (!function_exists('message_day_label')) {
-    function message_day_label($timestamp) {
-        $day = date('Y-m-d', $timestamp);
-        if ($day === date('Y-m-d')) return 'Today';
-        if ($day === date('Y-m-d', strtotime('-1 day'))) return 'Yesterday';
-        return date('F j, Y', $timestamp);
+    if ($day === $today) {
+        return 'Today';
     }
+    if ($day === $yesterday) {
+        return 'Yesterday';
+    }
+    return date('F j, Y', $timestamp);
 }
 ?>
 <!DOCTYPE html>
@@ -284,11 +153,6 @@ if (!function_exists('message_day_label')) {
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 <link rel="stylesheet" href="/webprogg/assets/usermessages.css">
-<style>
-.um-flash { padding: 10px 14px; margin: 0 0 12px; border-radius: 8px; font-size: 14px; }
-.um-flash-error { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
-.um-flash-success { background: #e9f7ef; color: #1e7e42; border: 1px solid #bfe8cf; }
-</style>
 </head>
 <body>
 
@@ -305,7 +169,7 @@ if (!function_exists('message_day_label')) {
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
+        <a href="notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
@@ -322,6 +186,9 @@ if (!function_exists('message_day_label')) {
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
+                <?php if ($dbUser['is_host']): ?>
+                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
+                <?php endif; ?>
                 <a href="/webprogg/user/userprofile.php">My Profile</a>
                 <a href="/webprogg/auth/logout.php">Logout</a>
             </div>
@@ -343,24 +210,17 @@ if (!function_exists('message_day_label')) {
 
 <main class="up-dashboard">
 
-  <?php
-  $sidebarFile = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
-  if (is_file($sidebarFile)) { require $sidebarFile; }
-  ?>
+  <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
 
   <div class="up-content">
-
-    <?php if ($flash): ?>
-      <div class="um-flash <?php echo $flash['type'] === 'success' ? 'um-flash-success' : 'um-flash-error'; ?>">
-        <?php echo h($flash['message']); ?>
-      </div>
-    <?php endif; ?>
 
     <?php if (empty($conversations)): ?>
 
       <!-- EMPTY STATE: no conversations at all yet -->
       <section class="up-card up-msg-card-empty">
-        <div class="up-msg-list-header"><h2>Chats</h2></div>
+        <div class="up-msg-list-header">
+          <h2>Chats</h2>
+        </div>
         <div class="up-msg-welcome">
           <span class="up-msg-welcome-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -383,12 +243,16 @@ if (!function_exists('message_day_label')) {
           <div class="up-msg-list-header">
             <h2>Chats</h2>
             <a href="/webprogg/Listings/listing.php" class="up-msg-compose" title="Start a new conversation" aria-label="Start a new conversation">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
             </a>
           </div>
 
           <div class="up-msg-search-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+            </svg>
             <input type="text" id="msgSearchInput" class="up-msg-search" placeholder="Search messages" autocomplete="off">
           </div>
 
@@ -403,7 +267,7 @@ if (!function_exists('message_day_label')) {
                 $isActive = $activeConversation && $c['id'] === $activeConversation['id'];
                 $isUnread = $c['unread'] > 0;
               ?>
-              <a href="/webprogg/user/usermessages.php?conversation=<?php echo h($c['id']); ?>"
+              <a href="usermessages.php?conversation=<?php echo h($c['id']); ?>"
                  class="up-msg-list-item<?php echo $isActive ? ' active' : ''; ?><?php echo $isUnread ? ' unread' : ''; ?>">
                 <span class="up-msg-avatar">
                   <img src="<?php echo h($c['host_avatar']); ?>" alt="<?php echo h($c['host_name']); ?>">
@@ -418,7 +282,7 @@ if (!function_exists('message_day_label')) {
                   <?php if ($c['listing_title'] !== ''): ?>
                     <span class="up-msg-listing-tag"><?php echo h($c['listing_title']); ?></span>
                   <?php endif; ?>
-                  <span class="up-msg-preview"><?php echo $c['last_body'] !== '' ? h($c['last_body']) : 'No messages yet'; ?></span>
+                  <span class="up-msg-preview"><?php echo h($c['last_body']); ?></span>
                 </span>
               </a>
             <?php endforeach; ?>
@@ -426,13 +290,16 @@ if (!function_exists('message_day_label')) {
 
         </div>
 
-        <!-- THREAD PANE -->
+        <!-- OPEN THREAD -->
         <div class="up-msg-thread">
           <?php if ($activeConversation): ?>
 
             <div class="up-msg-thread-header">
-              <a href="/webprogg/user/usermessages.php" class="up-msg-back" aria-label="Back to messages">&#8249;</a>
+              <a href="usermessages.php" class="up-msg-back" aria-label="Back to messages">&#8249;</a>
 
+              <!-- Avatar + name link out to the host's public
+                   profile page, so tenants can see who they're
+                   chatting with beyond just the thread. -->
               <a href="/webprogg/host/hostpublicprofile.php?id=<?php echo h($activeConversation['host_id']); ?>"
                  class="up-msg-thread-identity" title="View <?php echo h($activeConversation['host_name']); ?>'s profile">
                 <img class="up-msg-thread-avatar" src="<?php echo h($activeConversation['host_avatar']); ?>" alt="">
@@ -445,10 +312,18 @@ if (!function_exists('message_day_label')) {
               </a>
 
               <div class="up-msg-thread-actions">
+                <a href="/webprogg/host/hostpublicprofile.php?id=<?php echo h($activeConversation['host_id']); ?>"
+                   class="up-msg-icon-btn" title="View host profile" aria-label="View host profile">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </a>
                 <?php if ($activeConversation['listing_id']): ?>
                   <a href="/webprogg/Listings/listingdetails.php?id=<?php echo h($activeConversation['listing_id']); ?>"
                      class="up-msg-icon-btn" title="View listing" aria-label="View listing">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+                    </svg>
                   </a>
                 <?php endif; ?>
               </div>
@@ -470,9 +345,9 @@ if (!function_exists('message_day_label')) {
               <?php $lastDay = null; ?>
               <?php foreach ($threadMessages as $m): ?>
                 <?php
-                  $ts     = strtotime($m['msg_time']);
+                  $ts = strtotime($m['created_at']);
                   $dayKey = date('Y-m-d', $ts);
-                  $isMine = (int) $m['sender_id'] === $me;
+                  $isMine = (int) $m['sender_id'] === (int) $_SESSION['user_id'];
                 ?>
                 <?php if ($dayKey !== $lastDay): ?>
                   <span class="up-msg-day-divider"><?php echo h(message_day_label($ts)); ?></span>
@@ -487,8 +362,8 @@ if (!function_exists('message_day_label')) {
               <?php endforeach; ?>
             </div>
 
-            <form action="/webprogg/user/usermessages.php" method="POST" class="up-msg-composer">
-              <?php echo um_csrf_field(); ?>
+            <form action="sendmessage.php" method="POST" class="up-msg-composer">
+              <?php echo csrf_field(); ?>
               <input type="hidden" name="conversation_id" value="<?php echo h($activeConversation['id']); ?>">
               <input type="text" name="body" class="up-msg-input" placeholder="Write a message..." autocomplete="off" required>
               <button type="submit" class="up-msg-send-btn" aria-label="Send message">
@@ -522,11 +397,24 @@ if (!function_exists('message_day_label')) {
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
-            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
-            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>hello@roomhive.ph</span></div>
-            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
+            <p class="footer-tagline">
+                Find, stay, relax, at home. RoomHive helps you discover
+                comfortable stays across Negros Oriental.
+            </p>
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
+                <span>0927 569 3574</span>
+            </div>
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/EmailIcon.jpg" alt="">
+                <span>kimdivino55@gmail.com</span>
+            </div>
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/GPSIcon.png" alt="">
+                <span>Dumaguete City, Negros Oriental, Philippines</span>
+            </div>
         </div>
+
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -534,6 +422,15 @@ if (!function_exists('message_day_label')) {
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
+
+        <div class="footer-links">
+            <span class="footer-heading">QUICK LINKS</span>
+            <a href="/webprogg/index.php">About Us</a>
+            <a href="/webprogg/misc/contacts.php">Contact</a>
+            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
+            <a href="/webprogg/hiveclub.php">Hive Club</a>
+        </div>
+
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -542,19 +439,30 @@ if (!function_exists('message_day_label')) {
             </div>
         </div>
     </div>
-    <div class="footer-bottom"><p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p></div>
+
+    <div class="footer-bottom">
+        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
+    </div>
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
 <script>
   (function () {
+    // Open the thread already scrolled to the newest message.
     var body = document.getElementById('msgThreadBody');
-    if (body) { body.scrollTop = body.scrollHeight; }
+    if (body) {
+      body.scrollTop = body.scrollHeight;
+    }
 
+    // Search + All/Unread filtering over the conversation list.
+    // Purely client-side — every conversation is already in the
+    // DOM, so no extra request is needed.
     var searchInput = document.getElementById('msgSearchInput');
     var tabsWrap = document.getElementById('msgTabs');
     var list = document.getElementById('msgList');
-    if (!searchInput || !tabsWrap || !list) { return; }
+    if (!searchInput || !tabsWrap || !list) {
+      return;
+    }
 
     var items = Array.prototype.slice.call(list.querySelectorAll('.up-msg-list-item'));
     var activeFilter = 'all';
@@ -572,7 +480,9 @@ if (!function_exists('message_day_label')) {
 
     tabsWrap.querySelectorAll('.up-msg-tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
-        tabsWrap.querySelectorAll('.up-msg-tab').forEach(function (t) { t.classList.remove('active'); });
+        tabsWrap.querySelectorAll('.up-msg-tab').forEach(function (t) {
+          t.classList.remove('active');
+        });
         tab.classList.add('active');
         activeFilter = tab.getAttribute('data-filter');
         applyFilters();

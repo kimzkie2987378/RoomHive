@@ -23,18 +23,18 @@ if (
 }
 
 /* ---------- Sidebar navigation (same set as listingapplication.php) ---------- */
-$navItems = [
+ $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
-    ['label' => 'Users',                'icon' => 'users',      'href' => '#'],
-    ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '#'],
-    ['label' => 'Listings',             'icon' => 'listing',    'href' => '#'],
-    ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php', 'active' => true],
+    ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
+    ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '/webprogg/admin/adminbookings.php'],
+    ['label' => 'Listings',             'icon' => 'listing',    'href' => '/webprogg/admin/adminlistings.php'],
+    ['label' => 'Listings Application', 'icon' => 'clipboard',  'active' => true, 'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
-    ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '#'],
-    ['label' => 'Reviews',              'icon' => 'star',       'href' => '#'],
-    ['label' => 'Messages',             'icon' => 'message',    'href' => '#'],
-    ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '#'],
-    ['label' => 'Settings',             'icon' => 'settings',   'href' => '#'],
+    ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
+    ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
+    ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
+    ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
 $notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();

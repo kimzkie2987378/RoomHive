@@ -1,6 +1,11 @@
+/* =========================================================
+   ROOMHIVE — MAIN SITE JAVASCRIPT
+   ========================================================= */
+
 document.addEventListener("DOMContentLoaded", () => {
   /* =========================
-     TESTIMONIAL SLIDER javaScript.js
+     TESTIMONIAL SLIDER
+     (arrows, dots, autoplay, swipe, keyboard)
   ========================= */
   const section = document.querySelector(".testimonials");
 
@@ -19,7 +24,14 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     if (slider && track && cards.length > 0) {
+      const AUTOPLAY_DELAY = 6000;
+
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
       let current = 0;
+      let autoplayTimer = null;
 
       /* Get how many cards should be visible */
       const getVisibleCount = () => {
@@ -69,28 +81,83 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       };
 
-      /* Previous button */
-      if (prevBtn) {
-        prevBtn.addEventListener("click", () => {
-          goTo(current - 1);
-        });
-      }
+      /* ---- autoplay: loops; pauses on hover/focus/hidden tab ---- */
+      const stopAutoplay = () => {
+        if (autoplayTimer) {
+          clearInterval(autoplayTimer);
+          autoplayTimer = null;
+        }
+      };
 
-      /* Next button */
-      if (nextBtn) {
-        nextBtn.addEventListener("click", () => {
-          goTo(current + 1);
-        });
-      }
+      const startAutoplay = () => {
+        if (reducedMotion || autoplayTimer) return;
 
-      /* Dot buttons */
-      dots.forEach((dot, index) => {
-        dot.addEventListener("click", () => {
-          goTo(index);
-        });
+        autoplayTimer = setInterval(() => {
+          const maxIndex = getMaxIndex();
+          goTo(current >= maxIndex ? 0 : current + 1);
+        }, AUTOPLAY_DELAY);
+      };
+
+      section.addEventListener("mouseenter", stopAutoplay);
+      section.addEventListener("mouseleave", startAutoplay);
+      section.addEventListener("focusin", stopAutoplay);
+      section.addEventListener("focusout", startAutoplay);
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          stopAutoplay();
+        } else {
+          startAutoplay();
+        }
       });
 
-      /* Recalculate slider after resizing */
+      /* ---- arrows ---- */
+      if (prevBtn) {
+        prevBtn.addEventListener("click", () => goTo(current - 1));
+      }
+
+      if (nextBtn) {
+        nextBtn.addEventListener("click", () => goTo(current + 1));
+      }
+
+      /* ---- dots ---- */
+      dots.forEach((dot, index) => {
+        dot.addEventListener("click", () => goTo(index));
+      });
+
+      /* ---- keyboard (while focus is inside the section) ---- */
+      section.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft") goTo(current - 1);
+        if (event.key === "ArrowRight") goTo(current + 1);
+      });
+
+      /* ---- touch swipe ---- */
+      let touchStartX = 0;
+
+      slider.addEventListener(
+        "touchstart",
+        (event) => {
+          touchStartX = event.changedTouches[0].clientX;
+          stopAutoplay();
+        },
+        { passive: true },
+      );
+
+      slider.addEventListener(
+        "touchend",
+        (event) => {
+          const delta = event.changedTouches[0].clientX - touchStartX;
+
+          if (Math.abs(delta) > 45) {
+            goTo(current + (delta < 0 ? 1 : -1));
+          }
+
+          startAutoplay();
+        },
+        { passive: true },
+      );
+
+      /* ---- re-measure on resize ---- */
       let resizeTimer;
 
       window.addEventListener("resize", () => {
@@ -103,6 +170,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       /* Start from first testimonial */
       goTo(0);
+      startAutoplay();
     }
   }
 
@@ -615,4 +683,233 @@ if (editProfileButton) {
 
     window.location.href = "editprofile.php";
   });
+}
+
+/* =========================================================
+   ROOMHIVE — MOTION & INTERACTION LAYER
+   Pairs with motion.css. Runs on every page that loads
+   this file; safely no-ops where elements are absent.
+   ========================================================= */
+
+function initMotionLayer() {
+  "use strict";
+
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  const canAnimate =
+    !prefersReducedMotion && "IntersectionObserver" in window;
+
+  /* ---------------------------------------------------------
+     1. SCROLL REVEAL — sections & cards fade/slide in.
+        Siblings in the same grid get a stagger delay.
+  --------------------------------------------------------- */
+  const initScrollReveal = () => {
+    if (!canAnimate) return; /* leave everything visible */
+
+    const revealSelectors = [
+      ".club-content",
+      ".hive-club .join-button",
+      ".listings-eyebrow",
+      ".listings-title",
+      ".listing-card",
+      ".about-text",
+      ".about-image",
+      ".reasons-heading",
+      ".reasons-desc",
+      ".reason-card",
+      ".testimonials-text",
+      ".testimonial-card",
+      ".cta-image-strip img",
+      ".cta-box",
+      ".dual-cta-panel",
+    ];
+
+    const elements = document.querySelectorAll(revealSelectors.join(","));
+
+    elements.forEach((el) => {
+      const parent = el.parentElement;
+
+      if (parent) {
+        const revealedSiblings = Array.from(parent.children).filter((child) =>
+          child.classList.contains("reveal"),
+        );
+
+        const index = revealedSiblings.indexOf(el);
+
+        if (index > 0) {
+          el.style.transitionDelay = `${Math.min(index * 90, 450)}ms`;
+        }
+      }
+
+      el.classList.add("reveal");
+    });
+
+    const revealObserver = new IntersectionObserver(
+      (entries, observer) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+
+          observer.unobserve(entry.target);
+          entry.target.classList.add("is-visible");
+
+          /* Strip helper classes after revealing so normal hover
+             transitions (lift/zoom) work untouched again. */
+          const el = entry.target;
+          const delay = parseFloat(el.style.transitionDelay) || 0;
+
+          setTimeout(() => {
+            el.classList.remove("reveal", "is-visible");
+            el.style.transitionDelay = "";
+          }, delay + 900);
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -50px 0px" },
+    );
+
+    elements.forEach((el) => revealObserver.observe(el));
+  };
+
+  /* ---------------------------------------------------------
+     2. SMART NAVBAR + HERO FADE + BACK-TO-TOP
+        One rAF-throttled scroll handler drives all three.
+  --------------------------------------------------------- */
+  const initScrollEffects = () => {
+    const navbar = document.querySelector(".navbar");
+    const heroContent = document.querySelector(".hero-content");
+
+    /* Back-to-top button — created here, no HTML change needed */
+    const backToTop = document.createElement("button");
+
+    backToTop.type = "button";
+    backToTop.className = "back-to-top";
+    backToTop.setAttribute("aria-label", "Back to top");
+    backToTop.innerHTML = "&#8593;";
+    backToTop.addEventListener("click", () => {
+      window.scrollTo({
+        top: 0,
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+      });
+    });
+    document.body.appendChild(backToTop);
+
+    /* Only drift hero text if nothing else transforms it
+       (e.g. a centering translateY(-50%)) */
+    let heroCanDrift = false;
+
+    if (heroContent && !prefersReducedMotion) {
+      const baseTransform = window.getComputedStyle(heroContent).transform;
+      heroCanDrift = !baseTransform || baseTransform === "none";
+    }
+
+    let lastY = window.scrollY;
+    let ticking = false;
+
+    const update = () => {
+      const y = window.scrollY;
+
+      if (navbar) {
+        navbar.classList.toggle("nav-scrolled", y > 24);
+
+        if (canAnimate) {
+          if (y > lastY && y > 220) {
+            navbar.classList.add("nav-hidden"); /* scrolling down */
+          } else {
+            navbar.classList.remove("nav-hidden"); /* scrolling up */
+          }
+        }
+      }
+
+      if (heroContent && !prefersReducedMotion) {
+        const fade = Math.max(0, 1 - y / 520);
+        heroContent.style.opacity = fade.toFixed(3);
+
+        if (heroCanDrift) {
+          heroContent.style.transform = `translateY(${(y * 0.18).toFixed(1)}px)`;
+        }
+      }
+
+      backToTop.classList.toggle("is-visible", y > 600);
+
+      lastY = y;
+      ticking = false;
+    };
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (!ticking) {
+          window.requestAnimationFrame(update);
+          ticking = true;
+        }
+      },
+      { passive: true },
+    );
+
+    update();
+  };
+
+  /* ---------------------------------------------------------
+     3. BUTTON RIPPLES — soft pulse from the click point
+  --------------------------------------------------------- */
+  const initRipples = () => {
+    if (prefersReducedMotion) return;
+
+    const buttons = document.querySelectorAll(
+      ".btn-primary, .btn-secondary, .cta-button, .join-button, " +
+        ".about-button, .dual-cta-button, .list-space",
+    );
+
+    buttons.forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        const rect = button.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height) * 1.15;
+
+        const ripple = document.createElement("span");
+        ripple.className = "ripple";
+        ripple.style.width = ripple.style.height = `${size}px`;
+        ripple.style.left = `${event.clientX - rect.left - size / 2}px`;
+        ripple.style.top = `${event.clientY - rect.top - size / 2}px`;
+
+        button.appendChild(ripple);
+        ripple.addEventListener("animationend", () => ripple.remove());
+      });
+    });
+  };
+
+  /* ---------------------------------------------------------
+     4. IMAGE FADE-IN — photos fade up once actually loaded
+  --------------------------------------------------------- */
+  const initImageFade = () => {
+    if (prefersReducedMotion) return;
+
+    document.querySelectorAll("img").forEach((img) => {
+      const show = () => img.classList.add("rh-img-loaded");
+
+      img.classList.add("rh-img-fade");
+
+      if (img.complete && img.naturalWidth > 0) {
+        show();
+      } else {
+        img.addEventListener("load", show, { once: true });
+        img.addEventListener("error", show, { once: true }); /* never hide broken imgs */
+      }
+    });
+  };
+
+  /* ---------------------------------------------------------
+     GO
+  --------------------------------------------------------- */
+  initScrollReveal();
+  initScrollEffects();
+  initRipples();
+  initImageFade();
+}
+
+/* Run whether the script loads at end-of-body or in <head> */
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initMotionLayer);
+} else {
+  initMotionLayer();
 }

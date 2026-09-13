@@ -1,0 +1,498 @@
+/* ============================================================
+   ROOMHIVE — MOTION & INTERACTION LAYER
+   Loads AFTER style.css so these rules can override.
+   ============================================================ */
+
+:root {
+  --rh-brand: #f5b301; /* change to your exact brand gold */
+  --rh-ink: #1f2430;
+  --rh-shadow-sm: 0 8px 20px rgba(31, 36, 48, 0.1);
+  --rh-shadow-md: 0 16px 36px rgba(31, 36, 48, 0.14);
+  --rh-shadow-lg: 0 24px 48px rgba(31, 36, 48, 0.18);
+  --rh-ease: cubic-bezier(0.22, 1, 0.36, 1); /* smooth "expo out" */
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ---------- 1. Scroll reveal (only hides when JS is on) ---------- */
+.js-animations .reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s var(--rh-ease);
+  will-change: opacity, transform;
+}
+
+.js-animations .reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- 2. Navbar: shadow + hide on scroll down ----------
+   NOTE: if your existing style.css already positions the navbar
+   (fixed/absolute over the hero), DELETE the position/top/z-index
+   lines below and keep only the transition + state classes. */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  transition:
+    transform 0.35s ease,
+    box-shadow 0.35s ease;
+}
+
+.navbar.nav-scrolled {
+  box-shadow: var(--rh-shadow-md);
+}
+.navbar.nav-hidden {
+  transform: translateY(-110%);
+}
+
+/* Animated underline on nav links (skips the CTA button) */
+.nav-links a:not(.list-space) {
+  position: relative;
+  transition: color 0.25s ease;
+}
+
+.nav-links a:not(.list-space)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px; /* tune to your nav padding */
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.3s var(--rh-ease);
+}
+
+.nav-links a:not(.list-space):hover::after,
+.nav-links a:not(.list-space).active::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+/* ---------- 3. Buttons: lift, press, ripple host ---------- */
+.btn-primary,
+.btn-secondary,
+.cta-button,
+.join-button,
+.about-button,
+.dual-cta-button,
+.list-space {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.25s var(--rh-ease),
+    box-shadow 0.25s ease,
+    background-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.btn-primary:hover,
+.cta-button:hover,
+.join-button:hover,
+.dual-cta-button:hover,
+.about-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px rgba(245, 179, 1, 0.35);
+}
+
+.btn-secondary:hover,
+.list-space:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--rh-shadow-md);
+}
+
+.btn-primary:active,
+.btn-secondary:active,
+.cta-button:active,
+.join-button:active,
+.about-button:active,
+.dual-cta-button:active,
+.list-space:active {
+  transform: translateY(-1px) scale(0.97);
+}
+
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.cta-button:focus-visible,
+.join-button:focus-visible,
+.about-button:focus-visible,
+.dual-cta-button:focus-visible,
+.list-space:focus-visible {
+  outline: 3px solid rgba(245, 179, 1, 0.55);
+  outline-offset: 3px;
+}
+
+/* Material-style ripple (spawned by JS) */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  transform: scale(0);
+  animation: rh-ripple 0.65s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes rh-ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* ---------- 4. Cards: lift + image zoom + shine ---------- */
+.listing-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.4s var(--rh-ease),
+    box-shadow 0.4s ease;
+}
+
+.listing-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--rh-shadow-lg);
+}
+
+.listing-card img {
+  transition:
+    transform 0.6s var(--rh-ease),
+    opacity 0.6s ease;
+}
+
+.listing-card:hover img {
+  transform: scale(1.07);
+}
+
+.listing-link {
+  transition: transform 0.3s var(--rh-ease);
+}
+.listing-card:hover .listing-link {
+  transform: translateX(6px);
+}
+
+/* shine sweep across the card */
+.listing-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  transform: skewX(-20deg);
+  transition: left 0.65s ease;
+  pointer-events: none;
+}
+
+.listing-card:hover::after {
+  left: 130%;
+}
+
+.reason-card {
+  overflow: hidden;
+  transition:
+    transform 0.35s var(--rh-ease),
+    box-shadow 0.35s ease;
+}
+
+.reason-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--rh-shadow-md);
+}
+
+.reason-card img {
+  transition: transform 0.4s var(--rh-ease);
+}
+.reason-card:hover img {
+  transform: scale(1.12) rotate(-4deg);
+}
+
+.testimonial-card {
+  transition:
+    transform 0.35s var(--rh-ease),
+    box-shadow 0.35s ease;
+}
+
+.testimonial-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--rh-shadow-md);
+}
+
+/* smooth track motion (used by autoplay / swipe too) */
+.testimonials-track {
+  transition: transform 0.65s var(--rh-ease);
+}
+
+.nav-arrow {
+  transition:
+    transform 0.2s var(--rh-ease),
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.nav-arrow:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.07);
+}
+.nav-arrow:active:not(:disabled) {
+  transform: scale(0.93);
+}
+
+.dot {
+  cursor: pointer;
+  transition:
+    transform 0.25s var(--rh-ease),
+    background-color 0.25s ease;
+}
+
+.dot:hover {
+  transform: scale(1.35);
+}
+
+/* ---------- 5. CTA strip + panels ---------- */
+.cta-image-strip img {
+  transition:
+    transform 0.5s var(--rh-ease),
+    filter 0.5s ease,
+    opacity 0.6s ease;
+}
+
+.cta-image-strip img:hover {
+  transform: scale(1.04);
+  filter: brightness(1.06);
+}
+
+.dual-cta-panel {
+  transition:
+    transform 0.4s var(--rh-ease),
+    box-shadow 0.4s ease;
+}
+
+.dual-cta-panel:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--rh-shadow-lg);
+}
+
+/* ---------- 6. Hero page-load entrance ---------- */
+@keyframes rh-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rh-settle {
+  from {
+    transform: scale(1.08);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.js-animations .hero-content h1,
+.js-animations .hero-content p,
+.js-animations .hero-buttons {
+  opacity: 0;
+  animation: rh-fade-up 0.9s var(--rh-ease) forwards;
+}
+
+.js-animations .hero-content h1 {
+  animation-delay: 0.1s;
+}
+.js-animations .hero-content p {
+  animation-delay: 0.28s;
+}
+.js-animations .hero-buttons {
+  animation-delay: 0.46s;
+}
+
+.js-animations .hero-image {
+  animation: rh-settle 1.6s var(--rh-ease) both;
+}
+
+/* gentle float for crown / icon artwork */
+@keyframes rh-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.js-animations .crown-logo,
+.js-animations .dual-cta-icon {
+  animation: rh-float 4.5s ease-in-out infinite;
+}
+
+/* ---------- 7. Image fade-in on load ---------- */
+.js-animations img.rh-img-fade {
+  opacity: 0;
+  transition-property: opacity, transform, filter;
+  transition-duration: 0.6s;
+  transition-timing-function: ease;
+}
+
+.js-animations img.rh-img-fade.rh-img-loaded {
+  opacity: 1;
+}
+
+/* ---------- 8. Footer ---------- */
+.footer-links a {
+  display: inline-block;
+  transition:
+    transform 0.25s var(--rh-ease),
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.footer-links a:hover {
+  transform: translateX(5px);
+}
+
+.footer-app-badges img {
+  transition: transform 0.25s var(--rh-ease);
+}
+
+.footer-app-badges img:hover {
+  transform: translateY(-4px);
+}
+
+/* ---------- 9. Back to top (button injected by JS) ---------- */
+.back-to-top {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  z-index: 1200;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: var(--rh-brand);
+  color: var(--rh-ink);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--rh-shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(16px) scale(0.8);
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease,
+    transform 0.3s var(--rh-ease);
+}
+
+.back-to-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.back-to-top:hover {
+  transform: translateY(-4px) scale(1.06);
+}
+.back-to-top:active {
+  transform: scale(0.92);
+}
+
+/* ---------- 10. Accessibility: respect reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .js-animations .reveal,
+  .js-animations img.rh-img-fade,
+  .js-animations .hero-content h1,
+  .js-animations .hero-content p,
+  .js-animations .hero-buttons {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .navbar.nav-hidden {
+    transform: none;
+  }
+}
+/* ============================================================
+   HERO — FILL THE ENTIRE FIRST SCREEN & LIFT THE CONTENT
+   ============================================================ */
+
+:root {
+  /* ← Match this to your navbar's real rendered height */
+  --rh-nav-h: 72px;
+}
+
+.hero {
+  /* Release any fixed height from style.css */
+  height: auto;
+
+  /* Full first screen = viewport minus the sticky navbar */
+  min-height: calc(100vh - var(--rh-nav-h));
+  min-height: calc(100svh - var(--rh-nav-h)); /* mobile URL-bar safe */
+
+  /* Vertically center the content WITHOUT transforms,
+     which keeps the scroll-parallax drift working */
+  display: flex;
+  align-items: center;
+}
+
+/* Image stretches behind everything */
+.hero .hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+}
+
+/* Dark overlay above image, below content */
+.hero .hero-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* Content sits above the overlay.
+   margin-bottom pushes it a little HIGHER than dead-center. */
+.hero .hero-content {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 8vh; /* ← "a little higher" — tune 4vh–12vh */
+}
+
+@media (max-width: 640px) {
+  .hero .hero-content {
+    margin-bottom: 4vh;
+  }
+}

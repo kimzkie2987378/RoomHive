@@ -4,7 +4,7 @@ session_start();
 /*
  * Check whether the user is logged in.
  */
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
@@ -13,7 +13,7 @@ $isLoggedIn = (
  * Whether an admin is currently logged in, so the footer's Admin
  * link can go straight to the dashboard instead of the login form.
  */
-$isAdminLoggedIn = (
+ $isAdminLoggedIn = (
     isset($_SESSION["admin_logged_in"]) &&
     $_SESSION["admin_logged_in"] === true
 );
@@ -22,7 +22,7 @@ $isAdminLoggedIn = (
 // PAGE DATA - index.php
 // =========================
 
-$navLinks = [
+ $navLinks = [
     ['label' => 'HOME', 'href' => '/webprogg/index.php', 'class' => 'active'],
     ['label' => 'LISTINGS', 'href' => '/webprogg/Listings/listing.php', 'class' => ''],
     ['label' => 'HOW IT WORKS', 'href' => '/webprogg/host/howitworks.php', 'class' => ''],
@@ -40,7 +40,7 @@ $navLinks = [
 // FIX: added 'slug' to each listing so the "Top Listings" cards on
 // this page link correctly to listing.php?category=<slug> — these
 // slugs match the $categories keys used in listing.php.
-$listings = [
+ $listings = [
     ['name' => 'STUDIO LOFT', 'image' => '/webprogg/images/StudioLoft.png', 'slug' => 'studioloft'],
     ['name' => 'SHARED ROOM', 'image' => '/webprogg/images/SharedBedroom.png', 'slug' => 'sharedbedroom'],
     ['name' => 'ENTIRE HOUSE', 'image' => '/webprogg/images/EntireHouse.png', 'slug' => 'entirehouse'],
@@ -49,7 +49,7 @@ $listings = [
     ['name' => 'APARTMENT', 'image' => '/webprogg/images/Apartment.png', 'slug' => 'apartment'],
 ];
 
-$reasons = [
+ $reasons = [
     [
         'icon' => '/webprogg/images/247SupportsIcons.png',
         'title' => '24/7 Support',
@@ -72,7 +72,7 @@ $reasons = [
     ],
 ];
 
-$testimonials = [
+ $testimonials = [
     [
         'quote' => 'Booking my apartment through RoomHive was seamless.',
         'body' => 'The team was responsive from day one and the listing matched exactly what was shown. Moving in was stress-free.',
@@ -105,7 +105,7 @@ $testimonials = [
     ],
 ];
 
-$ctaImages = [
+ $ctaImages = [
     '/webprogg/images/FirstImageLeft.jpg',
     '/webprogg/images/SecondImageLeft.jpg',
     '/webprogg/images/MiddleImage.avif',
@@ -113,23 +113,23 @@ $ctaImages = [
     '/webprogg/images/SecondImageRight.jpg',
 ];
 
-$footerCompanyLinks = [
+ $footerCompanyLinks = [
     ['label' => 'Home', 'href' => '/webprogg/index.php'],
     ['label' => 'Listings', 'href' => '/webprogg/Listings/listing.php'],
     ['label' => 'How It Works', 'href' => '/webprogg/host/howitworks.php'],
     ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
 ];
 
-$footerInvolvedLinks = [
+ $footerInvolvedLinks = [
     ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Hive Club', 'href' => '/webprogg/hiveclub.php'],
     ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Terms Of Service', 'href' => '#'],
 ];
 
-$phoneNumber = '+639275693574';
-$emailAddress = 'RoomHive@gmail.com';
-$currentYear = date('Y');
+ $phoneNumber = '+639275693574';
+ $emailAddress = 'RoomHive@gmail.com';
+ $currentYear = date('Y');
 ?>
 
 <!doctype html>
@@ -149,6 +149,12 @@ $currentYear = date('Y');
 
     <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css">
+    <!-- Motion & interaction layer (loads after style.css so it can override) -->
+    <link rel="stylesheet" href="/webprogg/assets/motion.css">
+
+    <!-- Enables entrance animations only when JS is available.
+         Without JS, the page renders fully visible / static. -->
+    <script>document.documentElement.classList.add("js-animations");</script>
 
     <style>
         .footer-bottom {
@@ -788,4 +794,5 @@ $currentYear = date('Y');
 <script src="/webprogg/assets/javaScript.js"></script>
 
 </body>
+
 </html>

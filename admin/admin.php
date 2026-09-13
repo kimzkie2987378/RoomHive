@@ -10,6 +10,11 @@
  * empty-state UI you already had kicks in automatically —
  * nothing about the *look* of an empty dashboard changes,
  * only where the numbers come from.
+ *
+ * SCHEMA NOTE: the real `bookings` table has NO `total` and
+ * NO `booked_at` columns. Money = amount_paid (or the
+ * host/platform fee splits), time = created_at. All queries
+ * below use the real columns.
  */
 
 session_start();
@@ -28,8 +33,8 @@ if (
     exit();
 }
 
-$adminName  = $_SESSION['admin_name']  ?? 'Admin User';
-$adminEmail = $_SESSION['admin_email'] ?? '';
+ $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+ $adminEmail = $_SESSION['admin_email'] ?? '';
 
 /*
  * =========================================================
@@ -91,42 +96,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
 }
 
 /* ---------- Sidebar navigation ---------- */
-$navItems = [
-    ['label' => 'Dashboard',          'icon' => 'home',      'active' => true, 'href' => '/webprogg/admin/admin.php'],
-    ['label' => 'Users',              'icon' => 'users',     'href' => '/webprogg/admin/adminusers.php'],
-    ['label' => 'Bookings',           'icon' => 'calendar',  'href' => '#'],
-    ['label' => 'Listings',           'icon' => 'listing',   'href' => '#'],
-    ['label' => 'Listings Application', 'icon' => 'clipboard', 'href' => '/webprogg/admin/listingapplication.php'],
-    ['label' => 'Host Applications',  'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
-    ['label' => 'Payouts',            'icon' => 'wallet',    'href' => '#'],
-    ['label' => 'Reviews',            'icon' => 'star',      'href' => '#'],
-    ['label' => 'Messages',           'icon' => 'message',   'href' => '#'],
-    ['label' => 'Reports',            'icon' => 'bar-chart', 'href' => '#'],
-    ['label' => 'Settings',           'icon' => 'settings',  'href' => '#'],
+ $navItems = [
+    ['label' => 'Dashboard',            'icon' => 'home',       'active' => true, 'href' => '/webprogg/admin/admin.php'],
+    ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
+    ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '/webprogg/admin/adminbookings.php'],
+    ['label' => 'Listings',             'icon' => 'listing',    'href' => '/webprogg/admin/adminlistings.php'],
+    ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
+    ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
+    ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
+    ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
+    ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
+    ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
 /* =========================================================
    TOP STAT CARDS
    ========================================================= */
-$totalBookings  = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
-$totalRevenue   = (float) $pdo->query(
-    "SELECT COALESCE(SUM(total),0) FROM bookings WHERE status IN ('confirmed','completed')"
-)->fetchColumn();
-$activeListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'approved'")->fetchColumn();
-$totalUsers     = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-$avgRatingRow   = $pdo->query("SELECT AVG(rating) FROM reviews")->fetchColumn();
-$avgRating      = $avgRatingRow !== null ? round((float) $avgRatingRow, 1) : null;
-$totalReviews   = (int) $pdo->query("SELECT COUNT(*) FROM reviews")->fetchColumn();
+ $totalBookings  = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
 
-$stats = [
-    ['label' => 'Total Bookings',  'value' => number_format($totalBookings),               'delta' => '', 'up' => true, 'icon' => 'calendar-solid'],
-    ['label' => 'Total Revenue',   'value' => '₱' . number_format($totalRevenue),           'delta' => '', 'up' => true, 'icon' => 'wallet-solid'],
-    ['label' => 'Active Listings', 'value' => number_format($activeListings),               'delta' => '', 'up' => true, 'icon' => 'listing-solid'],
-    ['label' => 'Total Users',     'value' => number_format($totalUsers),                   'delta' => '', 'up' => true, 'icon' => 'users-solid'],
-    ['label' => 'Average Rating',  'value' => ($avgRating !== null ? $avgRating : '—') . ' / 5', 'delta' => '', 'up' => true, 'icon' => 'star-solid'],
+/* FIX: `bookings.total` doesn't exist — real column is amount_paid. */
+ $totalRevenue   = (float) $pdo->query(
+    "SELECT COALESCE(SUM(amount_paid),0) FROM bookings WHERE status IN ('confirmed','completed')"
+)->fetchColumn();
+
+ $activeListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'approved'")->fetchColumn();
+ $totalUsers     = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+ $avgRatingRow   = $pdo->query("SELECT AVG(rating) FROM reviews")->fetchColumn();
+ $avgRating      = $avgRatingRow !== null ? round((float) $avgRatingRow, 1) : null;
+ $totalReviews   = (int) $pdo->query("SELECT COUNT(*) FROM reviews")->fetchColumn();
+
+ $stats = [
+    ['label' => 'Total Bookings',  'value' => number_format($totalBookings),               'delta' => '', 'up' => true, 'icon' => 'calendar'],
+    ['label' => 'Total Revenue',   'value' => '₱' . number_format($totalRevenue),           'delta' => '', 'up' => true, 'icon' => 'wallet'],
+    ['label' => 'Active Listings', 'value' => number_format($activeListings),               'delta' => '', 'up' => true, 'icon' => 'listing'],
+    ['label' => 'Total Users',     'value' => number_format($totalUsers),                   'delta' => '', 'up' => true, 'icon' => 'users'],
+    ['label' => 'Average Rating',  'value' => ($avgRating !== null ? $avgRating : '—') . ' / 5', 'delta' => '', 'up' => true, 'icon' => 'star'],
 ];
-$statCaptions = [
-    $totalBookings > 0  ? 'All-time bookings'          : 'No bookings yet',
+ $statCaptions = [
+    $totalBookings > 0  ? 'All-time bookings'           : 'No bookings yet',
     $totalRevenue > 0   ? 'From confirmed & completed'  : 'No revenue yet',
     $activeListings > 0 ? 'Currently live on the site'  : 'No listings yet',
     $totalUsers > 0     ? 'Registered accounts'         : 'No users yet',
@@ -136,19 +144,19 @@ $statCaptions = [
 /* =========================================================
    BOOKINGS BY STATUS (donut)
    ========================================================= */
-$statusColors = [
+ $statusColors = [
     'confirmed' => '#2FA84F',
     'completed' => '#2F7DE1',
     'cancelled' => '#E14B4B',
     'pending'   => '#F5A623',
 ];
-$statusCountsRaw = $pdo->query(
+ $statusCountsRaw = $pdo->query(
     "SELECT status, COUNT(*) AS cnt FROM bookings GROUP BY status"
 )->fetchAll(PDO::FETCH_KEY_PAIR);
 
-$totalBookingsForDonut = array_sum($statusCountsRaw);
+ $totalBookingsForDonut = array_sum($statusCountsRaw);
 
-$statusBreakdown = [];
+ $statusBreakdown = [];
 foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
     $count = (int) ($statusCountsRaw[$statusKey] ?? 0);
     $pct = $totalBookingsForDonut > 0 ? round(($count / $totalBookingsForDonut) * 100) . '%' : '0%';
@@ -163,7 +171,7 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 /* =========================================================
    RECENT HOST APPLICATIONS (pending, most recent 4)
    ========================================================= */
-$hostApplications = array_map(function ($row) {
+ $hostApplications = array_map(function ($row) {
     return [
         'id'         => (int) $row['id'],
         'name'       => $row['full_name'],
@@ -181,8 +189,9 @@ $hostApplications = array_map(function ($row) {
 
 /* =========================================================
    TOP PERFORMING LISTINGS (by revenue, top 4)
+   FIX: b.total -> b.amount_paid
    ========================================================= */
-$topListings = array_map(function ($row) {
+ $topListings = array_map(function ($row) {
     return [
         'name'     => $row['title'],
         'city'     => $row['location'],
@@ -194,7 +203,7 @@ $topListings = array_map(function ($row) {
     "SELECT l.title, l.location,
             p.photo_path AS cover_photo,
             COUNT(b.id) AS booking_count,
-            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.total ELSE 0 END), 0) AS revenue
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.amount_paid ELSE 0 END), 0) AS revenue
      FROM listings l
      LEFT JOIN bookings b ON b.listing_id = l.id
      LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
@@ -205,73 +214,79 @@ $topListings = array_map(function ($row) {
 
 /* =========================================================
    RECENT BOOKINGS (most recent 4)
+   FIX: b.booked_at -> b.created_at, b.total -> b.amount_paid
    ========================================================= */
-$recentBookings = array_map(function ($row) {
+ $recentBookings = array_map(function ($row) {
     return [
         'name'   => $row['title'],
         'city'   => $row['location'],
         'img'    => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
-        'date'   => date('M j, Y', strtotime($row['booked_at'])),
-        'amount' => '₱' . number_format((float) $row['total']),
+        'date'   => date('M j, Y', strtotime($row['created_at'])),
+        'amount' => '₱' . number_format((float) $row['amount_paid']),
         'status' => ucfirst($row['status']),
     ];
 }, $pdo->query(
-    "SELECT l.title, l.location, p.photo_path AS cover_photo, b.booked_at, b.total, b.status
+    "SELECT l.title, l.location, p.photo_path AS cover_photo, b.created_at, b.amount_paid, b.status
      FROM bookings b
      JOIN listings l ON l.id = b.listing_id
      LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
-     ORDER BY b.booked_at DESC
+     ORDER BY b.created_at DESC
      LIMIT 4"
 )->fetchAll());
 
 /* =========================================================
    PLATFORM SUMMARY (this calendar month)
+   FIX: SUM(total) -> SUM(amount_paid), booked_at -> created_at.
+   The `conversations` table EXISTS in this schema, so the
+   messages tile now shows a real count instead of a hardcoded 0.
    ========================================================= */
-$monthStart = date('Y-m-01 00:00:00');
+ $monthStart = date('Y-m-01 00:00:00');
 
-$stmt = $pdo->prepare(
-    "SELECT COALESCE(SUM(total),0) FROM bookings WHERE status IN ('confirmed','completed') AND booked_at >= :start"
+ $stmt = $pdo->prepare(
+    "SELECT COALESCE(SUM(amount_paid),0) FROM bookings WHERE status IN ('confirmed','completed') AND created_at >= :start"
 );
-$stmt->execute(['start' => $monthStart]);
-$payoutsThisMonth = (float) $stmt->fetchColumn();
+ $stmt->execute(['start' => $monthStart]);
+ $payoutsThisMonth = (float) $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE created_at >= :start");
-$stmt->execute(['start' => $monthStart]);
-$newUsersThisMonth = (int) $stmt->fetchColumn();
+ $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE created_at >= :start");
+ $stmt->execute(['start' => $monthStart]);
+ $newUsersThisMonth = (int) $stmt->fetchColumn();
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM listings WHERE created_at >= :start");
-$stmt->execute(['start' => $monthStart]);
-$newListingsThisMonth = (int) $stmt->fetchColumn();
+ $stmt = $pdo->prepare("SELECT COUNT(*) FROM listings WHERE created_at >= :start");
+ $stmt->execute(['start' => $monthStart]);
+ $newListingsThisMonth = (int) $stmt->fetchColumn();
 
-/* No `messages` table exists yet — wire this up once one does. */
-$messagesThisMonth = 0;
+ $stmt = $pdo->prepare("SELECT COUNT(*) FROM conversations WHERE created_at >= :start");
+ $stmt->execute(['start' => $monthStart]);
+ $newConversationsThisMonth = (int) $stmt->fetchColumn();
 
-$platformSummary = [
+ $platformSummary = [
     ['label' => 'Payouts This Month', 'value' => '₱' . number_format($payoutsThisMonth), 'icon' => 'wallet'],
     ['label' => 'New Users',          'value' => number_format($newUsersThisMonth),       'icon' => 'user-add'],
     ['label' => 'New Listings',       'value' => number_format($newListingsThisMonth),    'icon' => 'listing'],
-    ['label' => 'Messages',           'value' => number_format($messagesThisMonth),       'icon' => 'message'],
+    ['label' => 'New Conversations',  'value' => number_format($newConversationsThisMonth), 'icon' => 'message'],
 ];
 
 /* ---------- Notifications: count of pending applications ---------- */
-$pendingHostApps = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
-$pendingListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
-$notificationCount = $pendingHostApps + $pendingListings;
+ $pendingHostApps = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
+ $pendingListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
+ $notificationCount = $pendingHostApps + $pendingListings;
 
 /* =========================================================
    CHART DATA — last 7 days of bookings / revenue
+   FIX: DATE(booked_at) -> DATE(created_at), total -> amount_paid
    ========================================================= */
-$chartLabels   = [];
-$bookingSeries = [];
-$revenueSeries = [];
+ $chartLabels   = [];
+ $bookingSeries = [];
+ $revenueSeries = [];
 
 for ($i = 6; $i >= 0; $i--) {
     $day = date('Y-m-d', strtotime("-{$i} days"));
     $chartLabels[] = date('M j', strtotime($day));
 
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN status IN ('confirmed','completed') THEN total ELSE 0 END),0)
-         FROM bookings WHERE DATE(booked_at) = :day"
+        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN status IN ('confirmed','completed') THEN amount_paid ELSE 0 END),0)
+         FROM bookings WHERE DATE(created_at) = :day"
     );
     $stmt->execute(['day' => $day]);
     [$dayCount, $dayRevenue] = $stmt->fetch(PDO::FETCH_NUM);
@@ -480,7 +495,7 @@ function emptyState($text) {
             <div class="stat-grid">
                 <?php foreach ($stats as $i => $stat): ?>
                     <div class="stat-card">
-                        <div class="stat-icon"><?= icon($stat['icon'] === 'calendar-solid' ? 'calendar' : ($stat['icon'] === 'wallet-solid' ? 'wallet' : ($stat['icon'] === 'listing-solid' ? 'listing' : ($stat['icon'] === 'users-solid' ? 'users' : 'star')))) ?></div>
+                        <div class="stat-icon"><?= icon($stat['icon']) ?></div>
                         <div class="stat-body">
                             <span class="stat-label"><?= htmlspecialchars($stat['label']) ?></span>
                             <div class="stat-value-row">
@@ -497,7 +512,7 @@ function emptyState($text) {
                 <?php endforeach; ?>
             </div>
 
-            <!-- Row: Bookings Overview / Bookings by Status / Recent Host Applications -->
+            <!-- Row: Bookings Overview / Bookings by Status -->
             <div class="grid-3">
                 <div class="panel span-2">
                     <div class="panel-header">
@@ -604,7 +619,7 @@ function emptyState($text) {
                     <div class="panel">
                         <div class="panel-header">
                             <h2>Top Performing Listings</h2>
-                            <a href="#" class="view-all">View All</a>
+                            <a href="/webprogg/admin/adminlistings.php" class="view-all">View All</a>
                         </div>
                         <?php if (empty($topListings)): ?>
                             <?php emptyState('No listings published yet.'); ?>
@@ -631,7 +646,7 @@ function emptyState($text) {
                     <div class="panel">
                         <div class="panel-header">
                             <h2>Recent Bookings</h2>
-                            <a href="#" class="view-all">View All</a>
+                            <a href="/webprogg/admin/adminbookings.php" class="view-all">View All</a>
                         </div>
                         <?php if (empty($recentBookings)): ?>
                             <?php emptyState('No bookings yet.'); ?>

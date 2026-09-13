@@ -14,7 +14,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 // LOGIN STATUS
 // =====================================================
 
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
@@ -22,10 +22,6 @@ $isLoggedIn = (
 
 // =====================================================
 // KEEP is_host IN SYNC WITH THE DATABASE
-// $_SESSION['is_host'] is only set at login time, so if a
-// host application gets approved mid-session, the flag goes
-// stale and the nav keeps showing the wrong state. Re-check
-// the real column on every load.
 // =====================================================
 
 if ($isLoggedIn && isset($_SESSION['user_id'])) {
@@ -36,24 +32,36 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
     $_SESSION['avatar_path'] = $hostRow['avatar_path'] ?? null;
 }
 
-/* Same staleness reasoning as is_host above: the navbar's
-   account icon should reflect a freshly-uploaded profile photo
-   without requiring the user to log out and back in. */
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+
+
+// =====================================================
+// SHARED NAVBAR SETUP
+// =====================================================
+
+// Highlights "HIVE CLUB" in the shared navbar
+ $currentPage = "/webprogg/hiveclub.php";
+
+// Hosts also get the "Host Profile" link in the dropdown
+ $isHost = $_SESSION['is_host'] ?? false;
+
+// Notification bell count (0 = badge hidden).
+// Wire this to a real query once notifications exist.
+ $notification_count = 0;
 
 
 // =====================================================
 // CURRENT YEAR
 // =====================================================
 
-$currentYear = date("Y");
+ $currentYear = date("Y");
 
 
 // =====================================================
 // NAVIGATION
 // =====================================================
 
-$navigation = [
+ $navigation = [
     "HOME" => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
@@ -69,33 +77,33 @@ $navigation = [
 // DEFAULT MEMBER INFORMATION
 // =====================================================
 
-$memberId = "RH " . date("Y") . " 0000";
-$memberTier = "Bronze Member";
-$memberPoints = 0;
-$memberStatus = "none";
+ $memberId = "RH " . date("Y") . " 0000";
+ $memberTier = "Bronze Member";
+ $memberPoints = 0;
+ $memberStatus = "none";
 
 // True only once the user has actually joined Hive Club
 // (has a hive_members row with an active status). This is
 // what decides JOIN vs UPGRADE and HOW IT WORKS vs STOP
 // SUBSCRIBE in the hero below.
-$isHiveMember = false;
+ $isHiveMember = false;
 
 
 // =====================================================
 // DEFAULT TIER INFORMATION
 // =====================================================
 
-$nextTier = "Gold";
-$nextTierPoints = 5000;
+ $nextTier = "Gold";
+ $nextTierPoints = 5000;
 
-$progress = 0;
+ $progress = 0;
 
 
 // =====================================================
 // GET LOGGED-IN USER ID
 // =====================================================
 
-$userId = $_SESSION["user_id"] ?? null;
+ $userId = $_SESSION["user_id"] ?? null;
 
 
 // Some login systems may use "id" instead.
@@ -106,15 +114,6 @@ if (!$userId && isset($_SESSION["id"])) {
 
 // =====================================================
 // LOAD HIVE CLUB MEMBER
-// =====================================================
-//
-// NOTE: this used to auto-create a Bronze row for every
-// logged-in user the moment they visited this page, which
-// meant everyone was instantly "a member" and the JOIN /
-// UPGRADE distinction had no way to work. Membership rows
-// are now only created when someone actually completes the
-// join flow (via membership.php -> completepurchase.php),
-// so this block just reads whatever is there.
 // =====================================================
 
 if ($isLoggedIn && $userId) {
@@ -205,12 +204,8 @@ if ($progress > 100) {
 // =====================================================
 // JOIN / UPGRADE HIVE CLUB LINK
 // =====================================================
-//
-// Both JOIN and UPGRADE point to the same plan-picker page.
-// If the user isn't logged in yet, send them to login first
-// and bring them back to Hive Club afterward.
 
-$joinHiveClubLink = $isLoggedIn
+ $joinHiveClubLink = $isLoggedIn
     ? "/webprogg/user/membership.php"
     : "/webprogg/auth/loginform.php?redirect=" .
       urlencode("/webprogg/hiveclub.php");
@@ -254,231 +249,10 @@ $joinHiveClubLink = $isLoggedIn
 
 
 <!-- =====================================================
-     NAVIGATION BAR
+     NAVIGATION BAR (shared include — CSS & JS live inside)
 ===================================================== -->
 
-<header class="navbar">
-
-    <!-- LOGO -->
-
-    <div class="logo">
-
-        <a
-            href="<?php echo $isLoggedIn
-                ? '/webprogg/user/usershome.php'
-                : '/webprogg/index.php'; ?>"
-        >
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-            >
-
-        </a>
-
-    </div>
-
-
-    <!-- NAVIGATION -->
-
-    <nav class="nav-links">
-
-        <?php foreach ($navigation as $name => $link): ?>
-
-            <a
-                href="<?php echo htmlspecialchars($link); ?>"
-                class="<?php echo (
-                    $name === 'HIVE CLUB'
-                ) ? 'active' : ''; ?>"
-            >
-
-                <?php echo htmlspecialchars($name); ?>
-
-            </a>
-
-        <?php endforeach; ?>
-
-
-        <?php if ($isLoggedIn): ?>
-
-            <!-- MY ACCOUNT -->
-
-            <div class="account-dropdown">
-
-                <button
-                    type="button"
-                    class="my-account"
-                    id="accountDropdownToggle"
-                    aria-haspopup="true"
-                    aria-expanded="false"
-                    onclick="toggleAccountMenu()"
-                >
-
-                    <span class="account-circle">
-
-                        <img
-                            src="<?php echo htmlspecialchars($navAvatar); ?>"
-                            alt="My Account"
-                        >
-
-                    </span>
-
-                    <span>MY PROFILE</span>
-
-                    <span class="dropdown-caret">
-                        &#9662;
-                    </span>
-
-                </button>
-
-
-                <div
-                    class="account-dropdown-menu"
-                    id="accountDropdownMenu"
-                >
-
-                    <a href="/webprogg/user/userprofile.php">
-                        My Profile
-                    </a>
-
-                    <a href="/webprogg/auth/logout.php">
-                        Logout
-                    </a>
-
-                </div>
-
-            </div>
-
-
-        <?php else: ?>
-
-
-            <!-- LIST YOUR SPACE -->
-
-            <a
-                href="/webprogg/auth/loginform.php"
-                class="list-space"
-            >
-                LIST YOUR SPACE
-            </a>
-
-
-        <?php endif; ?>
-
-    </nav>
-
-</header>
-
-
-<?php if ($isLoggedIn): ?>
-
-<style>
-
-.account-dropdown {
-    position: relative;
-}
-
-.account-dropdown .my-account {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font: inherit;
-    color: inherit;
-}
-
-.account-dropdown .dropdown-caret {
-    font-size: 0.7em;
-    transition: transform 0.15s ease;
-}
-
-.account-dropdown.open .dropdown-caret {
-    transform: rotate(180deg);
-}
-
-.account-dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    min-width: 160px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-    overflow: hidden;
-    z-index: 100;
-    margin-top: 8px;
-}
-
-.account-dropdown.open .account-dropdown-menu {
-    display: block;
-}
-
-.account-dropdown-menu a {
-    display: block;
-    padding: 10px 16px;
-    text-decoration: none;
-    color: #333;
-    white-space: nowrap;
-}
-
-.account-dropdown-menu a:hover {
-    background: #f5f5f5;
-}
-
-</style>
-
-
-<script>
-
-function toggleAccountMenu() {
-
-    const dropdown =
-        document
-        .getElementById("accountDropdownToggle")
-        .closest(".account-dropdown");
-
-    const toggle =
-        document.getElementById("accountDropdownToggle");
-
-    const isOpen =
-        dropdown.classList.toggle("open");
-
-    toggle.setAttribute(
-        "aria-expanded",
-        isOpen ? "true" : "false"
-    );
-}
-
-
-document.addEventListener("click", function(event) {
-
-    const dropdown =
-        document.querySelector(".account-dropdown");
-
-    if (
-        dropdown &&
-        !dropdown.contains(event.target)
-    ) {
-
-        dropdown.classList.remove("open");
-
-        document
-            .getElementById("accountDropdownToggle")
-            .setAttribute(
-                "aria-expanded",
-                "false"
-            );
-    }
-
-});
-
-</script>
-
-<?php endif; ?>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
 
 
 <?php if (isset($_GET["cancelled"])): ?>
@@ -499,10 +273,13 @@ document.addEventListener("click", function(event) {
 
     <div class="hero-pattern"></div>
 
+    <!-- Decorative glow blobs -->
+    <span class="hero-blob hero-blob-1" aria-hidden="true"></span>
+    <span class="hero-blob hero-blob-2" aria-hidden="true"></span>
 
     <!-- LEFT -->
-
     <div class="hive-hero-content">
+        <!-- ... rest unchanged ... -->
 
         <h1>
 

@@ -1,69 +1,38 @@
 <?php
 /* =========================================================
-   ROOMHIVE — HOST PROFILE
+   ROOMHIVE — HOST PROFILE (Overview)
    hostprofile.php
 
- 
+   Uses the shared host shell (host_init + host_navbar +
+   host_sidebar + host_footer).
+
+   SCHEMA NOTE: bookings has NO `total` and NO `paid_at`.
+   Money = host_payout_amount (falls back to amount_paid);
+   confirmed/completed status is treated as paid.
 ========================================================= */
 
-session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once __DIR__ . '/host_init.php';
 
 /* -----------------------------------------------------
-   AUTH GUARD
+   HOST GUARD
 ----------------------------------------------------- */
-if (!isset($_SESSION['user_id'])) {
-    header("Location: /webprogg/auth/loginform.php");
+if (!$dbUser['is_host']) {
+    header("Location: /webprogg/host/hostprofile.php"); // TODO: change to becomeahost.php once appropriate
     exit;
 }
 
-$stmt = $pdo->prepare(
-    "SELECT id, name, email, phone, age, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
-);
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
-
-if (!$dbUser) {
-    session_destroy();
-    header("Location: /webprogg/auth/loginform.php");
-    exit;
-}
-/* -----------------------------------------------------
-   HOST DATA
-   phone/location ARE real columns (set on becomeahost.php),
-   so we pull them for real — same as userprofile.php.
-   `about` still has no column in `users` yet.
------------------------------------------------------ */
-/* Keep the navbar's account icon in sync too — it's a
-   separate <img> from the sidebar/profile photo below, so
-   both need the same source of truth. */
-$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
-
-$host = [
-    'name'          => $dbUser['name'],
-    'avatar'        => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : '/webprogg/images/default-avatar.png',
-    'location'      => $dbUser['location'] ?? '',
-    'email'         => $dbUser['email'],
-    'phone'         => $dbUser['phone'] ?? '',
-    'age'           => $dbUser['age'] ?? '',
-    'member_since'  => date('F Y', strtotime($dbUser['created_at'])),
-    'about'         => '', // no column in `users` yet
-];
-
-$notification_count = 0;
+/* Extend the shared $host array (host_init provides name/
+   avatar/member_since) with the extra profile fields. */
+ $host['location'] = $dbUser['location'] ?? '';
+ $host['email']    = $dbUser['email'];
+ $host['phone']    = $dbUser['phone'] ?? '';
+ $host['age']      = $dbUser['age'] ?? '';
+ $host['about']    = ''; // `users` has no `about` column yet
 
 /* -----------------------------------------------------
    MY LISTINGS
-   Real query against the `listings` table for this host.
 ----------------------------------------------------- */
-/* pending_booking_id / pending_tenant_name come from whichever
-   booking on that listing is still awaiting the host's decision
-   (status = 'pending') — that's what the Accept/Reject options in
-   the 3-dot menu below act on. A listing only ever has one active
-   (pending or confirmed) booking at a time, so this LEFT JOIN
-   won't duplicate rows. */
-$listingsStmt = $pdo->prepare(
+ $listingsStmt = $pdo->prepare(
     "SELECT l.id, l.title, l.location, l.exact_address, l.price, l.status, l.created_at,
             p.photo_path AS cover_photo,
             pb.id AS pending_booking_id, tu.name AS pending_tenant_name
@@ -75,62 +44,37 @@ $listingsStmt = $pdo->prepare(
      WHERE l.user_id = :id
      ORDER BY l.created_at DESC"
 );
-$listingsStmt->execute(['id' => $_SESSION['user_id']]);
-$listings = $listingsStmt->fetchAll();
+ $listingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $listings = $listingsStmt->fetchAll();
 
-$listings_total = count($listings);
-
-/* -----------------------------------------------------
-   PENDING TENANTS COUNT
-   How many tenant applications, across all of this host's
-   listings, are still sitting at status = 'pending' — shown
-   as a badge next to the "Pending Tenants" sidebar link.
------------------------------------------------------ */
-$pendingTenantsCountStmt = $pdo->prepare(
-    "SELECT COUNT(*)
-     FROM bookings b
-     JOIN listings l ON l.id = b.listing_id
-     WHERE l.user_id = :id AND b.status = 'pending'"
-);
-$pendingTenantsCountStmt->execute(['id' => $_SESSION['user_id']]);
-$pending_tenants_count = (int) $pendingTenantsCountStmt->fetchColumn();
+ $listings_total = count($listings);
 
 /* -----------------------------------------------------
-   PERFORMANCE OVERVIEW
-   TODO: Views need a page-view tracking table; Bookings and
-   Occupancy Rate need a real bookings table (neither exists
-   yet in the schema); Earnings should sum confirmed bookings
-   for this host's listings once that table exists too. Until
-   then these correctly show 0 instead of invented demo numbers.
-   Per-listing Bookings / Occupancy / Earnings below depend on
-   the same missing table, so each listing shows "—" for those
-   columns for now.
+   VIEWS — no page-view tracking table exists yet
 ----------------------------------------------------- */
-$total_views = 0; // still no page-view tracking table
+ $total_views = 0;
 
 /* -----------------------------------------------------
-   BOOKING-BASED METRICS
-   Bookings = confirmed/completed only (not pending — those
-   are still just applications). Earnings = paid confirmed/
-   completed bookings. Occupancy = nights booked in the last
-   30 days as a % of 30, since listings have no fixed total
-   availability window in this schema.
+   BOOKING-BASED METRICS (FIXED for real schema)
+   Was: SELECT b.total, b.paid_at  -> fatal, columns don't exist.
+   Now: amount_paid / host_payout_amount; confirmed/completed
+   counts as paid, so there's no paid_at condition.
 ----------------------------------------------------- */
-$hostBookingsStmt = $pdo->prepare(
-    "SELECT b.listing_id, b.total, b.paid_at, b.checkin_date, b.checkout_date
+ $hostBookingsStmt = $pdo->prepare(
+    "SELECT b.listing_id, b.amount_paid, b.host_payout_amount,
+            b.checkin_date, b.checkout_date
      FROM bookings b
      JOIN listings l ON l.id = b.listing_id
      WHERE l.user_id = :id
        AND b.status IN ('confirmed', 'completed')"
 );
 
-$hostBookingsStmt->execute(['id' => $_SESSION['user_id']]);
-$hostBookings = $hostBookingsStmt->fetchAll();
+ $hostBookingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $hostBookings = $hostBookingsStmt->fetchAll();
 
 /* Overlap (in nights) between a booking's stay and the
    30-day occupancy window. Null checkout (long-term/
-   ongoing) counts as occupying through the end of the
-   window. */
+   ongoing) counts as occupying through the end of the window. */
 function hp_overlap_nights($checkin, $checkout, DateTime $windowStart, DateTime $windowEnd) {
     if (empty($checkin)) {
         return 0;
@@ -146,40 +90,14 @@ function hp_overlap_nights($checkin, $checkout, DateTime $windowStart, DateTime 
     }
     return $overlapStart->diff($overlapEnd)->days;
 }
-/* -----------------------------------------------------
-   PER-LISTING BOOKINGS COUNT
-   Same rule as hostprofile.php: confirmed/completed only
-   (pending is still just an application, not a real booking).
-   Views and Rating still have no backing table/column, so
-   those stay as "—" for now.
------------------------------------------------------ */
-$listingBookingCounts = [];
-foreach ($listings as $l) {
-    $listingBookingCounts[$l['id']] = 0;
-}
 
-if (!empty($listings)) {
-    $bookingCountsStmt = $pdo->prepare(
-        "SELECT b.listing_id, COUNT(*) AS booking_count
-         FROM bookings b
-         JOIN listings l ON l.id = b.listing_id
-         WHERE l.user_id = :id
-           AND b.status IN ('confirmed', 'completed')
-         GROUP BY b.listing_id"
-    );
-    $bookingCountsStmt->execute(['id' => $_SESSION['user_id']]);
-    foreach ($bookingCountsStmt->fetchAll() as $row) {
-        $listingBookingCounts[(int) $row['listing_id']] = (int) $row['booking_count'];
-    }
-}
-
-$occupancyWindowDays = 30;
-$windowStart = new DateTime("-{$occupancyWindowDays} days");
-$windowEnd   = new DateTime('today');
+ $occupancyWindowDays = 30;
+ $windowStart = new DateTime("-{$occupancyWindowDays} days");
+ $windowEnd   = new DateTime('today');
 
 /* Per-listing tallies, seeded so every listing shows real
    zeros instead of missing keys if it has no bookings. */
-$listingStats = [];
+ $listingStats = [];
 foreach ($listings as $l) {
     $listingStats[$l['id']] = [
         'bookings'        => 0,
@@ -196,9 +114,12 @@ foreach ($hostBookings as $b) {
 
     $listingStats[$lid]['bookings']++;
 
-    if (!empty($b['paid_at'])) {
-        $listingStats[$lid]['earnings'] += (float) $b['total'];
-    }
+    /* FIX: was `if (!empty($b['paid_at'])) ... += $b['total']`.
+       Confirmed/completed = paid. Host take-home is
+       host_payout_amount, falling back to amount_paid. */
+    $listingStats[$lid]['earnings'] += (float) (
+        $b['host_payout_amount'] !== null ? $b['host_payout_amount'] : $b['amount_paid']
+    );
 
     $listingStats[$lid]['occupied_nights'] += hp_overlap_nights(
         $b['checkin_date'],
@@ -208,9 +129,9 @@ foreach ($hostBookings as $b) {
     );
 }
 
-$total_bookings        = 0;
-$total_earnings        = 0.0;
-$total_occupied_nights = 0;
+ $total_bookings        = 0;
+ $total_earnings        = 0.0;
+ $total_occupied_nights = 0;
 
 foreach ($listingStats as $stats) {
     $total_bookings        += $stats['bookings'];
@@ -218,45 +139,17 @@ foreach ($listingStats as $stats) {
     $total_occupied_nights += $stats['occupied_nights'];
 }
 
-$occupancy_rate = $listings_total > 0
+ $occupancy_rate = $listings_total > 0
     ? (int) round(min(100, ($total_occupied_nights / ($occupancyWindowDays * $listings_total)) * 100))
     : 0;
 
-/* Small helper so we're not repeating htmlspecialchars() everywhere */
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
+/* Hero note is now real instead of hardcoded "No earnings data yet" */
+ $earningsNote = $total_bookings > 0
+    ? 'From ' . $total_bookings . ' confirmed booking' . ($total_bookings === 1 ? '' : 's')
+    : 'No earnings data yet';
 
-/* -----------------------------------------------------
-   PHOTO PATH FIX
-   Listing cover photos (listing_photos.photo_path) are saved
-   relative to /webprogg — e.g. "uploads/listing_photos/cover/abc.jpg".
-   Printed as-is (as this file previously did, with no fix
-   applied), the browser resolves that against the CURRENT
-   page's folder instead of the site root, so cover photos in
-   the "My Listings" table 404'd and showed as broken images —
-   even though this page's OWN avatar (already stored as a
-   full "/webprogg/..." path by uploadavatar.php) worked fine.
-   Same fix already applied on mylistings.php / pendingtenants.php
-   / listingpayment.php / booking-details.php — normalize any
-   leading slash / accidental "webprogg/" segment, then rebuild
-   as an absolute "/webprogg/..." path every time.
------------------------------------------------------ */
-function resolve_photo($path, $fallback) {
-    if (empty($path)) {
-        return $fallback;
-    }
-    if (preg_match('#^https?://#i', $path)) {
-        return $path; // full remote URL — leave it alone
-    }
-    $normalized = ltrim($path, '/');
-    if (stripos($normalized, 'webprogg/') === 0) {
-        $normalized = substr($normalized, strlen('webprogg/'));
-    }
-    return '/webprogg/' . $normalized;
-}
-
-/* Maps a listings.status value to a small status-pill class */
+/* Maps a listings.status value to a small status-pill class
+   (NOT in host_init, so a local definition is safe here). */
 function hp_status_class($status) {
     switch ($status) {
         case 'approved': return 'hp-status-active';
@@ -276,6 +169,8 @@ function hp_status_label($status) {
         default:         return ucfirst($status);
     }
 }
+
+ $activePage = 'overview';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -285,67 +180,11 @@ function hp_status_label($status) {
 <title>Host Profile — RoomHive</title>
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
-<link rel="stylesheet" href="/webprogg/assets/hostprofile.css">
+<link rel="stylesheet" href="/webprogg/assets/hostprofile.css?v=5">
 </head>
 <body>
 
-<!-- =========================================================
-     NAVBAR (uses existing style.css — not redefined here,
-     identical markup/classes to myaccount.php)
-========================================================= -->
-<header class="navbar">
-
-    <!-- LOGO -->
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <!-- NAVIGATION -->
-    <nav class="nav-links">
-
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <a href="notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <!-- MY ACCOUNT -->
-        <div class="account-dropdown js-account-dropdown">
-
-            <button
-                type="button"
-                class="my-account js-account-toggle"
-                id="accountDropdownToggle"
-                aria-haspopup="true"
-                aria-expanded="false"
-            >
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-    <?php if ($dbUser['is_host']): ?>
-        <a href="/webprogg/host/hostprofile.php">My Profile</a>
-    <?php endif; ?>
-    <a href="/webprogg/auth/logout.php">Logout</a>
-</div>
-
-        </div>
-
-    </nav>
-
-</header>
+<?php include __DIR__ . '/host_navbar.php'; ?>
 
 <!-- =========================================================
      HOST PROFILE HERO
@@ -364,7 +203,7 @@ function hp_status_label($status) {
   <div class="hp-earnings-float">
     <span class="hp-muted">Total Earnings</span>
     <strong>&#8369; <?php echo h(number_format($total_earnings, 2)); ?></strong>
-    <span class="hp-earnings-note">No earnings data yet</span>
+    <span class="hp-earnings-note"><?php echo h($earningsNote); ?></span>
   </div>
 </section>
 
@@ -373,81 +212,7 @@ function hp_status_label($status) {
 ========================================================= -->
 <main class="hp-dashboard">
 
-  <!-- SIDEBAR -->
-  <aside class="hp-sidebar">
-
-    <div class="hp-sidebar-card">
-      <img src="<?php echo h($host['avatar']); ?>" alt="<?php echo h($host['name']); ?>" class="hp-sidebar-avatar" id="hostSidebarAvatarImg">
-      <h4><?php echo h($host['name']); ?></h4>
-      <span class="hp-host-badge">Host</span>
-      <p class="hp-member-since">Member since <?php echo h($host['member_since']); ?></p>
-    </div>
-
-    <a href="/webprogg/host/hostprofile.php" class="hp-side-link active">
-      <img src="/webprogg/images/overviewicon-userprofile.png" alt="">
-      Overview
-    </a>
-    <a href="/webprogg/user/mylistings.php" class="hp-side-link">
-      <img src="/webprogg/images/mylistingsicon-hostprofile.png" alt="">
-      My Listings
-    </a>
-    <a href="/webprogg/booking/pendingtenants.php" class="hp-side-link hp-side-link-badged">
-      <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-      Pending Tenants
-      <?php if ($pending_tenants_count > 0): ?>
-        <span class="hp-side-badge"><?php echo h($pending_tenants_count); ?></span>
-      <?php endif; ?>
-    </a>
-    <a href="/webprogg/host/hostbookings.php" class="hp-side-link">
-      <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-      Bookings
-    </a>
-    <a href="earnings.php" class="hp-side-link">
-      <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
-      Earnings
-    </a>
-    <a href="payouts.php" class="hp-side-link">
-      <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
-      Payouts
-    </a>
-    <a href="hostreviews.php" class="hp-side-link">
-      <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
-      Reviews
-    </a>
-    <a href="hostmessages.php" class="hp-side-link">
-      <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
-      Messages
-    </a>
-    <a href="hosteditprofile.php" class="hp-side-link">
-      <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
-      Profile &amp; Account
-    </a>
-    <a href="verification.php" class="hp-side-link">
-      <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
-      Verification
-    </a>
-    <a href="payoutmethods.php" class="hp-side-link">
-      <img src="/webprogg/images/payoutmethodsicon-hostprofile.png" alt="">
-      Payout Methods
-    </a>
-    <a href="hostnotificationsettings.php" class="hp-side-link">
-      <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
-      Notification Settings
-    </a>
-    <a href="hostsecurity.php" class="hp-side-link">
-      <img src="/webprogg/images/lockicon-userprofile.png" alt="">
-      Security
-    </a>
-    <a href="helpcenter.php" class="hp-side-link">
-      <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-      Help Center
-    </a>
-    <a href="/webprogg/auth/logout.php" class="hp-side-link hp-side-logout">
-      <img src="/webprogg/images/logouticon-userprofile.png" alt="">
-      Log Out
-    </a>
-
-  </aside>
+  <?php include __DIR__ . '/host_sidebar.php'; ?>
 
   <!-- CONTENT COLUMN -->
   <div class="hp-content">
@@ -457,17 +222,13 @@ function hp_status_label($status) {
 
       <div class="hp-card-header">
         <h3>Profile Information</h3>
-        <button type="button" class="hp-btn-outline hp-edit-profile" id="hostEditProfileButton">Edit Profile</button>
+        <a href="/webprogg/host/hosteditprofile.php" class="hp-btn-outline" style="text-decoration:none;">Edit Profile</a>
       </div>
 
       <div class="hp-profile-body">
 
         <div class="hp-profile-photo">
           <img src="<?php echo h($host['avatar']); ?>" alt="<?php echo h($host['name']); ?>" id="hostProfileAvatarImg">
-          <button type="button" class="hp-photo-edit" id="hostPhotoButton" aria-label="Change profile photo">
-            <img src="/webprogg/images/cameraicon-userprofile.png" alt="">
-          </button>
-          <input type="file" id="hostAvatarFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
         </div>
 
         <div class="hp-profile-col">
@@ -584,8 +345,8 @@ function hp_status_label($status) {
               </div>
 
               <?php
-$stats = $listingStats[$listing['id']];
-$listingOccupancy = $occupancyWindowDays > 0
+ $stats = $listingStats[$listing['id']];
+ $listingOccupancy = $occupancyWindowDays > 0
     ? (int) round(min(100, ($stats['occupied_nights'] / $occupancyWindowDays) * 100))
     : 0;
 ?>
@@ -642,19 +403,19 @@ $listingOccupancy = $occupancyWindowDays > 0
 
       <div class="hp-grow-links">
 
-        <a href="boostlisting.php" class="hp-grow-card">
+        <a href="/webprogg/host/helpcenter.php" class="hp-grow-card">
           <span class="hp-grow-icon">&#128640;</span>
           <strong>Boost Your Listing</strong>
           <span>Get more visibility</span>
         </a>
 
-        <a href="hosttips.php" class="hp-grow-card">
+        <a href="/webprogg/host/helpcenter.php" class="hp-grow-card">
           <span class="hp-grow-icon">&#128161;</span>
           <strong>Host Tips</strong>
           <span>Learn and improve</span>
         </a>
 
-        <a href="inviteandearn.php" class="hp-grow-card">
+        <a href="/webprogg/misc/contacts.php" class="hp-grow-card">
           <span class="hp-grow-icon">&#128101;</span>
           <strong>Invite &amp; Earn</strong>
           <span>Earn more rewards</span>
@@ -667,73 +428,10 @@ $listingOccupancy = $occupancyWindowDays > 0
   </div>
 </main>
 
-<!-- =========================================================
-     FOOTER (uses existing style.css — not redefined here,
-     identical markup/classes to myaccount.php)
-========================================================= -->
-<footer class="site-footer">
-
-    <div class="footer-top">
-
-        <!-- BRAND -->
-        <div class="footer-brand">
-
-            <a href="/webprogg/user/usershome.php">
-                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
-            </a>
-
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
-
-        </div>
-
-        <!-- LISTINGS -->
-        <div class="footer-links">
-            <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
-            <a href="/webprogg/Listings/listing.php">Featured Stays</a>
-        </div>
-
-        <!-- GET THE APP -->
-        <div class="footer-contact">
-            <span class="footer-heading">GET THE APP</span>
-            <div class="footer-app-badges">
-                <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
-                <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
-            </div>
-        </div>
-
-    </div>
-
-    <div class="footer-bottom">
-        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
-    </div>
-
-</footer>
-
-<script src="/webprogg/assets/javaScript.js"></script>
+<?php include __DIR__ . '/host_footer.php'; ?>
 
 <!-- =========================================================
-     LISTING 3-DOT MENU + DELETE
+     LISTING 3-DOT MENU + DELETE (endpoints unchanged)
 ========================================================= -->
 <style>
     .hp-menu-wrap { position: relative; display: inline-block; }
@@ -771,28 +469,15 @@ $listingOccupancy = $occupancyWindowDays > 0
     .hp-menu-accept:hover { background: #E6F6EC; }
     .hp-menu-reject { color: #E14B4B; }
     .hp-menu-reject:hover { background: #FCEAEA; }
-    .hp-side-link-badged { position: relative; display: flex; align-items: center; gap: 10px; }
-    .hp-side-badge {
-        margin-left: auto;
-        background: #E14B4B;
-        color: #fff;
-        font-size: 11px;
-        font-weight: 700;
-        line-height: 1;
-        padding: 3px 7px;
-        border-radius: 999px;
-    }
 </style>
 <script>
 (function () {
-    // Open/close the 3-dot dropdown for whichever listing was clicked.
     document.querySelectorAll('.hp-listing-menu').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
             const wrap = btn.closest('.hp-menu-wrap');
             const wasOpen = wrap.classList.contains('open');
 
-            // Close any other open menus first.
             document.querySelectorAll('.hp-menu-wrap.open').forEach(function (w) {
                 w.classList.remove('open');
             });
@@ -806,14 +491,12 @@ $listingOccupancy = $occupancyWindowDays > 0
         });
     });
 
-    // Clicking anywhere else closes any open menu.
     document.addEventListener('click', function () {
         document.querySelectorAll('.hp-menu-wrap.open').forEach(function (w) {
             w.classList.remove('open');
         });
     });
 
-    // Delete a listing.
     document.querySelectorAll('.hp-menu-delete').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const listingId = btn.getAttribute('data-listing-id');
@@ -850,7 +533,6 @@ $listingOccupancy = $occupancyWindowDays > 0
         });
     });
 
-    // Accept or reject a tenant's application (booking) for a listing.
     function handleDecision(btn, endpoint, confirmMessage, busyText) {
         const bookingId = btn.getAttribute('data-booking-id');
         const tenantName = btn.getAttribute('data-tenant-name') || 'this tenant';
@@ -901,90 +583,6 @@ $listingOccupancy = $occupancyWindowDays > 0
                 'Reject %s\'s application for this listing?',
                 'Rejecting...'
             );
-        });
-    });
-})();
-</script>
-
-<!-- =========================================================
-     PROFILE PHOTO — UPLOAD ON CAMERA ICON CLICK
-     Opens the file picker, shows an instant local preview,
-     uploads to uploadavatar.php, then swaps in the real saved
-     image (or reverts + alerts on failure).
-========================================================= -->
-<script>
-(function () {
-    const photoButton = document.getElementById('hostPhotoButton');
-    const fileInput    = document.getElementById('hostAvatarFileInput');
-    const avatarImg    = document.getElementById('hostProfileAvatarImg');
-    const navAvatarImg = document.getElementById('navAccountAvatarImg');
-    const sidebarAvatarImg = document.getElementById('hostSidebarAvatarImg');
-
-    if (!photoButton || !fileInput || !avatarImg) return;
-
-    photoButton.addEventListener('click', function () {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', function () {
-        const file = fileInput.files[0];
-        if (!file) return;
-
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
-            alert('Please choose a JPG, PNG, or WEBP image.');
-            fileInput.value = '';
-            return;
-        }
-
-        if (file.size > 5 * 1024 * 1024) {
-            alert('That image is too large. Please choose one under 5MB.');
-            fileInput.value = '';
-            return;
-        }
-
-        const previewUrl = URL.createObjectURL(file);
-        const previousSrc = avatarImg.src;
-        avatarImg.src = previewUrl;
-        if (sidebarAvatarImg) sidebarAvatarImg.src = previewUrl;
-        photoButton.disabled = true;
-
-        const formData = new FormData();
-        formData.append('avatar', file);
-
-        fetch('/webprogg/user/uploadavatar.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (res) {
-            if (!res.ok) {
-                return res.json().catch(function () {
-                    throw new Error('Upload endpoint returned ' + res.status);
-                });
-            }
-            return res.json();
-        })
-        .then(function (data) {
-            if (data.success) {
-                avatarImg.src = data.avatar_url;
-                if (navAvatarImg) navAvatarImg.src = data.avatar_url;
-                if (sidebarAvatarImg) sidebarAvatarImg.src = data.avatar_url;
-            } else {
-                avatarImg.src = previousSrc;
-                if (sidebarAvatarImg) sidebarAvatarImg.src = previousSrc;
-                alert(data.error || 'Could not update your profile photo.');
-            }
-        })
-        .catch(function (err) {
-            avatarImg.src = previousSrc;
-            if (sidebarAvatarImg) sidebarAvatarImg.src = previousSrc;
-            console.error('[avatar upload]', err);
-            alert('Something went wrong uploading your photo. Please try again.');
-        })
-        .finally(function () {
-            URL.revokeObjectURL(previewUrl);
-            photoButton.disabled = false;
-            fileInput.value = '';
         });
     });
 })();
