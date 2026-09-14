@@ -2,34 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    userreviews.php
-
-   Reviews the logged-in user has left on stays they've
-   booked. Assumes `reviews` carries listing_id, comment and
-   created_at alongside the rating column userprofile.php
-   already reads — adjust the SELECT below if those column
-   names differ in the real schema.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -42,16 +30,12 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-/* -----------------------------------------------------
-   REVIEWS LEFT BY THIS USER
-   Joined to listings/listing_photos the same way Recent
-   Bookings does on userprofile.php.
------------------------------------------------------ */
-$reviewsStmt = $pdo->prepare(
+/* REVIEWS LEFT BY THIS USER */
+ $reviewsStmt = $pdo->prepare(
     "SELECT r.id, r.rating, r.comment, r.created_at,
             l.id AS listing_id, l.title, l.location,
             p.photo_path AS cover_photo
@@ -62,9 +46,9 @@ $reviewsStmt = $pdo->prepare(
      WHERE r.user_id = :id
      ORDER BY r.created_at DESC"
 );
-$reviewsStmt->execute(['id' => $_SESSION['user_id']]);
+ $reviewsStmt->execute(['id' => $_SESSION['user_id']]);
 
-$reviews = array_map(function ($row) {
+ $reviews = array_map(function ($row) {
     return [
         'id'         => (int) $row['id'],
         'listing_id' => (int) $row['listing_id'],
@@ -77,12 +61,12 @@ $reviews = array_map(function ($row) {
     ];
 }, $reviewsStmt->fetchAll());
 
-$review_count = count($reviews);
-$average_rating = $review_count > 0
+ $review_count = count($reviews);
+ $average_rating = $review_count > 0
     ? round(array_sum(array_column($reviews, 'rating')) / $review_count, 1)
     : 0;
 
-$activeSidebar = 'reviews';
+ $activeSidebar = 'reviews';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -93,6 +77,8 @@ $activeSidebar = 'reviews';
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -136,16 +122,47 @@ $activeSidebar = 'reviews';
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Reviews</p>
-    <h1>Reviews you've left</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Everything you've shared about the places you've stayed.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Your Voice
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                Reviews you've <span class="up-shimmer">left</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Everything you've shared about the places
+                you've stayed.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="" style="object-fit:contain; background:transparent; box-shadow:none;">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
@@ -154,24 +171,27 @@ $activeSidebar = 'reviews';
 
   <div class="up-content">
 
+    <!-- STATS (with count-ups) -->
     <section class="up-stats">
-      <div class="up-stat-card">
+      <div class="up-stat-card up-reveal" style="--i: 0;">
         <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
         <div>
-          <strong><?php echo h($review_count); ?></strong>
+          <strong data-count="<?php echo h($review_count); ?>" data-decimals="0"><?php echo h($review_count); ?></strong>
           <span>Reviews Written</span>
         </div>
       </div>
-      <div class="up-stat-card">
+      <div class="up-stat-card up-reveal" style="--i: 1;">
         <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
         <div>
-          <strong><?php echo h($average_rating); ?> &#9733;</strong>
+          <strong><span data-count="<?php echo h($average_rating); ?>" data-decimals="1"><?php echo h($average_rating); ?></span> &#9733;</strong>
           <span>Average Rating Given</span>
         </div>
       </div>
     </section>
 
-    <section class="up-card up-bookings-card">
+    <!-- REVIEW LIST -->
+    <section class="up-card up-bookings-card up-reveal" style="--i: 1;">
+
       <div class="up-card-header">
         <h3>Your Reviews</h3>
       </div>
@@ -186,18 +206,31 @@ $activeSidebar = 'reviews';
 
       <?php else: ?>
 
-        <?php foreach ($reviews as $review): ?>
-          <a href="/webprogg/Listings/listing.php?id=<?php echo h($review['listing_id']); ?>" class="up-booking-row">
+        <?php foreach ($reviews as $i => $review): ?>
+          <a
+              href="/webprogg/Listings/listing.php?id=<?php echo h($review['listing_id']); ?>"
+              class="up-booking-row up-reveal"
+              style="--i: <?php echo (int) min($i, 6); ?>; border-radius:12px;"
+          >
             <img src="<?php echo h($review['thumb']); ?>" alt="<?php echo h($review['title']); ?>" class="up-booking-thumb">
             <div class="up-booking-info">
               <h4><?php echo h($review['title']); ?></h4>
               <p class="up-booking-location"><?php echo h($review['location']); ?></p>
               <?php if ($review['comment'] !== ''): ?>
-                <p class="up-booking-dates"><?php echo h($review['comment']); ?></p>
+                <p class="upr-comment"><?php echo h($review['comment']); ?></p>
               <?php endif; ?>
             </div>
             <div class="up-booking-side">
-              <strong>&#9733; <?php echo h($review['rating']); ?></strong>
+              <span class="upr-stars">
+                <?php
+                /* Render filled/empty stars from the rating */
+                $full = (int) floor($review['rating']);
+                for ($s = 1; $s <= 5; $s++) {
+                    echo $s <= $full ? '&#9733;' : '&#9734;';
+                }
+                ?>
+              </span>
+              <strong><?php echo h($review['rating']); ?> / 5</strong>
               <span><?php echo h($review['date']); ?></span>
             </div>
             <span class="up-booking-chevron">&#8250;</span>
@@ -265,5 +298,67 @@ $activeSidebar = 'reviews';
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<!-- Reveal + count-up (self-contained) -->
+<script>
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+
+    var counters = document.querySelectorAll("[data-count]");
+    if (counters.length && !reduced && "IntersectionObserver" in window) {
+        var countIo = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    countIo.unobserve(el);
+
+                    var target = parseFloat(el.getAttribute("data-count")) || 0;
+                    var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
+                    var t0 = null;
+                    var DURATION = 1300;
+
+                    var stepFn = function (ts) {
+                        if (!t0) t0 = ts;
+                        var k = Math.min((ts - t0) / DURATION, 1);
+                        var eased = 1 - Math.pow(1 - k, 3);
+                        el.textContent = (target * eased).toLocaleString(
+                            undefined,
+                            { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+                        );
+                        if (k < 1) window.requestAnimationFrame(stepFn);
+                    };
+
+                    window.requestAnimationFrame(stepFn);
+                });
+            },
+            { threshold: 0.6 }
+        );
+        Array.prototype.forEach.call(counters, function (el) { countIo.observe(el); });
+    }
+})();
+</script>
+
 </body>
 </html>

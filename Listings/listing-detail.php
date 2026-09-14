@@ -8,7 +8,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 /* =========================
    LOGIN STATUS
 ========================== */
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
@@ -16,18 +16,18 @@ $isLoggedIn = (
 /* =========================
    USER
 ========================== */
-$userName = $_SESSION['user_name'] ?? 'Guest';
+ $userName = $_SESSION['user_name'] ?? 'Guest';
 
 /* =========================
    FLAGS FROM book.php REDIRECTS
 ========================== */
-$showUnavailableNotice = isset($_GET['unavailable']);
-$showOwnBookingNotice  = isset($_GET['ownbooking']);
+ $showUnavailableNotice = isset($_GET['unavailable']);
+ $showOwnBookingNotice  = isset($_GET['ownbooking']);
 
 /* =========================
    AMENITY ICON MAP
 ========================== */
-$amenityIcons = [
+ $amenityIcons = [
     'wifi'             => ['label' => 'Wi-fi',          'icon' => '/webprogg/images/wifiicon.png'],
     'aircon'           => ['label' => 'Aircon',         'icon' => '/webprogg/images/airconicon.png'],
     'pet-friendly'     => ['label' => 'Pet Friendly',   'icon' => '/webprogg/images/petsicon.png'],
@@ -41,7 +41,7 @@ $amenityIcons = [
    (mirrors $capacityOptions in host-step2.php so the value
    the host picked there renders identically here)
 ========================== */
-$capacityLabels = [
+ $capacityLabels = [
     "1"   => "1 Guest",
     "2"   => "2 Guests",
     "3"   => "3 Guests",
@@ -59,7 +59,7 @@ $capacityLabels = [
    owning host's user row and their photos/reviews.
 ========================== */
 
-$listingId = isset($_GET['id']) && is_numeric($_GET['id'])
+ $listingId = isset($_GET['id']) && is_numeric($_GET['id'])
     ? (int) $_GET['id']
     : 0;
 
@@ -67,7 +67,7 @@ $listingId = isset($_GET['id']) && is_numeric($_GET['id'])
    "Meet your host" card can show the host's REAL profile photo
    instead of a hardcoded default image, same as hostprofile.php /
    userprofile.php already do for the logged-in user's own avatar. */
-$listingStmt = $pdo->prepare(
+ $listingStmt = $pdo->prepare(
     "SELECT l.*, u.name AS host_name, u.email AS host_email, u.created_at AS host_created_at,
             u.avatar_path AS host_avatar_path
      FROM listings l
@@ -75,8 +75,8 @@ $listingStmt = $pdo->prepare(
      WHERE l.id = :id
      LIMIT 1"
 );
-$listingStmt->execute(['id' => $listingId]);
-$listingRow = $listingStmt->fetch();
+ $listingStmt->execute(['id' => $listingId]);
+ $listingRow = $listingStmt->fetch();
 
 if ($listingRow === false) {
     header('Location: /webprogg/Listings/listing.php');
@@ -84,16 +84,16 @@ if ($listingRow === false) {
 }
 
 /* Photos — cover first, then additional in sort_order */
-$photosStmt = $pdo->prepare(
+ $photosStmt = $pdo->prepare(
     "SELECT photo_path, photo_type
      FROM listing_photos
      WHERE listing_id = :id
      ORDER BY (photo_type = 'cover') DESC, sort_order ASC"
 );
-$photosStmt->execute(['id' => $listingId]);
-$photoRows = $photosStmt->fetchAll();
+ $photosStmt->execute(['id' => $listingId]);
+ $photoRows = $photosStmt->fetchAll();
 
-$galleryImages = array_map(function ($row) {
+ $galleryImages = array_map(function ($row) {
 
     $path = trim($row['photo_path'] ?? '');
 
@@ -161,27 +161,27 @@ if (empty($galleryImages)) {
 }
 
 /* Reviews — average rating + count for this listing */
-$reviewsStmt = $pdo->prepare(
+ $reviewsStmt = $pdo->prepare(
     "SELECT rating FROM reviews WHERE listing_id = :id"
 );
-$reviewsStmt->execute(['id' => $listingId]);
-$reviewRatings = array_map('floatval', array_column($reviewsStmt->fetchAll(), 'rating'));
+ $reviewsStmt->execute(['id' => $listingId]);
+ $reviewRatings = array_map('floatval', array_column($reviewsStmt->fetchAll(), 'rating'));
 
-$listingRating  = count($reviewRatings) > 0 ? round(array_sum($reviewRatings) / count($reviewRatings), 1) : 0;
-$listingReviews = count($reviewRatings);
+ $listingRating  = count($reviewRatings) > 0 ? round(array_sum($reviewRatings) / count($reviewRatings), 1) : 0;
+ $listingReviews = count($reviewRatings);
 
 /* Host's own review stats, across all their listings */
-$hostReviewsStmt = $pdo->prepare(
+ $hostReviewsStmt = $pdo->prepare(
     "SELECT r.rating
      FROM reviews r
      JOIN listings l2 ON l2.id = r.listing_id
      WHERE l2.user_id = :host_id"
 );
-$hostReviewsStmt->execute(['host_id' => $listingRow['user_id']]);
-$hostReviewRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
+ $hostReviewsStmt->execute(['host_id' => $listingRow['user_id']]);
+ $hostReviewRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
 
-$hostRating  = count($hostReviewRatings) > 0 ? round(array_sum($hostReviewRatings) / count($hostReviewRatings), 1) : 0;
-$hostReviews = count($hostReviewRatings);
+ $hostRating  = count($hostReviewRatings) > 0 ? round(array_sum($hostReviewRatings) / count($hostReviewRatings), 1) : 0;
+ $hostReviews = count($hostReviewRatings);
 
 /* Whether this listing is currently bookable (approved AND
    no active booking) — used to decide whether to show the
@@ -193,7 +193,7 @@ $hostReviews = count($hostReviewRatings);
    the calendar below.
 ========================================================= */
 
-$availabilityStmt = $pdo->prepare(
+ $availabilityStmt = $pdo->prepare(
     "SELECT 1
      FROM listings l
      WHERE l.id = :id
@@ -201,11 +201,11 @@ $availabilityStmt = $pdo->prepare(
      LIMIT 1"
 );
 
-$availabilityStmt->execute([
+ $availabilityStmt->execute([
     'id' => $listingId
 ]);
 
-$isBookable = (bool) $availabilityStmt->fetchColumn();
+ $isBookable = (bool) $availabilityStmt->fetchColumn();
 
 
 /* =========================================================
@@ -218,7 +218,7 @@ $isBookable = (bool) $availabilityStmt->fetchColumn();
    query is only for what the calendar displays.
 ========================================================= */
 
-$unavailableDatesStmt = $pdo->prepare(
+ $unavailableDatesStmt = $pdo->prepare(
     "SELECT checkin_date, checkout_date, status
      FROM bookings
      WHERE listing_id = :listing_id
@@ -227,13 +227,13 @@ $unavailableDatesStmt = $pdo->prepare(
      ORDER BY checkin_date ASC"
 );
 
-$unavailableDatesStmt->execute([
+ $unavailableDatesStmt->execute([
     'listing_id' => $listingId
 ]);
 
-$unavailableRanges = $unavailableDatesStmt->fetchAll(PDO::FETCH_ASSOC);
+ $unavailableRanges = $unavailableDatesStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
+ $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
 
 /* =========================
    MY APPLICATION STATUS
@@ -242,7 +242,7 @@ $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION
    their most recent application so we can show them where
    it stands with the host (pending / accepted / rejected).
 ========================== */
-$myApplicationStatus = null;
+ $myApplicationStatus = null;
 
 if ($isLoggedIn && !$isOwnListing) {
     $myApplicationStmt = $pdo->prepare(
@@ -261,7 +261,7 @@ if ($isLoggedIn && !$isOwnListing) {
 }
 
 /* Assemble into the shape the template below expects */
-$listing = [
+ $listing = [
     'id'             => (int) $listingRow['id'],
     'title'          => $listingRow['title'],
     'gallery'        => $galleryImages,
@@ -311,7 +311,7 @@ $listing = [
     ],
 ];
 
-$galleryCount = count($listing['gallery']);
+ $galleryCount = count($listing['gallery']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -329,7 +329,7 @@ $galleryCount = count($listing['gallery']);
 
     <!-- Poppins Font -->
     <link
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
@@ -338,6 +338,561 @@ $galleryCount = count($listing['gallery']);
     <link rel="stylesheet" href="/webprogg/assets/listing-detail.css">
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+    <!-- NEW: enables JS-gated entrance reveals -->
+    <script>document.documentElement.classList.add("js");</script>
+
+    <!-- =====================================================
+         LISTING DETAIL — HIVE POLISH LAYER (NEW)
+         Loads AFTER listing-detail.css so it wins the cascade
+         at equal specificity. It upgrades colors, buttons,
+         chips, pills, cards and the flatpickr calendar to the
+         site-wide hive design language (honey #eda423 / moss
+         #2f9e5b / ink #1c2a38) WITHOUT touching any layout
+         rules — the structure from listing-detail.css stands.
+    ====================================================== -->
+
+    <style>
+
+        .listing-detail-page {
+            --rd-honey: #eda423;
+            --rd-honey-light: #f6c04e;
+            --rd-honey-dark: #d99218;
+            --rd-moss: #2f9e5b;
+            --rd-ink: #1c2a38;
+            --rd-ink-soft: #5d6875;
+            --rd-line: rgba(28, 42, 56, 0.08);
+            --rd-gold-shadow: 0 14px 28px rgba(237, 164, 35, 0.16);
+        }
+
+        /* =====================================================
+           ENTRANCE REVEALS (JS-gated — page stays fully
+           visible without JS)
+        ====================================================== */
+
+        @keyframes rdRise {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .js .rd-reveal {
+            opacity: 0;
+
+            animation: rdRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0s) forwards;
+        }
+
+        /* =====================================================
+           TOP BAR — back link + save/share
+        ====================================================== */
+
+        .rd-back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+
+            color: var(--rd-ink-soft);
+
+            font-weight: 600;
+
+            text-decoration: none;
+
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+
+        .rd-back-link:hover {
+            color: var(--rd-honey-dark);
+
+            transform: translateX(-3px);
+        }
+
+        .rd-action-btn {
+            transition:
+                border-color 0.15s ease,
+                color 0.15s ease,
+                background 0.15s ease,
+                transform 0.15s ease;
+        }
+
+        .rd-action-btn:hover {
+            border-color: var(--rd-honey) !important;
+
+            color: #b07708 !important;
+
+            transform: translateY(-1px);
+        }
+
+        .rd-action-btn.active .rd-heart-icon {
+            color: #e0524d;
+
+            animation: rdHeartPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes rdHeartPop {
+            0%   { transform: scale(0.7); }
+            60%  { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+
+        /* =====================================================
+           NOTICE BANNERS — soft toast style
+        ====================================================== */
+
+        .rd-notice {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            padding: 14px 18px !important;
+
+            background: #fff4e8 !important;
+
+            border: 1px solid rgba(237, 164, 35, 0.5) !important;
+            border-radius: 14px !important;
+
+            color: #8a5a10 !important;
+
+            font-weight: 500;
+
+            animation: rdRise 0.4s ease both;
+        }
+
+        /* =====================================================
+           APPLICATION STATUS PILLS — refined
+        ====================================================== */
+
+        .rd-application-status {
+            padding: 7px 15px !important;
+
+            border-radius: 999px !important;
+
+            font-size: 12.5px !important;
+            font-weight: 700 !important;
+
+            animation: rdRise 0.4s ease 0.15s both;
+        }
+
+        .rd-application-status-pending {
+            background: #fff4e0 !important;
+            color: #8a5a10 !important;
+            border: 1px solid rgba(237, 164, 35, 0.5) !important;
+        }
+
+        .rd-application-status-confirmed {
+            background: #e8f8f1 !important;
+            color: #1e7a3d !important;
+            border: 1px solid #b9e3c5 !important;
+        }
+
+        .rd-application-status-rejected {
+            background: #fdecec !important;
+            color: #a1332e !important;
+            border: 1px solid #f3b9b9 !important;
+        }
+
+        .rd-application-status-cancelled {
+            background: #f4f6f8 !important;
+            color: #5d6875 !important;
+            border: 1px solid #e3e7ec !important;
+        }
+
+        /* =====================================================
+           GALLERY — arrow + count polish
+        ====================================================== */
+
+        .rd-gallery-arrow,
+        .rd-thumbs-arrow {
+            transition:
+                background 0.15s ease,
+                transform 0.15s ease;
+        }
+
+        .rd-gallery-arrow:hover {
+            transform: scale(1.08);
+        }
+
+        .rd-thumb {
+            transition:
+                border-color 0.15s ease,
+                opacity 0.15s ease,
+                transform 0.15s ease;
+        }
+
+        .rd-thumb:hover {
+            transform: translateY(-2px);
+        }
+
+        /* =====================================================
+           TITLE + SUBLINE
+        ====================================================== */
+
+        .rd-title {
+            color: var(--rd-ink) !important;
+
+            font-weight: 800 !important;
+            letter-spacing: -0.5px;
+        }
+
+        .rd-rating {
+            color: #b07708 !important;
+
+            font-weight: 600 !important;
+        }
+
+        /* =====================================================
+           AMENITY CHIPS
+        ====================================================== */
+
+        .rd-amenity {
+            transition:
+                border-color 0.2s ease,
+                background 0.2s ease,
+                transform 0.2s ease,
+                box-shadow 0.2s ease;
+        }
+
+        .rd-amenity:hover {
+            transform: translateY(-3px);
+
+            border-color: rgba(237, 164, 35, 0.45) !important;
+
+            background: #fff8ec !important;
+
+            box-shadow: var(--rd-gold-shadow);
+        }
+
+        /* =====================================================
+           SECTION HEADINGS — gold accent bar
+        ====================================================== */
+
+        .rd-about h2,
+        .rd-host h2,
+        .rd-location-card h3 {
+            position: relative;
+
+            display: inline-block;
+
+            color: var(--rd-ink) !important;
+
+            font-weight: 800 !important;
+        }
+
+        .rd-about h2::after,
+        .rd-host h2::after {
+            content: "";
+
+            position: absolute;
+
+            width: 36px;
+            height: 3px;
+
+            left: 0;
+            bottom: -7px;
+
+            background: linear-gradient(90deg, #f6b93b, var(--rd-honey));
+
+            border-radius: 2px;
+        }
+
+        /* =====================================================
+           ABOUT / HOUSE RULES — show more button
+        ====================================================== */
+
+        .rd-show-more {
+            background: none;
+
+            border: none;
+
+            color: var(--rd-honey-dark) !important;
+
+            font-weight: 700;
+
+            cursor: pointer;
+
+            transition: color 0.15s ease;
+        }
+
+        .rd-show-more:hover {
+            color: #b07708 !important;
+        }
+
+        /* =====================================================
+           HOST CARD
+        ====================================================== */
+
+        .rd-host-card {
+            transition:
+                border-color 0.25s ease,
+                box-shadow 0.25s ease,
+                transform 0.25s ease;
+        }
+
+        .rd-host-card:hover {
+            border-color: rgba(237, 164, 35, 0.4) !important;
+
+            box-shadow: var(--rd-gold-shadow) !important;
+
+            transform: translateY(-3px);
+        }
+
+        .rd-host-avatar {
+            border: 3px solid #ffffff;
+
+            box-shadow:
+                0 0 0 2.5px var(--rd-honey),
+                0 8px 18px rgba(237, 164, 35, 0.3);
+        }
+
+        .rd-host-profile-btn {
+            display: inline-block;
+
+            padding: 10px 18px;
+
+            background: #ffffff;
+
+            border: 1.5px solid var(--rd-honey);
+            border-radius: 10px;
+
+            color: #b07708 !important;
+
+            font-size: 12.5px;
+            font-weight: 700;
+
+            text-decoration: none;
+
+            transition:
+                background 0.2s ease,
+                color 0.2s ease,
+                transform 0.2s ease,
+                box-shadow 0.2s ease;
+        }
+
+        .rd-host-profile-btn:hover {
+            background: linear-gradient(135deg, #f6b93b, var(--rd-honey));
+
+            color: var(--rd-ink) !important;
+
+            transform: translateY(-2px);
+
+            box-shadow: 0 8px 18px rgba(237, 164, 35, 0.35);
+        }
+
+        /* =====================================================
+           BOOKING CARD — price + primary CTA
+        ====================================================== */
+
+        .rd-booking-card {
+            border-top: 4px solid var(--rd-honey) !important;
+        }
+
+        .rd-peso {
+            color: var(--rd-honey-dark) !important;
+        }
+
+        .rd-btn-primary {
+            background: linear-gradient(135deg, #f6b93b, var(--rd-honey)) !important;
+
+            border: none !important;
+
+            color: var(--rd-ink) !important;
+
+            font-weight: 700 !important;
+
+            box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35) !important;
+
+            transition:
+                transform 0.2s ease,
+                box-shadow 0.2s ease !important;
+        }
+
+        .rd-btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+
+            box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45) !important;
+        }
+
+        .rd-btn-primary:active:not(:disabled) {
+            transform: translateY(0) scale(0.98);
+        }
+
+        .rd-btn-primary:disabled {
+            opacity: 0.6;
+
+            cursor: not-allowed;
+        }
+
+        .rd-btn-outline {
+            transition:
+                border-color 0.2s ease,
+                color 0.2s ease,
+                transform 0.2s ease,
+                box-shadow 0.2s ease !important;
+        }
+
+        .rd-btn-outline:hover {
+            border-color: var(--rd-honey) !important;
+
+            color: #b07708 !important;
+
+            transform: translateY(-2px);
+
+            box-shadow: 0 8px 18px rgba(28, 42, 56, 0.08) !important;
+        }
+
+        .rd-charge-note {
+            color: var(--rd-ink-soft) !important;
+        }
+
+        /* ---- Long-term toggle ---- */
+
+        .rd-long-term-label {
+            cursor: pointer;
+
+            transition: color 0.15s ease;
+        }
+
+        .rd-long-term-label:hover {
+            color: #b07708;
+        }
+
+        .rd-long-term-label input {
+            accent-color: var(--rd-honey);
+
+            cursor: pointer;
+        }
+
+        /* ---- Date summary ---- */
+
+        .rd-date-summary-field strong {
+            color: var(--rd-ink) !important;
+        }
+
+        /* =====================================================
+           PROPERTY DETAILS CARD — hover rows
+        ====================================================== */
+
+        .rd-detail-row {
+            transition:
+                background 0.15s ease,
+                transform 0.15s ease;
+
+            border-radius: 10px;
+        }
+
+        .rd-detail-row:hover {
+            background: #fff8ec;
+
+            transform: translateX(3px);
+        }
+
+        .rd-detail-row strong {
+            color: var(--rd-ink) !important;
+        }
+
+        /* =====================================================
+           LOCATION CARD — map pin pulse
+        ====================================================== */
+
+        .rd-map-pin {
+            display: inline-block;
+
+            animation: rdPinBounce 2.2s ease-in-out infinite;
+        }
+
+        @keyframes rdPinBounce {
+            0%, 100% { transform: translateY(0); }
+            50%      { transform: translateY(-7px); }
+        }
+
+        /* =====================================================
+           FLATPICKR CALENDAR — honey theme
+        ====================================================== */
+
+        .flatpickr-calendar {
+            box-shadow: 0 14px 34px rgba(28, 42, 56, 0.16) !important;
+
+            border-radius: 14px !important;
+
+            font-family: "Poppins", sans-serif !important;
+        }
+
+        .flatpickr-day.selected,
+        .flatpickr-day.startRange,
+        .flatpickr-day.endRange {
+            background: var(--rd-honey) !important;
+
+            border-color: var(--rd-honey) !important;
+
+            color: #ffffff !important;
+        }
+
+        .flatpickr-day.selected:hover,
+        .flatpickr-day.startRange:hover,
+        .flatpickr-day.endRange:hover {
+            background: var(--rd-honey-dark) !important;
+        }
+
+        .flatpickr-day.inRange {
+            background: rgba(237, 164, 35, 0.14) !important;
+
+            border-color: transparent !important;
+
+            box-shadow: -5px 0 0 rgba(237, 164, 35, 0.14),
+                        5px 0 0 rgba(237, 164, 35, 0.14) !important;
+        }
+
+        .flatpickr-day.today {
+            border-color: var(--rd-honey) !important;
+        }
+
+        .flatpickr-day.today:hover {
+            background: rgba(237, 164, 35, 0.14) !important;
+
+            color: var(--rd-ink) !important;
+        }
+
+        .flatpickr-day:hover {
+            background: rgba(237, 164, 35, 0.14) !important;
+
+            border-color: transparent !important;
+        }
+
+        .flatpickr-months .flatpickr-month,
+        .flatpickr-current-month {
+            color: var(--rd-ink) !important;
+        }
+
+        /* =====================================================
+           RESPONSIVE — nothing structural, motion only
+        ====================================================== */
+
+        @media (prefers-reduced-motion: reduce) {
+            .js .rd-reveal,
+            .rd-notice,
+            .rd-application-status {
+                animation: none !important;
+
+                opacity: 1 !important;
+            }
+
+            .rd-map-pin {
+                animation: none !important;
+            }
+
+            .rd-amenity,
+            .rd-host-card,
+            .rd-detail-row,
+            .rd-btn-primary,
+            .rd-btn-outline,
+            .rd-back-link,
+            .rd-thumb,
+            .rd-gallery-arrow,
+            .rd-action-btn {
+                transition: none !important;
+            }
+        }
+
+    </style>
+
 </head>
 
 <body>
@@ -400,52 +955,10 @@ $galleryCount = count($listing['gallery']);
     background: #f5f5f5;
 }
 
-.rd-notice {
-    max-width: 900px;
-    margin: 16px auto 0;
-    padding: 12px 18px;
-    border-radius: 10px;
-    background: #fff4e8;
-    border: 1px solid #f7941d;
-    color: #8a5a10;
-    font-size: 0.9rem;
-}
-
-.rd-application-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 10px;
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    width: fit-content;
-}
-
-.rd-application-status-pending {
-    background: #fff4e0;
-    color: #8a5a10;
-    border: 1px solid #f7941d;
-}
-
-.rd-application-status-confirmed {
-    background: #e6f6ec;
-    color: #1e7a3d;
-    border: 1px solid #2ecc71;
-}
-
-.rd-application-status-rejected {
-    background: #fdecec;
-    color: #a3282e;
-    border: 1px solid #e14b4b;
-}
-
-.rd-application-status-cancelled {
-    background: #f0f0f0;
-    color: #666666;
-    border: 1px solid #cccccc;
-}
+/* CHANGED: notice + status pill base styles moved to the main
+   polish layer above so they apply to guests too (the "own
+   listing" notice can render for logged-out owners-in-spirit
+   paths and the pills benefit from consistent styling). */
 </style>
 
 <?php endif; ?>
@@ -458,7 +971,8 @@ $galleryCount = count($listing['gallery']);
 
     <!-- TOP BAR -->
 
-    <div class="rd-topbar">
+    <!-- CHANGED: entrance reveal classes -->
+    <div class="rd-topbar rd-reveal" style="--d: .05s;">
 
         <a href="/webprogg/Listings/listing.php" class="rd-back-link" id="rd-back-link">
             &#8592; Back to Listings
@@ -480,11 +994,11 @@ $galleryCount = count($listing['gallery']);
 
     <?php if ($showUnavailableNotice): ?>
         <div class="rd-notice">
-            Sorry, this space was just booked by someone else. Browse other available spaces below.
+            &#9888;&#65039; Sorry, this space was just booked by someone else. Browse other available spaces below.
         </div>
     <?php elseif ($showOwnBookingNotice): ?>
         <div class="rd-notice">
-            You can't book your own listing.
+            &#8505;&#65039; You can't book your own listing.
         </div>
     <?php endif; ?>
 
@@ -498,7 +1012,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- GALLERY -->
 
-            <div class="rd-gallery">
+            <!-- CHANGED: entrance reveal -->
+            <div class="rd-gallery rd-reveal" style="--d: .1s;">
 
                 <div class="rd-gallery-main">
 
@@ -561,11 +1076,12 @@ $galleryCount = count($listing['gallery']);
 
             <!-- TITLE / RATING -->
 
-            <h1 class="rd-title">
+            <!-- CHANGED: entrance reveal -->
+            <h1 class="rd-title rd-reveal" style="--d: .15s;">
                 <?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?>
             </h1>
 
-            <div class="rd-subline">
+            <div class="rd-subline rd-reveal" style="--d: .18s;">
 
                 <span class="rd-location">
                     <img src="/webprogg/images/GPSIcon.png" alt="">
@@ -601,7 +1117,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- AMENITIES ROW -->
 
-            <div class="rd-amenities">
+            <!-- CHANGED: entrance reveal -->
+            <div class="rd-amenities rd-reveal" style="--d: .22s;">
 
                 <?php foreach ($listing['amenities'] as $amenityKey): ?>
 
@@ -626,7 +1143,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- ABOUT THIS SPACE -->
 
-            <section class="rd-about">
+            <!-- CHANGED: entrance reveal -->
+            <section class="rd-about rd-reveal" style="--d: .26s;">
 
                 <h2>About this space</h2>
 
@@ -642,7 +1160,7 @@ $galleryCount = count($listing['gallery']);
 
             <?php if (!empty($listing['house_rules'])): ?>
             <!-- HOUSE RULES -->
-            <section class="rd-about">
+            <section class="rd-about rd-reveal" style="--d: .3s;">
                 <h2>House Rules</h2>
                 <p class="rd-about-text">
                     <?= nl2br(htmlspecialchars($listing['house_rules'], ENT_QUOTES, 'UTF-8')) ?>
@@ -652,7 +1170,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- MEET YOUR HOST -->
 
-            <section class="rd-host">
+            <!-- CHANGED: entrance reveal -->
+            <section class="rd-host rd-reveal" style="--d: .34s;">
 
                 <h2>Meet your host</h2>
 
@@ -714,7 +1233,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- BOOKING CARD -->
 
-            <div class="rd-card rd-booking-card">
+            <!-- CHANGED: entrance reveal -->
+            <div class="rd-card rd-booking-card rd-reveal" style="--d: .2s;">
 
                 <div class="rd-price">
                     <span class="rd-peso">&#8369;</span>
@@ -841,7 +1361,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- PROPERTY DETAILS CARD -->
 
-            <div class="rd-card rd-details-card">
+            <!-- CHANGED: entrance reveal -->
+            <div class="rd-card rd-details-card rd-reveal" style="--d: .28s;">
 
                 <div class="rd-detail-row">
                     <img src="/webprogg/images/houselogo.png" alt="">
@@ -883,7 +1404,8 @@ $galleryCount = count($listing['gallery']);
 
             <!-- LOCATION CARD -->
 
-            <div class="rd-card rd-location-card">
+            <!-- CHANGED: entrance reveal -->
+            <div class="rd-card rd-location-card rd-reveal" style="--d: .34s;">
 
                 <h3>Location</h3>
 
@@ -1073,6 +1595,7 @@ const roomHiveUnavailableRanges = <?= json_encode(
     JSON_HEX_AMP |
     JSON_HEX_QUOT
 ) ?>;
+
 /* =========================
    BACK BUTTON
 ========================== */
@@ -1100,7 +1623,7 @@ const roomHiveUnavailableRanges = <?= json_encode(
     });
 
 })();
-                    
+
 /* =========================
    GALLERY
 ========================== */
@@ -1544,9 +2067,60 @@ if (rdAboutText && rdShowMoreBtn) {
 
     });
 
-}       
-
+}
 </script>
+
+<!-- NEW — ENTRANCE REVEALS (self-contained) -->
+<script>
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    var revealEls = Array.prototype.slice.call(
+        document.querySelectorAll(".rd-reveal")
+    );
+
+    if (reduced || !("IntersectionObserver" in window)) {
+
+        revealEls.forEach(function (el) {
+            el.style.opacity = "1";
+        });
+
+    } else {
+
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+
+                    io.unobserve(entry.target);
+
+                    /* The animation is driven by the CSS class
+                       gate (.js .rd-reveal); for elements already
+                       in view on load the animation plays via
+                       their --d delay automatically. For elements
+                       revealed on scroll, re-trigger by toggling
+                       the animation through a class swap. */
+                    var el = entry.target;
+
+                    el.style.animation = "none";
+                    void el.offsetWidth; /* restart */
+                    el.style.animation = "";
+
+                    io.unobserve(el);
+                });
+            },
+            { threshold: 0.1, rootMargin: "0px 0px -30px 0px" }
+        );
+
+        revealEls.forEach(function (el) {
+            io.observe(el);
+        });
+    }
+})();
+</script>
+
 <!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
 <script src="/webprogg/assets/javaScript.js"></script>
 

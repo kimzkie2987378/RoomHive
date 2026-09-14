@@ -95,6 +95,27 @@ if (!function_exists('csrf_verify')) {
     }
 }
 
+if (!function_exists('csrf_verify_or_json_fail')) {
+    /**
+     * Convenience guard for fetch()/AJAX endpoints: answers with
+     * the same JSON shape the front-end scripts already expect
+     * ({success:false, message:...}) and stops the request.
+     * Call after session_start() + requires, before reading POST.
+     */
+    function csrf_verify_or_json_fail() {
+        if (csrf_verify()) {
+            return;
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Session expired. Please reload the page and try again.',
+        ]);
+        exit;
+    }
+}
+
 if (!function_exists('sync_user_session')) {
     /**
      * Every /my-account page pulls the same handful of fields
@@ -114,5 +135,95 @@ if (!function_exists('sync_user_session')) {
         $_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
         $_SESSION['is_host']     = (bool) $dbUser['is_host'];
         return $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+    }
+}
+
+if (!function_exists('require_user')) {
+    /**
+     * Standard guard for /my-account pages. Replaces the ~20
+     * lines every account page used to repeat by hand:
+     *
+     *   1. Guests            -> redirect to login
+     *   2. Fetch the user row by $_SESSION['user_id']
+     *   3. Row missing       -> destroy session, redirect to login
+     *                           (deleted-account cleanup)
+     *   4. is_host === 1     -> redirect to the host dashboard
+     *                           (userprofile.php is the
+     *                           regular-user account page)
+     *   5. sync_user_session() so the navbar avatar + is_host
+     *      flag can never go stale
+     *
+     * Returns the fetched user row. Because steps 3–5 are now
+     * inseparable from step 1, the whole class of "forgot to
+     * set is_host / avatar" bugs your older pages had can't
+     * come back on new pages.
+     *
+     * Usage (after session_start() + db_connect.php +
+     * functions.php):
+     *
+     *   $dbUser   = require_user();                  // default columns
+     *   $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+     *
+     * Or, when a page needs extra columns (userprofile.php):
+     *
+     *   $dbUser = require_user([
+     *       'id', 'name', 'email', 'phone', 'age',
+     *       'location', 'avatar_path', 'is_host', 'created_at',
+     *   ]);
+     *
+     * $columns is whitelisted below even though it comes from
+     * code, not user input — defense in depth.
+     */
+    function require_user(array $columns = [
+        'id', 'name', 'email', 'avatar_path', 'is_host', 'created_at',
+    ]) {
+        /* 1. Must be logged in. */
+        if (empty($_SESSION['user_id'])) {
+            header("Location: /webprogg/auth/loginform.php");
+            exit;
+        }
+
+        /* db_connect.php runs in global scope; pull $pdo in. */
+        global $pdo;
+
+        /* Only known column names are allowed. */
+        $allowed = [
+            'id', 'name', 'email', 'phone', 'age', 'location',
+            'avatar_path', 'is_host', 'created_at',
+        ];
+        $safe = array_intersect($columns, $allowed);
+
+        /* Guarantee the columns sync_user_session() needs are
+           always selected, no matter what the caller passed. */
+        foreach (['avatar_path', 'is_host'] as $required) {
+            if (!in_array($required, $safe, true)) {
+                $safe[] = $required;
+            }
+        }
+
+        /* 2. Fetch the row. */
+        $stmt = $pdo->prepare(
+            "SELECT " . implode(', ', $safe) . " FROM users WHERE id = :id LIMIT 1"
+        );
+        $stmt->execute(['id' => $_SESSION['user_id']]);
+        $user = $stmt->fetch();
+
+        /* 3. Deleted account — clean the session up. */
+        if (!$user) {
+            session_destroy();
+            header("Location: /webprogg/auth/loginform.php");
+            exit;
+        }
+
+        /* 4. Hosts belong on the host dashboard. */
+        if ((int) $user['is_host'] === 1) {
+            header("Location: /webprogg/host/hostprofile.php");
+            exit;
+        }
+
+        /* 5. Keep the session in sync with the DB. */
+        sync_user_session($user);
+
+        return $user;
     }
 }

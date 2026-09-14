@@ -2,49 +2,27 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    security.php
-
-   Security + account preferences: change password, toggle
-   2FA, set language/currency, and deactivate the account.
-
-   Schema (per phpMyAdmin designer view of `users`):
-   - users.password              — the hashed password column
-                                    (NOT password_hash — that
-                                    column doesn't exist)
-   - users.two_factor_enabled, users.language, users.currency,
-     users.status — added via:
-
-       ALTER TABLE users
-         ADD COLUMN two_factor_enabled TINYINT(1) NOT NULL DEFAULT 0,
-         ADD COLUMN language VARCHAR(10) NOT NULL DEFAULT 'en',
-         ADD COLUMN currency VARCHAR(10) NOT NULL DEFAULT 'PHP',
-         ADD COLUMN status ENUM('active','deactivated') NOT NULL DEFAULT 'active';
-
-   Adjust the column names below if the real schema differs
-   further.
+   (Schema notes from the original file header still apply:
+    users.password, two_factor_enabled, language, currency,
+    status columns — see the ALTER TABLE in your version.)
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, password, avatar_path, is_host,
             two_factor_enabled, language, currency
      FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -57,22 +35,20 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
-$activeSidebar = 'security';
+ $notification_count = 0;
+ $activeSidebar = 'security';
 
-$two_factor_enabled = (bool) ($dbUser['two_factor_enabled'] ?? false);
-$language = $dbUser['language'] ?? 'en';
-$currency = $dbUser['currency'] ?? 'PHP';
+ $two_factor_enabled = (bool) ($dbUser['two_factor_enabled'] ?? false);
+ $language = $dbUser['language'] ?? 'en';
+ $currency = $dbUser['currency'] ?? 'PHP';
 
-$passwordErrors = [];
-$passwordSaved  = false;
-$prefsSaved     = false;
+ $passwordErrors = [];
+ $passwordSaved  = false;
+ $prefsSaved     = false;
 
-/* -----------------------------------------------------
-   CHANGE PASSWORD
------------------------------------------------------ */
+/* CHANGE PASSWORD */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['form'] === 'password') {
     if (!csrf_verify()) {
         $passwordErrors[] = 'Your session expired. Please try again.';
@@ -102,9 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
     }
 }
 
-/* -----------------------------------------------------
-   2FA + LANGUAGE + CURRENCY
------------------------------------------------------ */
+/* 2FA + LANGUAGE + CURRENCY */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['form'] === 'preferences' && csrf_verify()) {
     $two_factor_enabled = isset($_POST['two_factor_enabled']);
     $language = $_POST['language'] ?? 'en';
@@ -123,13 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
     $prefsSaved = true;
 }
 
-/* -----------------------------------------------------
-   DEACTIVATE ACCOUNT
-   Requires the exact word DEACTIVATE typed in, on top of
-   the current password, so this can't be triggered by
-   accident.
------------------------------------------------------ */
-$deactivateErrors = [];
+/* DEACTIVATE ACCOUNT */
+ $deactivateErrors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['form'] === 'deactivate') {
     if (!csrf_verify()) {
@@ -165,6 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -181,7 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
-        <a href="notifications.php" class="nav-bell">
+        <!-- FIX: was relative "notifications.php" -->
+        <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
@@ -208,16 +180,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Settings</p>
-    <h1>Security &amp; account preferences</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Manage your password, two-factor login, and account defaults.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/lockicon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Security
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                Security &amp; <span class="up-shimmer">settings</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Manage your password, two-factor login, and
+                account defaults.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/lockicon-userprofile.png" alt="">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
@@ -231,101 +234,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
       <div style="display:flex; flex-direction:column; gap:20px;">
 
         <!-- CHANGE PASSWORD -->
-        <section class="up-card up-account-security">
+        <section class="up-card up-reveal">
           <div class="up-card-header">
             <h3>Change Password</h3>
           </div>
 
           <?php if ($passwordSaved): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:13px; margin-bottom:14px;">
-              Your password has been updated.
+            <div class="up-alert up-alert-success" style="margin-bottom:16px;">
+              <p>&#10003; Your password has been updated.</p>
             </div>
           <?php endif; ?>
 
           <?php if (!empty($passwordErrors)): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#fdeceb; border:1px solid #e0524d; color:#a1332e; font-size:13px; margin-bottom:14px;">
+            <div class="up-alert up-alert-error" style="margin-bottom:16px;">
               <?php foreach ($passwordErrors as $error): ?>
-                <p style="margin:0;"><?php echo h($error); ?></p>
+                <p><?php echo h($error); ?></p>
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
 
-          <form method="POST" action="security.php" style="display:flex; flex-direction:column; gap:12px;">
+          <form method="POST" action="/webprogg/user/security.php" style="display:flex; flex-direction:column; gap:16px;" id="pwForm">
             <?php echo csrf_field(); ?>
             <input type="hidden" name="form" value="password">
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Current Password</span>
-              <input type="password" name="current_password" required
-                     style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-            </label>
+            <div class="up-field">
+              <label for="curPw">Current Password</label>
+              <input type="password" id="curPw" name="current_password" required>
+            </div>
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">New Password</span>
-              <input type="password" name="new_password" required minlength="8"
-                     style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-            </label>
+            <div class="up-field">
+              <label for="newPw">New Password</label>
+              <input type="password" id="newPw" name="new_password" required minlength="8">
+              <div class="up-strength"><div class="up-strength-fill" id="pwStrengthFill"></div></div>
+              <span class="up-strength-label" id="pwStrengthLabel">Enter at least 8 characters</span>
+            </div>
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Confirm New Password</span>
-              <input type="password" name="confirm_password" required minlength="8"
-                     style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-            </label>
+            <div class="up-field">
+              <label for="confPw">Confirm New Password</label>
+              <input type="password" id="confPw" name="confirm_password" required minlength="8">
+            </div>
 
             <button type="submit" class="up-btn-solid" style="align-self:flex-start;">UPDATE PASSWORD</button>
           </form>
         </section>
 
-        <!-- 2FA + LANGUAGE + CURRENCY -->
-        <section class="up-card up-account-security">
+        <!-- PREFERENCES -->
+        <section class="up-card up-reveal" style="--i: 1;">
           <div class="up-card-header">
             <h3>Account Preferences</h3>
           </div>
 
           <?php if ($prefsSaved): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:13px; margin-bottom:14px;">
-              Your preferences have been saved.
+            <div class="up-alert up-alert-success" style="margin-bottom:16px;">
+              <p>&#10003; Your preferences have been saved.</p>
             </div>
           <?php endif; ?>
 
-          <form method="POST" action="security.php">
+          <form method="POST" action="/webprogg/user/security.php">
             <?php echo csrf_field(); ?>
             <input type="hidden" name="form" value="preferences">
 
-            <div class="up-security-row" style="align-items:flex-start;">
+            <div class="up-security-row" style="align-items:flex-start; padding-top:0;">
               <div>
-                <strong style="display:block; font-size:14px; color:var(--up-navy, #1c2a38);">Two-Factor Authentication</strong>
-                <span style="font-size:12.5px; color:#777777;">Require a one-time code in addition to your password when signing in.</span>
+                <strong style="display:block; font-size:14px; color:var(--up-navy);">Two-Factor Authentication</strong>
+                <span style="font-size:12.5px; color:var(--up-text-muted);">Require a one-time code in addition to your password when signing in.</span>
               </div>
 
-              <label style="position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0;">
-                <input type="checkbox" name="two_factor_enabled" <?php echo $two_factor_enabled ? 'checked' : ''; ?>
-                       style="opacity:0; width:0; height:0;" class="up-toggle-input">
-                <span class="up-toggle-track" style="position:absolute; inset:0; background:<?php echo $two_factor_enabled ? 'var(--up-orange, #e0693a)' : '#cccccc'; ?>; border-radius:24px; transition:background .15s;"></span>
-                <span class="up-toggle-thumb" style="position:absolute; top:3px; left:<?php echo $two_factor_enabled ? '21px' : '3px'; ?>; width:18px; height:18px; background:#ffffff; border-radius:50%; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.3);"></span>
+              <!-- CHANGED: pure-CSS toggle, no JS needed -->
+              <label class="up-switch">
+                <input type="checkbox" name="two_factor_enabled" <?php echo $two_factor_enabled ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
               </label>
             </div>
 
-            <div style="display:flex; gap:14px; margin-top:16px; flex-wrap:wrap;">
-              <label style="flex:1; min-width:160px; display:block;">
-                <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Language</span>
-                <select name="language" style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+            <div style="display:flex; gap:14px; margin-top:18px; flex-wrap:wrap;">
+              <div class="up-field" style="flex:1; min-width:160px;">
+                <label for="lang">Language</label>
+                <select id="lang" name="language">
                   <option value="en" <?php echo $language === 'en' ? 'selected' : ''; ?>>English</option>
                   <option value="fil" <?php echo $language === 'fil' ? 'selected' : ''; ?>>Filipino</option>
                   <option value="ceb" <?php echo $language === 'ceb' ? 'selected' : ''; ?>>Bisaya / Cebuano</option>
                 </select>
-              </label>
+              </div>
 
-              <label style="flex:1; min-width:160px; display:block;">
-                <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Currency</span>
-                <select name="currency" style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+              <div class="up-field" style="flex:1; min-width:160px;">
+                <label for="curr">Currency</label>
+                <select id="curr" name="currency">
                   <option value="PHP" <?php echo $currency === 'PHP' ? 'selected' : ''; ?>>&#8369; PHP &mdash; Philippine Peso</option>
                   <option value="USD" <?php echo $currency === 'USD' ? 'selected' : ''; ?>>$ USD &mdash; US Dollar</option>
                 </select>
-              </label>
+              </div>
             </div>
 
-            <button type="submit" class="up-btn-solid" style="margin-top:16px;">SAVE PREFERENCES</button>
+            <button type="submit" class="up-btn-solid" style="margin-top:18px;">SAVE PREFERENCES</button>
           </form>
         </section>
 
@@ -333,51 +334,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
       <div class="up-right-col">
 
-        <div class="up-need-help">
+        <div class="up-need-help up-reveal" style="--i: 1;">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Questions about your account or security? We're here 24/7.</p>
-            <a href="helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
+            <!-- FIX: was relative "helpcenter.php" -->
+            <a href="/webprogg/user/helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
           </div>
           <img src="/webprogg/images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
         </div>
 
-        <!-- DEACTIVATE ACCOUNT -->
-        <section class="up-card up-account-security" style="border:1px solid #e0524d;">
+        <!-- DEACTIVATE -->
+        <section class="up-card upr-danger-card up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3 style="color:#a1332e;">Deactivate Account</h3>
           </div>
-          <p style="font-size:13px; color:#777777; margin:0 0 14px;">
+          <p style="font-size:13px; color:var(--up-text-muted); margin:0 0 14px;">
             This signs you out and hides your account from RoomHive. It doesn't
             cancel any active bookings — cancel those first from My Bookings.
           </p>
 
           <?php if (!empty($deactivateErrors)): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#fdeceb; border:1px solid #e0524d; color:#a1332e; font-size:13px; margin-bottom:14px;">
+            <div class="up-alert up-alert-error" style="margin-bottom:14px;">
               <?php foreach ($deactivateErrors as $error): ?>
-                <p style="margin:0;"><?php echo h($error); ?></p>
+                <p><?php echo h($error); ?></p>
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
 
-          <form method="POST" action="security.php" style="display:flex; flex-direction:column; gap:10px;"
+          <form method="POST" action="/webprogg/user/security.php" style="display:flex; flex-direction:column; gap:12px;"
                 onsubmit="return confirm('This will deactivate your RoomHive account. Continue?');">
             <?php echo csrf_field(); ?>
             <input type="hidden" name="form" value="deactivate">
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:4px;">Password</span>
-              <input type="password" name="deactivate_password" required
-                     style="width:100%; padding:9px 12px; border:1px solid var(--up-border); border-radius:8px; font-size:13px; box-sizing:border-box;">
-            </label>
+            <div class="up-field">
+              <label for="deaPw">Password</label>
+              <input type="password" id="deaPw" name="deactivate_password" required>
+            </div>
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:4px;">Type DEACTIVATE to confirm</span>
-              <input type="text" name="confirm_word" required
-                     style="width:100%; padding:9px 12px; border:1px solid var(--up-border); border-radius:8px; font-size:13px; box-sizing:border-box;">
-            </label>
+            <div class="up-field">
+              <label for="deaWord">Type DEACTIVATE to confirm</label>
+              <input type="text" id="deaWord" name="confirm_word" required>
+            </div>
 
-            <button type="submit" style="background:#e0524d; color:#ffffff; border:none; border-radius:8px; padding:10px; font-weight:700; font-size:13px; cursor:pointer;">
+            <button type="submit"
+                    style="background:#e0524d; color:#ffffff; border:none; border-radius:10px; padding:11px; font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:background .2s ease, transform .2s ease;"
+                    onmouseover="this.style.background='#c84642'"
+                    onmouseout="this.style.background='#e0524d'">
               DEACTIVATE MY ACCOUNT
             </button>
           </form>
@@ -390,6 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 </main>
 
 <footer class="site-footer">
+    <!-- (same compact footer as editprofile.php above) -->
     <div class="footer-top">
         <div class="footer-brand">
             <a href="/webprogg/user/usershome.php">
@@ -399,18 +403,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
                 Find, stay, relax, at home. RoomHive helps you discover
                 comfortable stays across Negros Oriental.
             </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
 
         <div class="footer-links">
@@ -445,15 +440,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
+<!-- Reveal + password strength meter (NEW) -->
 <script>
-document.querySelectorAll('.up-toggle-input').forEach(function (input) {
-    input.addEventListener('change', function () {
-        const track = input.nextElementSibling;
-        const thumb = track.nextElementSibling;
-        track.style.background = input.checked ? 'var(--up-orange, #e0693a)' : '#cccccc';
-        thumb.style.left = input.checked ? '21px' : '3px';
-    });
-});
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+
+    /* Password strength meter */
+    var pw = document.getElementById("newPw");
+    var fill = document.getElementById("pwStrengthFill");
+    var label = document.getElementById("pwStrengthLabel");
+
+    if (pw && fill && label) {
+        pw.addEventListener("input", function () {
+            var v = pw.value;
+            var score = 0;
+
+            if (v.length >= 8) score++;
+            if (v.length >= 12) score++;
+            if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
+            if (/\d/.test(v)) score++;
+            if (/[^A-Za-z0-9]/.test(v)) score++;
+
+            var levels = [
+                { w: "10%",  c: "#e0524d", t: "Too weak" },
+                { w: "30%",  c: "#e0524d", t: "Weak" },
+                { w: "55%",  c: "#e0a02a", t: "Fair" },
+                { w: "75%",  c: "#eda423", t: "Good" },
+                { w: "100%", c: "#1fa971", t: "Strong" },
+                { w: "100%", c: "#1fa971", t: "Excellent" }
+            ];
+
+            var lvl = v === "" ? null : levels[score];
+
+            if (!lvl) {
+                fill.style.width = "0%";
+                label.textContent = "Enter at least 8 characters";
+            } else {
+                fill.style.width = lvl.w;
+                fill.style.background = lvl.c;
+                label.textContent = "Strength: " + lvl.t;
+            }
+        });
+    }
+})();
 </script>
+
 </body>
 </html>

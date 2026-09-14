@@ -2,35 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    savedsearches.php
-
-   Lets the user store a set of listing filters and re-run
-   them later. Assumes a `saved_searches` table (id, user_id,
-   label, location, category, min_price, max_price,
-   created_at) — adjust the SELECT/INSERT below if the real
-   schema names these differently, or if listing.php's filter
-   params use different query-string keys.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -43,16 +30,11 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-/* -----------------------------------------------------
-   DELETE
-   POST rather than a bare link so a search can't be wiped
-   by a prefetch/crawler following the URL. CSRF-checked so
-   it also can't be triggered by a forged cross-site form.
------------------------------------------------------ */
+/* DELETE (POST + CSRF, as before) */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     if (csrf_verify()) {
         $deleteStmt = $pdo->prepare("DELETE FROM saved_searches WHERE id = :id AND user_id = :uid");
@@ -62,18 +44,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     exit;
 }
 
-/* -----------------------------------------------------
-   SAVED SEARCHES
------------------------------------------------------ */
-$searchesStmt = $pdo->prepare(
+/* SAVED SEARCHES */
+ $searchesStmt = $pdo->prepare(
     "SELECT id, label, location, category, min_price, max_price, created_at
      FROM saved_searches
      WHERE user_id = :id
      ORDER BY created_at DESC"
 );
-$searchesStmt->execute(['id' => $_SESSION['user_id']]);
+ $searchesStmt->execute(['id' => $_SESSION['user_id']]);
 
-$savedSearches = array_map(function ($row) {
+ $savedSearches = array_map(function ($row) {
     $params = [];
     if (!empty($row['location']))  $params['location'] = $row['location'];
     if (!empty($row['category']))  $params['category'] = $row['category'];
@@ -92,7 +72,7 @@ $savedSearches = array_map(function ($row) {
     ];
 }, $searchesStmt->fetchAll());
 
-$activeSidebar = 'savedsearches';
+ $activeSidebar = 'savedsearches';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -103,6 +83,8 @@ $activeSidebar = 'savedsearches';
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -146,16 +128,47 @@ $activeSidebar = 'savedsearches';
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Saved Searches</p>
-    <h1>Your saved filters</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Jump back into a search without re-entering your filters.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/savedsearchesicon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Saved Searches
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                Your saved <span class="up-shimmer">filters</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Jump back into a search without re-entering
+                your filters.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/savedsearchesicon-userprofile.png" alt="">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
@@ -164,9 +177,9 @@ $activeSidebar = 'savedsearches';
 
   <div class="up-content">
 
-    <section class="up-card up-bookings-card">
+    <section class="up-card up-reveal">
       <div class="up-card-header">
-        <h3>Saved Searches (<?php echo h(count($savedSearches)); ?>)</h3>
+        <h3>Saved Searches (<span class="up-wishlist-count"><?php echo h(count($savedSearches)); ?></span>)</h3>
         <a href="/webprogg/Listings/listing.php" class="up-link-view-all">New Search</a>
       </div>
 
@@ -180,8 +193,8 @@ $activeSidebar = 'savedsearches';
 
       <?php else: ?>
 
-        <?php foreach ($savedSearches as $search): ?>
-          <div class="up-booking-row" style="cursor:default;">
+        <?php foreach ($savedSearches as $i => $search): ?>
+          <div class="up-booking-row up-row-static up-reveal" style="--i: <?php echo (int) min($i, 6); ?>; border-radius:12px;">
             <div class="up-booking-info">
               <h4><?php echo h($search['label']); ?></h4>
               <p class="up-booking-location">
@@ -200,12 +213,12 @@ $activeSidebar = 'savedsearches';
                 Saved <?php echo h($search['date']); ?>
               </p>
             </div>
-            <div class="up-booking-side" style="flex-direction:row; align-items:center; gap:10px;">
-              <a href="<?php echo h($search['url']); ?>" class="up-btn-outline" style="padding:8px 16px; font-size:12px;">RUN SEARCH</a>
+            <div class="up-booking-side us-actions" style="flex-direction:row;">
+              <a href="<?php echo h($search['url']); ?>" class="up-btn-outline" style="padding:9px 16px; font-size:12px;">RUN SEARCH</a>
               <form method="POST" action="/webprogg/user/savedsearches.php" onsubmit="return confirm('Remove this saved search?');">
                 <?php echo csrf_field(); ?>
                 <input type="hidden" name="delete_id" value="<?php echo h($search['id']); ?>">
-                <button type="submit" aria-label="Delete saved search" style="background:none; border:none; cursor:pointer; color:#e0524d; font-size:18px; line-height:1;">&#10005;</button>
+                <button type="submit" class="us-delete-btn" aria-label="Delete saved search">&#10005;</button>
               </form>
             </div>
           </div>
@@ -227,18 +240,9 @@ $activeSidebar = 'savedsearches';
                 Find, stay, relax, at home. RoomHive helps you discover
                 comfortable stays across Negros Oriental.
             </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
 
         <div class="footer-links">
@@ -272,5 +276,31 @@ $activeSidebar = 'savedsearches';
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<script>
+(function () {
+    "use strict";
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+})();
+</script>
+
 </body>
 </html>

@@ -2,33 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    helpcenter.php
-
-   FAQ accordion plus a "contact support" form. Assumes a
-   `support_tickets` table (id, user_id, subject, message,
-   status, created_at) to record submissions — adjust the
-   INSERT below if the real schema names these differently.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -41,16 +30,12 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-/* -----------------------------------------------------
-   FAQ CONTENT
-   Static for now — move to a `faqs` table later if these
-   need to be editable from an admin screen.
------------------------------------------------------ */
-$faqs = [
+/* FAQ CONTENT */
+ $faqs = [
     ['q' => 'How do I book a stay?', 'a' => 'Open a listing you like and send a booking request with your dates. The host has 24 hours to accept or decline before the request expires.'],
     ['q' => 'When am I charged for a booking?', 'a' => 'Nothing is charged while a booking sits at "Pending." Once the host accepts, the charge goes through and the booking moves to "Confirmed."'],
     ['q' => 'How do I cancel a booking?', 'a' => 'Go to My Bookings, open the booking, and choose Cancel. Refund amounts depend on the listing\'s cancellation policy, shown on the listing page.'],
@@ -59,11 +44,9 @@ $faqs = [
     ['q' => 'How do I change my password?', 'a' => 'Go to Profile & Account, then Manage Security, to set a new password.'],
 ];
 
-/* -----------------------------------------------------
-   CONTACT SUPPORT — SUBMIT
------------------------------------------------------ */
-$errors = [];
-$sent = false;
+/* CONTACT SUPPORT — SUBMIT */
+ $errors = [];
+ $sent = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
@@ -94,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$activeSidebar = 'help';
+ $activeSidebar = 'help';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -105,6 +88,8 @@ $activeSidebar = 'help';
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -148,16 +133,47 @@ $activeSidebar = 'help';
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Help Center</p>
-    <h1>How can we help, <?php echo h($dbUser['name']); ?>?</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Answers to common questions, or send our team a message directly.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Help Center
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                How can we <span class="up-shimmer">help</span>?
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Answers to common questions, or send our team
+                a message directly.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
@@ -169,20 +185,19 @@ $activeSidebar = 'help';
     <div class="up-two-col">
 
       <!-- FAQ -->
-      <section class="up-card up-bookings-card">
+      <section class="up-card up-reveal">
         <div class="up-card-header">
           <h3>Frequently Asked Questions</h3>
         </div>
 
         <div class="up-faq-list">
           <?php foreach ($faqs as $i => $faq): ?>
-            <div class="up-faq-item" style="border-bottom:1px solid var(--up-border);">
-              <button type="button" class="up-faq-question js-faq-toggle"
-                      style="width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:14px 4px; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:14px; font-weight:700; color:var(--up-navy, #1c2a38);">
+            <div class="up-faq-item<?php echo $i === 0 ? ' open' : ''; ?>">
+              <button type="button" class="up-faq-question js-faq-toggle" aria-expanded="<?php echo $i === 0 ? 'true' : 'false'; ?>">
                 <span><?php echo h($faq['q']); ?></span>
-                <span class="up-faq-caret" style="transition:transform .15s; flex-shrink:0;">&#9662;</span>
+                <span class="up-faq-caret">&#9662;</span>
               </button>
-              <div class="up-faq-answer" style="display:none; padding:0 4px 16px; font-size:13.5px; color:#555555; line-height:1.5;">
+              <div class="up-faq-answer">
                 <?php echo h($faq['a']); ?>
               </div>
             </div>
@@ -192,30 +207,32 @@ $activeSidebar = 'help';
 
       <!-- CONTACT SUPPORT -->
       <div class="up-right-col">
-        <div class="up-card up-account-security">
+
+        <div class="up-card up-reveal" style="--i: 1;">
           <div class="up-card-header">
             <h3>Contact Support</h3>
           </div>
 
           <?php if ($sent): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:13px; margin-bottom:14px;">
-              Message sent — our team will reply to <?php echo h($dbUser['email']); ?> soon.
+            <div class="up-alert up-alert-success" style="margin-bottom:16px;">
+              <p>&#10003; Message sent — our team will reply to <?php echo h($dbUser['email']); ?> soon.</p>
             </div>
           <?php endif; ?>
 
           <?php if (!empty($errors)): ?>
-            <div style="padding:12px 14px; border-radius:8px; background:#fdeceb; border:1px solid #e0524d; color:#a1332e; font-size:13px; margin-bottom:14px;">
+            <div class="up-alert up-alert-error" style="margin-bottom:16px;">
               <?php foreach ($errors as $error): ?>
-                <p style="margin:0;"><?php echo h($error); ?></p>
+                <p><?php echo h($error); ?></p>
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
 
-          <form method="POST" action="/webprogg/user/helpcenter.php" style="display:flex; flex-direction:column; gap:12px;">
+          <form method="POST" action="/webprogg/user/helpcenter.php" style="display:flex; flex-direction:column; gap:16px;">
             <?php echo csrf_field(); ?>
-            <label style="display:block;">
-              <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Subject</span>
-              <select name="subject" required style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
+
+            <div class="up-field">
+              <label for="hcSubject">Subject</label>
+              <select id="hcSubject" name="subject" required>
                 <option value="">Choose a topic</option>
                 <option value="Booking issue">Booking issue</option>
                 <option value="Payment issue">Payment issue</option>
@@ -223,25 +240,25 @@ $activeSidebar = 'help';
                 <option value="Hive Club">Hive Club</option>
                 <option value="Other">Other</option>
               </select>
-            </label>
+            </div>
 
-            <label style="display:block;">
-              <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Message</span>
-              <textarea name="message" rows="5" required placeholder="Tell us what's going on..."
-                        style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box; resize:vertical;"></textarea>
-            </label>
+            <div class="up-field">
+              <label for="hcMessage">Message</label>
+              <textarea id="hcMessage" name="message" rows="5" required placeholder="Tell us what's going on..."></textarea>
+            </div>
 
             <button type="submit" class="up-btn-solid">SEND MESSAGE</button>
           </form>
         </div>
 
-        <div class="up-card up-account-security">
+        <div class="up-card up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3>Other Ways to Reach Us</h3>
           </div>
-          <p style="font-size:13px; color:#555555; margin:0 0 8px;">&#128222; 0927 569 3574</p>
-          <p style="font-size:13px; color:#555555; margin:0;">&#9993; kimdivino55@gmail.com</p>
+          <p style="font-size:13px; color:var(--up-ink-soft, #5d6875); margin:0 0 8px;">&#128222; 0927 569 3574</p>
+          <p style="font-size:13px; color:var(--up-ink-soft, #5d6875); margin:0;">&#9993; kimdivino55@gmail.com</p>
         </div>
+
       </div>
 
     </div>
@@ -258,18 +275,9 @@ $activeSidebar = 'help';
                 Find, stay, relax, at home. RoomHive helps you discover
                 comfortable stays across Negros Oriental.
             </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
 
         <div class="footer-links">
@@ -304,18 +312,41 @@ $activeSidebar = 'help';
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
-<!-- FAQ accordion -->
+<!-- Reveal + FAQ accordion -->
 <script>
-document.querySelectorAll('.js-faq-toggle').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-        const answer = btn.nextElementSibling;
-        const caret = btn.querySelector('.up-faq-caret');
-        const isOpen = answer.style.display === 'block';
+(function () {
+    "use strict";
 
-        answer.style.display = isOpen ? 'none' : 'block';
-        caret.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+
+    /* FAQ accordion — toggles a class; CSS handles the rest */
+    document.querySelectorAll(".js-faq-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var item = btn.closest(".up-faq-item");
+            var isOpen = item.classList.toggle("open");
+            btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        });
     });
-});
+})();
 </script>
+
 </body>
 </html>

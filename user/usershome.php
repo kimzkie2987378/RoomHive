@@ -36,27 +36,27 @@ if (isset($_SESSION['user_id'])) {
 /* Same staleness reasoning as is_host above: the navbar's
    account icon should reflect a freshly-uploaded profile photo
    without requiring the user to log out and back in. */
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 /* Notification bell badge count — same placeholder used across
    every logged-in page's navbar until real notifications land. */
-$notification_count = 0;
+ $notification_count = 0;
 
 /*
  * Get the logged-in user's name.
  */
-$userName = $_SESSION['user_name'] ?? 'User';
+ $userName = $_SESSION['user_name'] ?? 'User';
 
 // Current page (used to compute the "active" nav class dynamically,
 // the same pattern becomeahost.php uses)
-$currentPage = '/webprogg/user/usershome.php';
+ $currentPage = '/webprogg/user/usershome.php';
 
 
   // =========================
   // PAGE DATA Users Home
   // =========================
 
-$navLinks = [
+ $navLinks = [
     ['label' => 'HOME', 'href' => '/webprogg/user/usershome.php'],
     ['label' => 'LISTINGS', 'href' => '/webprogg/Listings/listing.php'],
     ['label' => 'HOW IT WORKS', 'href' => '/webprogg/host/howitworks.php'],
@@ -65,7 +65,7 @@ $navLinks = [
     ['label' => 'CONTACTS', 'href' => '/webprogg/misc/contacts.php'],
 ];
 
-$listings = [
+ $listings = [
     ['name' => 'STUDIO LOFT',     'image' => '/webprogg/images/StudioLoft.png',    'type' => 'studio-loft'],
     ['name' => 'SHARED ROOM',     'image' => '/webprogg/images/SharedBedroom.png', 'type' => 'shared-bedroom'],
     ['name' => 'ENTIRE HOUSE',    'image' => '/webprogg/images/EntireHouse.png',   'type' => 'entire-house'],
@@ -74,7 +74,7 @@ $listings = [
     ['name' => 'APARTMENT',       'image' => '/webprogg/images/Apartment.png',     'type' => 'apartment'],
 ];
 
-$reasons = [
+ $reasons = [
     [
       'icon'  => '/webprogg/images/247SupportsIcons.png',
       'title' => '24/7 Support',
@@ -169,7 +169,16 @@ $reasons = [
     />
     <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css" />
-    <link rel="stylesheet" href="/webprogg/assets/style.css" />
+    <!-- CHANGED: motion & interaction layer — same as index.php.
+         Loads AFTER style.css so it can override it. This is what
+         powers scroll-reveal, the smart navbar, button ripples,
+         image fade-ins and the back-to-top button on this page. -->
+    <link rel="stylesheet" href="/webprogg/assets/motion.css" />
+
+    <!-- CHANGED: enables entrance animations only when JS is
+         available. Without JS, the page renders fully visible /
+         static. Same inline flag index.php uses. -->
+    <script>document.documentElement.classList.add("js-animations");</script>
   </head>
  
   <body>
@@ -558,5 +567,5 @@ $reasons = [
 
     <script src="/webprogg/assets/javaScript.js"></script>
   </body>
-  
+   
  </html>

@@ -2,33 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    userpayments.php
-
-   Full payment history for the logged-in user: every booking
-   charge and every paid/pending Hive Club transaction, merged
-   into one chronological list, plus the same totals shown on
-   the Overview page and a Payment Methods manager.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA (same shape as userprofile.php, trimmed to
-   what the navbar/sidebar/host-redirect actually need)
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -41,31 +30,23 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
-$_SESSION['is_host'] = (bool) $dbUser['is_host'];
+/* FIX: was setting $_SESSION by hand — sync_user_session()
+   does avatar + is_host consistently with every other page. */
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
-/* -----------------------------------------------------
-   BOOKING CHARGES
-   Every booking that isn't cancelled counts as a real
-   payment line, same rule as the Overview totals use.
------------------------------------------------------ */
-$bookingsStmt = $pdo->prepare(
+/* BOOKING CHARGES */
+ $bookingsStmt = $pdo->prepare(
     "SELECT b.id, b.total, b.status, b.booked_at, l.title
      FROM bookings b
      JOIN listings l ON l.id = b.listing_id
      WHERE b.user_id = :id AND b.status != 'cancelled'
      ORDER BY b.booked_at DESC"
 );
-$bookingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $bookingsStmt->execute(['id' => $_SESSION['user_id']]);
 
-$bookingPayments = array_map(function ($row) {
+ $bookingPayments = array_map(function ($row) {
     return [
         'type'   => 'Booking',
         'label'  => $row['title'],
@@ -75,18 +56,16 @@ $bookingPayments = array_map(function ($row) {
     ];
 }, $bookingsStmt->fetchAll());
 
-/* -----------------------------------------------------
-   HIVE CLUB TRANSACTIONS
------------------------------------------------------ */
-$txnStmt = $pdo->prepare(
+/* HIVE CLUB TRANSACTIONS */
+ $txnStmt = $pdo->prepare(
     "SELECT amount, purchased_at, payment_status
      FROM hiveclub_transactions
      WHERE user_id = :id
      ORDER BY purchased_at DESC"
 );
-$txnStmt->execute(['id' => $_SESSION['user_id']]);
+ $txnStmt->execute(['id' => $_SESSION['user_id']]);
 
-$membershipPayments = array_map(function ($row) {
+ $membershipPayments = array_map(function ($row) {
     return [
         'type'   => 'Hive Club',
         'label'  => 'Membership payment',
@@ -96,25 +75,18 @@ $membershipPayments = array_map(function ($row) {
     ];
 }, $txnStmt->fetchAll());
 
-/* -----------------------------------------------------
-   MERGE + SORT
-   Both lists are already date-desc individually; merge
-   then re-sort the combined set by date desc.
------------------------------------------------------ */
-$paymentHistory = array_merge($bookingPayments, $membershipPayments);
+/* MERGE + SORT */
+ $paymentHistory = array_merge($bookingPayments, $membershipPayments);
 usort($paymentHistory, function ($a, $b) {
     return strtotime($b['date']) <=> strtotime($a['date']);
 });
 
-/* -----------------------------------------------------
-   TOTALS
-   Same math as Overview: this week / all time / pending.
------------------------------------------------------ */
-$oneWeekAgo = strtotime('-7 days');
+/* TOTALS */
+ $oneWeekAgo = strtotime('-7 days');
 
-$spent_this_week = 0;
-$spent_all_time  = 0;
-$pending_to_pay  = 0;
+ $spent_this_week = 0;
+ $spent_all_time  = 0;
+ $pending_to_pay  = 0;
 
 foreach ($paymentHistory as $p) {
     if ($p['status'] === 'pending') {
@@ -127,13 +99,10 @@ foreach ($paymentHistory as $p) {
     }
 }
 
-/* -----------------------------------------------------
-   PAYMENT METHODS
-   New site — nobody has saved a card yet. Once a real
-   payments flow exists, replace with:
-   SELECT * FROM payment_methods WHERE user_id = ?
------------------------------------------------------ */
-$payment_methods = [];
+/* PAYMENT METHODS */
+ $payment_methods = [];
+
+ $activeSidebar = 'payments';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -144,6 +113,8 @@ $payment_methods = [];
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -160,7 +131,8 @@ $payment_methods = [];
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
-        <a href="notifications.php" class="nav-bell">
+        <!-- FIX: was relative "notifications.php" -->
+        <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
@@ -187,93 +159,80 @@ $payment_methods = [];
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Payments</p>
-    <h1>Your payment history</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Every booking charge and Hive Club payment, all in one place.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Payments
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                Your payment <span class="up-shimmer">history</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Every booking charge and Hive Club payment,
+                all in one place.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/totalspenticon-userprofile.png" alt="" style="object-fit:contain; background:transparent; box-shadow:none;">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
 
-  <aside class="up-sidebar">
-    <a href="/webprogg/user/userprofile.php" class="up-side-link">
-      <img src="/webprogg/images/overviewicon-userprofile.png" alt="">
-      Overview
-    </a>
-    <a href="/webprogg/booking/userbookings.php" class="up-side-link">
-      <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-      My Bookings
-    </a>
-    <a href="/webprogg/user/userwishlist.php" class="up-side-link">
-      <img src="/webprogg/images/wihlistedicon-userprofile.png" alt="">
-      Wishlist
-    </a>
-    <a href="userpayments.php" class="up-side-link active">
-      <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
-      Payments
-    </a>
-    <a href="userreviews.php" class="up-side-link">
-      <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
-      Reviews
-    </a>
-    <a href="usermessages.php" class="up-side-link">
-      <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
-      Messages
-    </a>
-    <a href="editprofile.php" class="up-side-link">
-      <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
-      Profile &amp; Account
-    </a>
-    <a href="security.php" class="up-side-link">
-      <img src="/webprogg/images/lockicon-userprofile.png" alt="">
-      Settings
-    </a>
-    <a href="usernotificationsettings.php" class="up-side-link">
-      <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
-      Notification Settings
-    </a>
-    <a href="savedsearches.php" class="up-side-link">
-      <img src="/webprogg/images/savedsearchesicon-userprofile.png" alt="">
-      Saved Searches
-    </a>
-    <a href="helpcenter.php" class="up-side-link">
-      <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-      Help Center
-    </a>
-    <a href="/webprogg/auth/logout.php" class="up-side-link up-side-logout">
-      <img src="/webprogg/images/logouticon-userprofile.png" alt="">
-      Log Out
-    </a>
-  </aside>
+  <?php
+  /* FIX: the hand-rolled sidebar here pointed at several files
+     that don't exist (savedsearches.php, helpcenter.php, etc).
+     The shared partial is the single source of truth. */
+  require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
+  ?>
 
   <div class="up-content">
 
-    <!-- TOTALS ROW -->
+    <!-- TOTALS ROW (with money count-ups) -->
     <section class="up-stats">
-      <div class="up-stat-card">
+      <div class="up-stat-card up-reveal" style="--i: 0;">
         <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
         <div>
-          <strong>&#8369; <?php echo h(number_format($spent_this_week, 2)); ?></strong>
+          <strong>&#8369; <span data-count="<?php echo h($spent_this_week); ?>" data-decimals="2"><?php echo h(number_format($spent_this_week, 2)); ?></span></strong>
           <span>Spent This Week</span>
         </div>
       </div>
-      <div class="up-stat-card">
+      <div class="up-stat-card up-reveal" style="--i: 1;">
         <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
         <div>
-          <strong>&#8369; <?php echo h(number_format($spent_all_time, 2)); ?></strong>
+          <strong>&#8369; <span data-count="<?php echo h($spent_all_time); ?>" data-decimals="2"><?php echo h(number_format($spent_all_time, 2)); ?></span></strong>
           <span>Total Spent All Time</span>
         </div>
       </div>
-      <div class="up-stat-card">
+      <div class="up-stat-card up-reveal" style="--i: 2;">
         <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
         <div>
-          <strong>&#8369; <?php echo h(number_format($pending_to_pay, 2)); ?></strong>
+          <strong>&#8369; <span data-count="<?php echo h($pending_to_pay); ?>" data-decimals="2"><?php echo h(number_format($pending_to_pay, 2)); ?></span></strong>
           <span>Pending to Pay</span>
         </div>
       </div>
@@ -282,7 +241,7 @@ $payment_methods = [];
     <div class="up-two-col">
 
       <!-- PAYMENT HISTORY -->
-      <div class="up-card up-bookings-card">
+      <div class="up-card up-bookings-card up-reveal" style="--i: 1;">
         <div class="up-card-header">
           <h3>Payment History</h3>
         </div>
@@ -298,7 +257,7 @@ $payment_methods = [];
         <?php else: ?>
 
           <?php foreach ($paymentHistory as $payment): ?>
-            <div class="up-booking-row" style="cursor:default;">
+            <div class="up-booking-row up-row-static">
               <div class="up-booking-info">
                 <h4><?php echo h($payment['label']); ?></h4>
                 <p class="up-booking-location"><?php echo h($payment['type']); ?></p>
@@ -319,17 +278,17 @@ $payment_methods = [];
         <?php endif; ?>
       </div>
 
-      <!-- PAYMENT METHODS -->
+      <!-- PAYMENT METHODS + HELP -->
       <div class="up-right-col">
-        <div class="up-card up-payment-methods">
+        <div class="up-card up-payment-methods up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3>Payment Methods</h3>
           </div>
 
           <?php if (empty($payment_methods)): ?>
-            <div class="up-payment-methods-empty" style="text-align:center; padding:20px 8px; color:#777777;">
-              <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38);">No payment methods yet</p>
-              <p style="margin:0; font-size:13px;">Add a card to make booking faster.</p>
+            <div class="up-payment-methods-empty">
+              <p>No payment methods yet</p>
+              <p>Add a card to make booking faster.</p>
             </div>
           <?php else: ?>
             <?php foreach ($payment_methods as $method): ?>
@@ -346,11 +305,11 @@ $payment_methods = [];
           <button type="button" class="up-btn-outline up-add-card">+ Add New Card</button>
         </div>
 
-        <div class="up-need-help">
+        <div class="up-need-help up-reveal" style="--i: 3;">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Questions about a charge? We're here 24/7.</p>
-            <a href="helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
+            <a href="/webprogg/misc/contacts.php" class="up-btn-solid">CONTACT SUPPORT</a>
           </div>
           <img src="/webprogg/images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
         </div>
@@ -415,5 +374,69 @@ $payment_methods = [];
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<!-- Reveal + money count-up (self-contained) -->
+<script>
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    /* Scroll reveal */
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+
+    /* Money count-up */
+    var counters = document.querySelectorAll("[data-count]");
+    if (counters.length && !reduced && "IntersectionObserver" in window) {
+        var countIo = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    countIo.unobserve(el);
+
+                    var target = parseFloat(el.getAttribute("data-count")) || 0;
+                    var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
+                    var t0 = null;
+                    var DURATION = 1300;
+
+                    var stepFn = function (ts) {
+                        if (!t0) t0 = ts;
+                        var k = Math.min((ts - t0) / DURATION, 1);
+                        var eased = 1 - Math.pow(1 - k, 3);
+                        el.textContent = (target * eased).toLocaleString(
+                            undefined,
+                            { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+                        );
+                        if (k < 1) window.requestAnimationFrame(stepFn);
+                    };
+
+                    window.requestAnimationFrame(stepFn);
+                });
+            },
+            { threshold: 0.6 }
+        );
+        Array.prototype.forEach.call(counters, function (el) { countIo.observe(el); });
+    }
+})();
+</script>
+
 </body>
 </html>

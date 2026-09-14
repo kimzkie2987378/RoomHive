@@ -23,7 +23,6 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
 
 }
 
-
 /*
  * =========================================================
  * STEP 1 CHECK
@@ -89,25 +88,12 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
 }
 
-
-/*
- * Whether the user is logged in (always true past the
- * check above, but kept as a variable for the nav pattern
- * used across pages).
- */
-
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
-
-/*
- * Get the logged-in user's name.
- * This can be used anywhere on the page if needed.
- */
-
-$userName = $_SESSION["user_name"] ?? "User";
+ $userName = $_SESSION["user_name"] ?? "User";
 
 /*
  * NAVBAR AVATAR
@@ -116,31 +102,30 @@ $userName = $_SESSION["user_name"] ?? "User";
  * so the navbar's account icon reflects it immediately instead
  * of only after logging back in.
  */
-$avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
-$avatarStmt->execute(['id' => $_SESSION['user_id']]);
-$avatarRow = $avatarStmt->fetch();
-$_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+ $avatarStmt->execute(['id' => $_SESSION['user_id']]);
+ $avatarRow = $avatarStmt->fetch();
+ $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 /* Notification bell badge count — same placeholder used across
    every logged-in page's navbar until real notifications land. */
-$notification_count = 0;
-
+ $notification_count = 0;
 
 // Current page (kept as becomeahost.php so the nav /
 // footer "BECOME A HOST" link stays highlighted while the
 // user moves through the multi-step host registration flow)
-$currentPage = "/webprogg/host/becomeahost.php";
-$isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
+ $currentPage = "/webprogg/host/becomeahost.php";
+ $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
 
 // The step currently active in the host-steps tracker
-$currentStep = 2;
+ $currentStep = 2;
 
 // =========================================================
 // NAVIGATION
 // =========================================================
 
-$navigation = [
+ $navigation = [
     "HOME" => "/webprogg/user/usershome.php",
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
@@ -149,12 +134,11 @@ $navigation = [
     "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
 
-
 // =========================================================
 // HOSTING STEPS
 // =========================================================
 
-$hostSteps = [
+ $hostSteps = [
 
     [
         "number" => 1,
@@ -190,52 +174,40 @@ $hostSteps = [
 
 ];
 
-
 // =========================================================
 // LISTING CATEGORIES
 // =========================================================
 
-$listingCategories = [
+ $listingCategories = [
 
     "Shared Bedroom" => "shared-bedroom",
-
     "Private Room" => "private-room",
-
     "Entire House" => "entire-house",
-
     "Boarding House" => "boarding-house",
-
     "Studio Loft" => "studio-loft"
 
 ];
-
 
 // =========================================================
 // PROPERTY TYPES
 // =========================================================
 
-$propertyTypes = [
+ $propertyTypes = [
 
     "Apartment" => "apartment",
-
     "Condominium" => "condominium",
-
     "House" => "house",
-
     "Townhouse" => "townhouse",
-
     "Dormitory" => "dormitory",
-
     "Boarding House" => "boarding-house"
 
 ];
-
 
 // =========================================================
 // CAPACITY OPTIONS
 // =========================================================
 
-$capacityOptions = [
+ $capacityOptions = [
     "1" => "1 Guest",
     "2" => "2 Guests",
     "3" => "3 Guests",
@@ -247,17 +219,15 @@ $capacityOptions = [
     "10+" => "More than 10 Guests"
 ];
 
-
 // =========================================================
 // PARKING LOT OPTIONS
 // (mirrors the "Parking Lot" row on the listing detail page)
 // =========================================================
 
-$parkingOptions = [
+ $parkingOptions = [
     "Yes" => "Yes, parking available",
     "No"  => "No parking available"
 ];
-
 
 // =========================================================
 // AMENITIES
@@ -265,7 +235,7 @@ $parkingOptions = [
 // the host selects here shows up there exactly as-is)
 // =========================================================
 
-$amenityOptions = [
+ $amenityOptions = [
 
     "wifi" => [
         "label" => "Wi-fi",
@@ -299,34 +269,27 @@ $amenityOptions = [
 
 ];
 
-
 // =========================================================
 // QUICK LINKS
 // =========================================================
 
-$quickLinks = [
+ $quickLinks = [
 
     "About Us" => "/webprogg/index.php",
-
     "How It Works" => "/webprogg/host/howitworks.php",
-
     "Become a Host" => "/webprogg/host/becomeahost.php",
-
     "Hive Club" => "/webprogg/hiveclub.php",
-
     "Contacts" => "/webprogg/misc/contacts.php"
 
 ];
-
 
 // =========================================================
 // FORM PROCESSING
 // =========================================================
 
-$errors = [];
+ $errors = [];
 
-$success = false;
-
+ $success = false;
 
 // Process form when submitted
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -358,7 +321,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         array_intersect($selectedAmenities, array_keys($amenityOptions))
     );
 
-
     // =====================================================
     // VALIDATION
     // =====================================================
@@ -367,66 +329,53 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $errors[] = "Please enter a title for your space.";
     }
 
-
     if ($category === "" || !in_array($category, $listingCategories, true)) {
         $errors[] = "Please select a category.";
     }
-
 
     if ($propertyType === "" || !in_array($propertyType, $propertyTypes, true)) {
         $errors[] = "Please select a property type.";
     }
 
-
     if ($location === "") {
         $errors[] = "Please enter the location of your space.";
     }
-
 
     if ($exactAddress === "") {
         $errors[] = "Please enter the exact address.";
     }
 
-
     if ($price === "" || !is_numeric($price) || (float) $price <= 0) {
         $errors[] = "Please enter a valid price per month.";
     }
-
 
     if ($capacity === "" || !array_key_exists($capacity, $capacityOptions)) {
         $errors[] = "Please select the maximum number of guests.";
     }
 
-
     if ($bedrooms === "" || !is_numeric($bedrooms) || (int) $bedrooms <= 0) {
         $errors[] = "Please enter the number of bedrooms.";
     }
-
 
     if ($bathrooms === "" || !is_numeric($bathrooms) || (int) $bathrooms <= 0) {
         $errors[] = "Please enter the number of bathrooms.";
     }
 
-
     if ($sizeSqm === "" || !is_numeric($sizeSqm) || (float) $sizeSqm <= 0) {
         $errors[] = "Please enter the size of your space in square meters.";
     }
-
 
     if ($floor === "") {
         $errors[] = "Please enter which floor your space is on.";
     }
 
-
     if ($parking === "" || !array_key_exists($parking, $parkingOptions)) {
         $errors[] = "Please let renters know if parking is available.";
     }
 
-
     if ($description === "") {
         $errors[] = "Please describe your space.";
     }
-
 
     // =====================================================
     // IF VALID
@@ -499,24 +448,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["host_application"]["description"] = $description;
         $_SESSION["host_application"]["house_rules"] = $houseRules;
 
-
         // Go to next host registration step
         header("Location: /webprogg/host/host-step3.php");
-
         exit;
 
     }
 
 }
 
-
 // Convenience helper for re-populating the form after a
 // failed submission without losing what the user typed.
-$old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
+ $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
 
 // Convenience helper for re-checking an amenity checkbox
 // after a failed submission.
-$amenityChecked = fn(string $key): string =>
+ $amenityChecked = fn(string $key): string =>
     in_array($key, $_POST["amenities"] ?? [], true) ? "checked" : "";
 
 ?>
@@ -537,51 +483,65 @@ $amenityChecked = fn(string $key): string =>
         RoomHive - Add Your Space
     </title>
 
-
-    <!-- =====================================================
-         POPPINS FONT
-    ====================================================== -->
-
+    <!-- POPPINS FONT -->
     <link
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
-
-    <!-- =====================================================
-         MAIN CSS
-    ====================================================== -->
-
+    <!-- MAIN CSS -->
     <link
         rel="stylesheet"
         href="/webprogg/assets/style.css"
     >
 
+    <!-- NEW: enables JS-gated entrance animations -->
+    <script>document.documentElement.classList.add("js");</script>
 
     <!-- =====================================================
          STEP 2 — MODERNIZED PAGE STYLES
-         Scoped to this page's own class names so the shared
-         navbar / footer defined in style.css are untouched.
+         CHANGED: palette aligned to the site-wide hive
+         tokens (honey #eda423 / moss #2f9e5b / ink #1c2a38),
+         honeycomb texture + glow blobs, hero badge + shimmer,
+         centered header, upgraded error banner, gradient CTA
+         with shine sweep, refined reduced-motion rules. All
+         functional rules (stepper, inputs, chips, preview)
+         are preserved.
     ====================================================== -->
 
     <style>
 
         :root {
-            --hive-ink: #17302B;
-            --hive-ink-soft: #4B5D58;
-            --hive-paper: #F5F6F1;
+            --hive-ink: #1c2a38;
+            --hive-ink-soft: #5d6875;
+            --hive-paper: #faf6ee;
             --hive-surface: #FFFFFF;
-            --hive-line: #DEDCD1;
-            --hive-honey: #E2A63B;
-            --hive-honey-dark: #C4871F;
-            --hive-moss: #4F7A5B;
-            --hive-danger: #B3452F;
-            --hive-radius: 14px;
-            --hive-shadow: 0 18px 40px -22px rgba(23, 48, 43, 0.35);
+            --hive-line: #e8e1cf;
+            --hive-honey: #eda423;
+            --hive-honey-dark: #d99218;
+            --hive-honey-light: #f6c04e;
+            --hive-moss: #2f9e5b;
+            --hive-danger: #a1332e;
+            --hive-radius: 16px;
+            --hive-shadow: 0 18px 40px -22px rgba(28, 42, 56, 0.35);
         }
 
         @media (prefers-reduced-motion: reduce) {
-            * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+            .hive-blob,
+            .hive-pulse-dot::after,
+            .hive-shimmer,
+            .rh-step2 .next-button::after {
+                animation: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+            }
+            .js .rh-step2 .host-header,
+            .js .rh-step2 .host-form-card,
+            .js .rh-step2 .form-errors {
+                animation: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+            }
         }
 
         body.rh-step2 {
@@ -595,48 +555,189 @@ $amenityChecked = fn(string $key): string =>
 
         .rh-step2 main.host-page,
         main.host-page {
+            position: relative;
+
             max-width: 1160px;
             margin: 0 auto;
             padding: 56px 24px 96px;
         }
 
-        /* ---------- HEADER ---------- */
+        /* ---------- NEW: honeycomb texture + glow blobs ---------- */
 
-        .rh-step2 .host-header {
-            max-width: 720px;
-            margin: 0 auto 48px;
-            text-align: left;
+        .rh-step2 main.host-page::before {
+            content: "";
+
+            position: absolute;
+            inset: 0;
+
+            background-image: url("data:image/svg+xml,%3Csvg width='28' height='49' viewBox='0 0 28 49' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23eda423' fill-opacity='0.07' fill-rule='nonzero'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/svg%3E");
+            background-size: 28px 49px;
+
+            -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 50%);
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 50%);
+
+            pointer-events: none;
+
+            z-index: 0;
         }
 
-        .rh-step2 .host-eyebrow {
+        .rh-step2 main.host-page > * {
+            position: relative;
+
+            z-index: 1;
+        }
+
+        .hive-blob {
+            position: absolute;
+
+            border-radius: 50%;
+            filter: blur(70px);
+
+            pointer-events: none;
+
+            z-index: 0;
+        }
+
+        .hive-blob-1 {
+            width: 360px;
+            height: 360px;
+
+            top: -150px;
+            right: -130px;
+
+            background: radial-gradient(circle at 30% 30%, rgba(246, 196, 78, 0.8), rgba(237, 164, 35, 0.22) 60%, transparent 75%);
+
+            animation: hiveDrift 14s ease-in-out infinite alternate;
+        }
+
+        .hive-blob-2 {
+            width: 260px;
+            height: 260px;
+
+            top: 420px;
+            left: -150px;
+
+            background: radial-gradient(circle at 60% 40%, rgba(246, 196, 78, 0.6), rgba(237, 164, 35, 0.18) 60%, transparent 75%);
+
+            animation: hiveDrift 18s ease-in-out infinite alternate-reverse;
+        }
+
+        @keyframes hiveDrift {
+            from { transform: translate(0, 0) scale(1); }
+            to   { transform: translate(30px, -24px) scale(1.08); }
+        }
+
+        /* ---------- entrance (one orchestrated reveal) ---------- */
+
+        @keyframes hiveRise {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .js .rh-step2 .host-header,
+        .js .rh-step2 .host-form-card {
+            animation: hiveRise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .js .rh-step2 .host-form-card { animation-delay: 0.1s; }
+
+        /* ---------- NEW: hero badge + shimmer ---------- */
+
+        .rh-step2 .hero-badge {
             display: inline-flex;
             align-items: center;
             gap: 8px;
+
+            padding: 8px 16px;
+
+            background: #ffffff;
+
+            border: 1px solid rgba(237, 164, 35, 0.35);
+            border-radius: 999px;
+
+            box-shadow: 0 4px 14px rgba(237, 164, 35, 0.12);
+
+            color: #b07708;
+
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .hive-pulse-dot {
+            position: relative;
+
+            width: 8px;
+            height: 8px;
+
+            background: var(--hive-honey);
+            border-radius: 50%;
+        }
+
+        .hive-pulse-dot::after {
+            content: "";
+
+            position: absolute;
+            inset: 0;
+
+            background: var(--hive-honey);
+            border-radius: 50%;
+
+            animation: hivePing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes hivePing {
+            0%   { transform: scale(1); opacity: 0.7; }
+            80%, 100% { transform: scale(2.6); opacity: 0; }
+        }
+
+        .hive-shimmer {
+            background: linear-gradient(92deg, #eda423 0%, #f6c04e 45%, #eda423 90%);
+            background-size: 200% auto;
+
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+
+            animation: hiveShimmer 3.5s linear infinite;
+        }
+
+        @keyframes hiveShimmer {
+            to { background-position: 200% center; }
+        }
+
+        /* ---------- HEADER (CHANGED: centered to match step 1) ---------- */
+
+        .rh-step2 .host-header {
+            max-width: 860px;
+            margin: 0 auto 48px;
+            text-align: center;
+        }
+
+        .rh-step2 .host-eyebrow {
+            display: block;
+
+            margin-top: 18px;
+
             font-size: 13px;
             font-weight: 600;
             letter-spacing: 0.01em;
             color: var(--hive-honey-dark);
-            text-transform: none;
-        }
-
-        .rh-step2 .host-eyebrow::before {
-            content: "";
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--hive-honey);
-            display: inline-block;
+            text-transform: uppercase;
         }
 
         .rh-step2 .host-header h1 {
             font-size: clamp(28px, 4vw, 36px);
             line-height: 1.2;
-            font-weight: 700;
+            font-weight: 800;
+            letter-spacing: -0.6px;
             margin: 10px 0 0;
             color: var(--hive-ink);
         }
 
-        /* ---------- STEPPER ---------- */
+        /* ---------- STEPPER (kept — now centered) ---------- */
 
         .rh-step2 .host-steps {
             display: grid;
@@ -645,12 +746,6 @@ $amenityChecked = fn(string $key): string =>
             margin-top: 40px;
             position: relative;
         }
-
-        /* Single connector spanning from the center of the first
-           circle to the center of the last one — with 4 equal 25%
-           columns, a circle's center sits at 12.5% / 37.5% / 62.5% /
-           87.5%, so a flat 12.5% inset on each side lines the track
-           up under every circle with no per-segment math. */
 
         .rh-step2 .host-steps-track {
             position: absolute;
@@ -667,7 +762,7 @@ $amenityChecked = fn(string $key): string =>
             top: 26px;
             left: 12.5%;
             height: 2px;
-            background: var(--hive-moss);
+            background: linear-gradient(90deg, #f6b93b, var(--hive-honey));
             z-index: 1;
             transition: width 0.3s ease;
         }
@@ -710,7 +805,7 @@ $amenityChecked = fn(string $key): string =>
         .rh-step2 .host-step.active .step-circle {
             border-color: var(--hive-honey);
             background: #FDF4E3;
-            box-shadow: 0 0 0 4px rgba(226, 166, 59, 0.18);
+            box-shadow: 0 0 0 4px rgba(237, 164, 35, 0.18);
         }
 
         .rh-step2 .host-step.active .step-circle img {
@@ -727,11 +822,6 @@ $amenityChecked = fn(string $key): string =>
             opacity: 1;
             filter: brightness(0) invert(1);
         }
-
-        /* Badge is now nested inside .step-circle, so it's always
-           anchored to that circle's own box — every step's badge
-           ends up in exactly the same spot, regardless of column
-           width or icon aspect ratio. */
 
         .rh-step2 .step-number {
             position: absolute;
@@ -779,24 +869,53 @@ $amenityChecked = fn(string $key): string =>
             color: var(--hive-ink-soft);
         }
 
-        /* ---------- ERRORS ---------- */
+        /* ---------- ERRORS (CHANGED: heading + "!" bullets like step 1) ---------- */
 
         .rh-step2 .form-errors {
-            max-width: 720px;
+            max-width: 860px;
             margin: 0 auto 24px;
-            background: #FBECE6;
-            border: 1px solid #E7B7A6;
-            border-radius: 10px;
-            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: #fdf1f0;
+            border: 1px solid #f3c9c7;
+            border-radius: 14px;
+            padding: 16px 18px;
+            animation: hiveRise 0.35s ease both;
+        }
+
+        .rh-step2 .form-errors::before {
+            content: "We need a couple of fixes before continuing";
+            font-weight: 600;
+            color: #e0524d;
+            margin-bottom: 2px;
         }
 
         .rh-step2 .form-errors p {
-            margin: 4px 0;
+            margin: 0;
+            padding-left: 20px;
+            position: relative;
             font-size: 14px;
-            color: var(--hive-danger);
+            color: #7a2f2c;
         }
 
-        /* ---------- TWO-COLUMN LAYOUT ---------- */
+        .rh-step2 .form-errors p::before {
+            content: "!";
+            position: absolute;
+            left: 0;
+            top: 1px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #e0524d;
+            color: #fff;
+            font-size: 10px;
+            line-height: 14px;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        /* ---------- TWO-COLUMN LAYOUT (kept) ---------- */
 
         .rh-step2 .host-layout {
             display: grid;
@@ -804,12 +923,6 @@ $amenityChecked = fn(string $key): string =>
             gap: 32px;
             align-items: flex-start;
         }
-
-        /* The rail is the grid cell that reserves the 300px column;
-           the aside inside it gets pinned by JS (host-follow.js
-           logic below), which is more reliable than CSS position:
-           sticky when an ancestor further up the page controls
-           its own overflow. */
 
         .rh-step2 .listing-preview-rail {
             position: relative;
@@ -835,14 +948,35 @@ $amenityChecked = fn(string $key): string =>
         }
 
         .rh-step2 .form-heading h2 {
+            position: relative;
+
+            display: inline-block;
+
             font-size: 19px;
-            font-weight: 600;
+            font-weight: 700;
             margin: 0 0 4px;
             color: var(--hive-ink);
         }
 
+        /* NEW: gold accent bar under each section heading */
+        .rh-step2 .form-heading h2::after {
+            content: "";
+
+            position: absolute;
+
+            width: 38px;
+            height: 3px;
+
+            left: 0;
+            bottom: -8px;
+
+            background: linear-gradient(90deg, #f6b93b, var(--hive-honey));
+
+            border-radius: 2px;
+        }
+
         .rh-step2 .form-heading p {
-            margin: 0 0 24px;
+            margin: 18px 0 24px;
             font-size: 14px;
             color: var(--hive-ink-soft);
         }
@@ -898,8 +1032,8 @@ $amenityChecked = fn(string $key): string =>
             font-family: "Poppins", sans-serif;
             font-size: 14.5px;
             color: var(--hive-ink);
-            background: var(--hive-paper);
-            border: 1.5px solid var(--hive-line);
+            background: #fbfcfd;
+            border: 1.5px solid #e3e7ec;
             border-radius: 10px;
             padding: 12px 14px;
             width: 100%;
@@ -919,18 +1053,18 @@ $amenityChecked = fn(string $key): string =>
             outline: none;
             border-color: var(--hive-honey);
             background: var(--hive-surface);
-            box-shadow: 0 0 0 3px rgba(226, 166, 59, 0.22);
+            box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.22);
         }
 
         .rh-step2 input::placeholder,
         .rh-step2 textarea::placeholder {
-            color: #9AA39D;
+            color: #a5adb8;
         }
 
         .rh-step2 select {
             appearance: none;
             -webkit-appearance: none;
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%2317302B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%231c2a38' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
             background-repeat: no-repeat;
             background-position: right 14px center;
             padding-right: 36px;
@@ -964,7 +1098,8 @@ $amenityChecked = fn(string $key): string =>
             position: absolute;
             left: 14px;
             font-size: 14.5px;
-            color: var(--hive-ink-soft);
+            color: var(--hive-honey-dark);
+            font-weight: 700;
             pointer-events: none;
         }
 
@@ -1003,7 +1138,7 @@ $amenityChecked = fn(string $key): string =>
             pointer-events: none;
         }
 
-        /* ---------- AMENITY CHIPS ---------- */
+        /* ---------- AMENITY CHIPS (kept) ---------- */
 
         .rh-step2 .amenities-grid {
             display: flex;
@@ -1018,13 +1153,19 @@ $amenityChecked = fn(string $key): string =>
             padding: 10px 16px;
             border-radius: 999px;
             border: 1.5px solid var(--hive-line);
-            background: var(--hive-paper);
+            background: #fbfcfd;
             cursor: pointer;
             font-size: 13.5px;
             font-weight: 500;
             color: var(--hive-ink-soft);
-            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.15s ease;
             margin: 0;
+        }
+
+        .rh-step2 .amenity-checkbox:hover {
+            transform: translateY(-2px);
+
+            border-color: var(--hive-honey);
         }
 
         .rh-step2 .amenity-checkbox input {
@@ -1052,10 +1193,10 @@ $amenityChecked = fn(string $key): string =>
         }
 
         .rh-step2 .amenity-checkbox:has(input:focus-visible) {
-            box-shadow: 0 0 0 3px rgba(226, 166, 59, 0.3);
+            box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.3);
         }
 
-        /* ---------- ACTIONS ---------- */
+        /* ---------- ACTIONS (CHANGED: gradient CTA + styled BACK) ---------- */
 
         .rh-step2 .form-actions {
             display: flex;
@@ -1067,46 +1208,106 @@ $amenityChecked = fn(string $key): string =>
         }
 
         .rh-step2 .back-button {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--hive-ink-soft);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+
+            min-width: 120px;
+            height: 46px;
+
+            padding: 0 24px;
+
+            border: 1.5px solid #dfe4ea;
+            border-radius: 10px;
+
+            background: #ffffff;
+
+            color: var(--hive-ink);
+
+            font-family: "Poppins", sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+
             text-decoration: none;
-            padding: 12px 6px;
-            transition: color 0.15s ease;
+
+            transition:
+                border-color 0.2s ease,
+                color 0.2s ease,
+                transform 0.2s ease,
+                box-shadow 0.2s ease;
         }
 
         .rh-step2 .back-button:hover {
-            color: var(--hive-ink);
+            border-color: var(--hive-honey);
+
+            color: #b07708;
+
+            transform: translateX(-2px);
+
+            box-shadow: 0 8px 18px rgba(28, 42, 56, 0.08);
         }
 
         .rh-step2 .next-button {
+            position: relative;
+            overflow: hidden;
+
             font-family: "Poppins", sans-serif;
-            font-size: 14.5px;
-            font-weight: 600;
-            color: #1B1300;
-            background: var(--hive-honey);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--hive-ink);
+            background: linear-gradient(135deg, var(--hive-honey-light), var(--hive-honey));
             border: none;
             border-radius: 10px;
-            padding: 13px 30px;
+            padding: 13px 32px;
             cursor: pointer;
-            transition: background 0.15s ease, transform 0.1s ease;
+
+            box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35);
+
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .rh-step2 .next-button:hover {
-            background: var(--hive-honey-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45);
         }
 
         .rh-step2 .next-button:active {
-            transform: translateY(1px);
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* NEW: infinite shine sweep, matching steps 1, 3 and 4 */
+        .rh-step2 .next-button::after {
+            content: "";
+
+            position: absolute;
+            top: 0;
+            left: -80%;
+
+            width: 50%;
+            height: 100%;
+
+            background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+
+            transform: skewX(-20deg);
+
+            animation: hiveSweep 3.6s ease-in-out infinite;
+
+            pointer-events: none;
+        }
+
+        @keyframes hiveSweep {
+            0%        { left: -80%; }
+            45%, 100% { left: 130%; }
         }
 
         .rh-step2 .next-button:focus-visible,
         .rh-step2 .back-button:focus-visible {
-            outline: 3px solid rgba(226, 166, 59, 0.5);
+            outline: 3px solid rgba(237, 164, 35, 0.5);
             outline-offset: 2px;
         }
 
-        /* ---------- LIVE LISTING PREVIEW ---------- */
+        /* ---------- LIVE LISTING PREVIEW (kept + hover polish) ---------- */
 
         .rh-step2 .listing-preview {
             width: 100%;
@@ -1116,25 +1317,52 @@ $amenityChecked = fn(string $key): string =>
             border-radius: var(--hive-radius);
             overflow: hidden;
             box-shadow: var(--hive-shadow);
+
+            transition:
+                box-shadow 0.25s ease,
+                border-color 0.25s ease;
         }
 
-        /* Applied by JS while the panel is pinned to the viewport. */
+        .rh-step2 .listing-preview:hover {
+            border-color: rgba(237, 164, 35, 0.4);
+
+            box-shadow: 0 14px 30px rgba(237, 164, 35, 0.18);
+        }
+
         .rh-step2 .listing-preview.is-pinned {
             position: fixed;
+            top: 90px;
+            z-index: 50;
         }
 
         .rh-step2 .listing-preview-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
             font-size: 12px;
             font-weight: 600;
-            color: var(--hive-ink-soft);
+            color: var(--hive-honey-dark);
             padding: 16px 18px 0;
+        }
+
+        .rh-step2 .listing-preview-label::before {
+            content: "";
+
+            width: 6px;
+            height: 6px;
+
+            background: var(--hive-honey);
+            border-radius: 50%;
         }
 
         .rh-step2 .listing-preview-photo {
             margin: 12px 18px 0;
             height: 110px;
             border-radius: 10px;
-            background: linear-gradient(135deg, #FDF4E3, #F1E6C8);
+            background:
+                linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0)),
+                linear-gradient(135deg, #FDF4E3, #F1E6C8);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1149,7 +1377,7 @@ $amenityChecked = fn(string $key): string =>
 
         .rh-step2 .listing-preview-title {
             font-size: 15.5px;
-            font-weight: 600;
+            font-weight: 700;
             color: var(--hive-ink);
             margin: 0 0 4px;
             line-height: 1.35;
@@ -1202,10 +1430,9 @@ $amenityChecked = fn(string $key): string =>
 ========================================================= -->
 
 <?php
-$guestCtaHref = '/webprogg/host/becomeahost.php';
+ $guestCtaHref = '/webprogg/host/becomeahost.php';
 include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 ?>
-
 
 
 <!-- =========================================================
@@ -1214,6 +1441,10 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 <main class="host-page">
 
+    <!-- NEW: decorative glow blobs (honeycomb lives on ::before) -->
+    <span class="hive-blob hive-blob-1" aria-hidden="true"></span>
+    <span class="hive-blob hive-blob-2" aria-hidden="true"></span>
+
 
     <!-- =====================================================
          HOST HEADER
@@ -1221,17 +1452,21 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
     <section class="host-header">
 
+        <!-- NEW: hero badge, matching step 1 -->
+        <span class="hero-badge">
 
-        <span class="host-eyebrow">
+            <span class="hive-pulse-dot"></span>
 
-            Add your space
+            Add Your Space &middot; Step 2 of 4
 
         </span>
 
 
-        <h1>
+        <h1 style="margin-top:20px;">
 
-            Tell us about your space
+            Tell us about
+
+            <span class="hive-shimmer">your space</span>
 
         </h1>
 
@@ -1333,7 +1568,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
     <?php if (!empty($errors)): ?>
 
-        <div class="form-errors">
+        <div class="form-errors" role="alert" aria-live="assertive">
 
             <?php foreach ($errors as $error): ?>
 
@@ -1718,21 +1953,16 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         </label>
 
 
-                        <div class="icon-input-group">
-
-                            
-                            <input
-                                type="number"
-                                id="bedrooms"
-                                name="bedrooms"
-                                min="0"
-                                step="1"
-                                placeholder="e.g. 2"
-                                value="<?php echo $old("bedrooms"); ?>"
-                                required
-                            >
-
-                        </div>
+                        <input
+                            type="number"
+                            id="bedrooms"
+                            name="bedrooms"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 2"
+                            value="<?php echo $old("bedrooms"); ?>"
+                            required
+                        >
 
                     </div>
 
@@ -1749,21 +1979,16 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         </label>
 
 
-                        <div class="icon-input-group">
-
-                           
-                            <input
-                                type="number"
-                                id="bathrooms"
-                                name="bathrooms"
-                                min="0"
-                                step="1"
-                                placeholder="e.g. 1"
-                                value="<?php echo $old("bathrooms"); ?>"
-                                required
-                            >
-
-                        </div>
+                        <input
+                            type="number"
+                            id="bathrooms"
+                            name="bathrooms"
+                            min="0"
+                            step="1"
+                            placeholder="e.g. 1"
+                            value="<?php echo $old("bathrooms"); ?>"
+                            required
+                        >
 
                     </div>
 
@@ -1782,21 +2007,22 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                         <div class="icon-input-group">
 
-                           
-
                             <input
                                 type="number"
                                 id="size_sqm"
                                 name="size_sqm"
                                 min="0"
-                                step="1"
-                                placeholder="e.g. 28"
+                                step="0.1"
+                                placeholder="e.g. 25"
                                 value="<?php echo $old("size_sqm"); ?>"
                                 required
                             >
 
+
                             <span class="icon-input-suffix">
-                                m&sup2;
+
+                                sqm
+
                             </span>
 
                         </div>
@@ -1807,7 +2033,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-                <!-- FLOOR / PARKING LOT -->
+                <!-- FLOOR / PARKING -->
 
                 <div class="form-grid two-columns">
 
@@ -1823,121 +2049,61 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         </label>
 
 
-                        <div class="icon-input-group">
-
-                          
-
-                            <input
-                                type="text"
-                                id="floor"
-                                name="floor"
-                                inputmode="numeric"
-                                placeholder="e.g. 6"
-                                value="<?php echo $old("floor"); ?>"
-                                required
-                            >
-
-                        </div>
+                        <input
+                            type="text"
+                            id="floor"
+                            name="floor"
+                            placeholder="e.g. 2nd floor, Ground"
+                            value="<?php echo $old("floor"); ?>"
+                            required
+                        >
 
                     </div>
 
 
 
-                    <!-- PARKING LOT -->
+                    <!-- PARKING -->
 
                     <div class="input-group">
 
                         <label for="parking">
 
-                            Parking Lot
+                            Parking
 
                         </label>
 
 
-                        <div class="icon-input-group">
+                        <select
+                            id="parking"
+                            name="parking"
+                            required
+                        >
 
-                           
-
-                            <select
-                                id="parking"
-                                name="parking"
-                                required
+                            <option
+                                value=""
+                                disabled
+                                <?php echo empty($_POST["parking"]) ? "selected" : ""; ?>
                             >
 
+                                Is parking available?
+
+                            </option>
+
+
+                            <?php foreach ($parkingOptions as $value => $label): ?>
+
                                 <option
-                                    value=""
-                                    disabled
-                                    <?php echo empty($_POST["parking"]) ? "selected" : ""; ?>
+                                    value="<?php echo htmlspecialchars($value); ?>"
+                                    <?php echo (($_POST["parking"] ?? "") === $value) ? "selected" : ""; ?>
                                 >
 
-                                    Is parking available?
+                                    <?php echo htmlspecialchars($label); ?>
 
                                 </option>
 
+                            <?php endforeach; ?>
 
-                                <?php foreach ($parkingOptions as $value => $label): ?>
-
-                                    <option
-                                        value="<?php echo htmlspecialchars($value); ?>"
-                                        <?php echo (($_POST["parking"] ?? "") === $value) ? "selected" : ""; ?>
-                                    >
-
-                                        <?php echo htmlspecialchars($label); ?>
-
-                                    </option>
-
-                                <?php endforeach; ?>
-
-                            </select>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- =================================================
-                     AMENITIES
-                     (feeds the "Amenities" row on the listing detail
-                     page — same icons/keys, so nothing gets
-                     re-mapped later)
-                ================================================== -->
-
-                <div class="input-group full-width">
-
-                    <label>
-
-                        Amenities
-
-                    </label>
-
-
-                    <div class="amenities-grid">
-
-                        <?php foreach ($amenityOptions as $key => $data): ?>
-
-                            <label class="amenity-checkbox">
-
-                                <input
-                                    type="checkbox"
-                                    name="amenities[]"
-                                    value="<?php echo htmlspecialchars($key); ?>"
-                                    <?php echo $amenityChecked($key); ?>
-                                >
-
-                                <span class="amenity-checkbox-icon">
-                                    <img src="<?php echo htmlspecialchars($data["icon"]); ?>" alt="">
-                                </span>
-
-                                <span class="amenity-checkbox-label">
-                                    <?php echo htmlspecialchars($data["label"]); ?>
-                                </span>
-
-                            </label>
-
-                        <?php endforeach; ?>
+                        </select>
 
                     </div>
 
@@ -1963,7 +2129,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     <p>
 
-                        Provide more details to help renters understand your space better.
+                        Tell renters what makes your space special.
 
                     </p>
 
@@ -1985,7 +2151,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     <textarea
                         id="description"
                         name="description"
-                        placeholder="Describe your space, what makes it special, and important details..."
+                        placeholder="Describe the space, the vibe, what's nearby, and why renters will love it..."
                         required
                     ><?php echo $old("description"); ?></textarea>
 
@@ -1999,7 +2165,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     <label for="house_rules">
 
-                        House Rules (Optional)
+                        House Rules
 
                     </label>
 
@@ -2007,7 +2173,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     <textarea
                         id="house_rules"
                         name="house_rules"
-                        placeholder="e.g. No smoking, No pets, Quiet hours, etc."
+                        placeholder="e.g. No smoking. No pets. Quiet hours after 10 PM..."
                     ><?php echo $old("house_rules"); ?></textarea>
 
                 </div>
@@ -2015,7 +2181,71 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
                 <!-- =================================================
-                     FORM BUTTON
+                     AMENITIES
+                ================================================== -->
+
+                <div class="form-section-divider"></div>
+
+
+                <div class="form-heading">
+
+                    <h2>
+
+                        Amenities
+
+                    </h2>
+
+
+                    <p>
+
+                        Select everything included with your space.
+
+                    </p>
+
+                </div>
+
+
+                <div class="amenities-grid">
+
+                    <?php foreach ($amenityOptions as $key => $amenity): ?>
+
+                        <label class="amenity-checkbox">
+
+                            <input
+                                type="checkbox"
+                                name="amenities[]"
+                                value="<?php echo htmlspecialchars($key); ?>"
+                                data-label="<?php echo htmlspecialchars($amenity["label"]); ?>"
+                                <?php echo $amenityChecked($key); ?>
+                            >
+
+
+                            <span class="amenity-checkbox-icon">
+
+                                <img
+                                    src="<?php echo htmlspecialchars($amenity["icon"]); ?>"
+                                    alt=""
+                                >
+
+                            </span>
+
+
+                            <span>
+
+                                <?php echo htmlspecialchars($amenity["label"]); ?>
+
+                            </span>
+
+                        </label>
+
+                    <?php endforeach; ?>
+
+                </div>
+
+
+
+                <!-- =================================================
+                     FORM ACTIONS
                 ================================================== -->
 
                 <div class="form-actions">
@@ -2026,7 +2256,9 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         class="back-button"
                     >
 
-                        Back
+                        <span class="btn-arrow">&#8249;</span>
+
+                        BACK
 
                     </a>
 
@@ -2036,7 +2268,9 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         class="next-button"
                     >
 
-                        Next step
+                        NEXT STEP
+
+                        <span class="btn-arrow">&#8250;</span>
 
                     </button>
 
@@ -2049,39 +2283,61 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
         </section>
 
 
-        <!-- =================================================
-             LIVE LISTING PREVIEW
-             Purely cosmetic — mirrors the fields most renters
-             scan first on a listing card, so hosts can see how
-             their space will read before moving on.
+        <!-- ================================================
+             LIVE LISTING PREVIEW RAIL
         ================================================== -->
 
-        <div class="listing-preview-rail" id="listingPreviewRail">
+        <div class="listing-preview-rail" id="previewRail">
 
-            <aside class="listing-preview" id="listingPreview" aria-hidden="false">
+            <aside class="listing-preview" id="listingPreview">
 
-                <p class="listing-preview-label">
-                    How renters will see it
-                </p>
+                <span class="listing-preview-label">
+
+                    Live preview
+
+                </span>
+
 
                 <div class="listing-preview-photo">
-                    Photos come next step
+
+                    Photo appears in Step 3
+
                 </div>
+
 
                 <div class="listing-preview-body">
 
-                    <p class="listing-preview-title" id="previewTitle">
-                        Your space title will appear here
-                    </p>
+                    <h4 class="listing-preview-title" id="previewTitle">
+
+                        Your listing title
+
+                    </h4>
+
 
                     <p class="listing-preview-meta" id="previewMeta">
-                        Location &middot; property type
+
+                        Category &middot; Location
+
                     </p>
 
-                    <div class="listing-preview-tags" id="previewTags"></div>
 
-                    <p class="listing-preview-price" id="previewPrice">
-                        &#8369;0 <span>/ month</span>
+                    <div class="listing-preview-tags" id="previewTags">
+
+                        <span class="listing-preview-tag">
+
+                            No amenities selected
+
+                        </span>
+
+                    </div>
+
+
+                    <p class="listing-preview-price">
+
+                        &#8369; <span id="previewPriceNum">0</span>
+
+                        <span>/month</span>
+
                     </p>
 
                 </div>
@@ -2089,7 +2345,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </aside>
 
         </div>
-
 
     </div>
 
@@ -2107,9 +2362,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
     <div class="footer-top">
 
 
-        <!-- =================================================
-             BRAND
-        ================================================== -->
+        <!-- BRAND -->
 
         <div class="footer-brand">
 
@@ -2137,9 +2390,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             LISTINGS
-        ================================================== -->
+        <!-- LISTINGS -->
 
         <div class="footer-links">
 
@@ -2153,9 +2404,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             <?php foreach ($listingCategories as $category => $type): ?>
 
-                <a
-                    href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>"
-                >
+                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
 
                     <?php echo htmlspecialchars($category); ?>
 
@@ -2168,9 +2417,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             QUICK LINKS
-        ================================================== -->
+        <!-- QUICK LINKS -->
 
         <div class="footer-links">
 
@@ -2184,10 +2431,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             <?php foreach ($quickLinks as $name => $link): ?>
 
-                <a
-                    href="<?php echo htmlspecialchars($link); ?>"
-                    class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
-                >
+                <a href="<?php echo htmlspecialchars($link); ?>">
 
                     <?php echo htmlspecialchars($name); ?>
 
@@ -2200,9 +2444,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             GET THE APP
-        ================================================== -->
+        <!-- GET THE APP -->
 
         <div class="footer-contact">
 
@@ -2213,9 +2455,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             </span>
 
-
-
-            <!-- APP STORE -->
 
             <div class="footer-app-badges">
 
@@ -2235,8 +2474,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- PHONE -->
 
             <div class="footer-contact-line">
 
@@ -2258,8 +2495,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-            <!-- EMAIL -->
-
             <div class="footer-contact-line">
 
 
@@ -2279,8 +2514,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- LOCATION -->
 
             <div class="footer-contact-line">
 
@@ -2307,10 +2540,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-    <!-- =====================================================
-         FOOTER BOTTOM
-    ====================================================== -->
-
     <div class="footer-bottom">
 
 
@@ -2333,210 +2562,177 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 <!-- =========================================================
-     FLOOR AUTO-FORMAT
-     Lets the host type a plain number (e.g. 6) and turns it
-     into an ordinal label (e.g. "6th Floor") once they leave
-     the field. Reverts to the raw number on focus so it's
-     easy to edit again.
+     LIVE PREVIEW + STICKY RAIL SCRIPT
 ========================================================= -->
-
 <script>
 (function () {
-    const floorInput = document.getElementById('floor');
-    if (!floorInput) return;
+    "use strict";
 
-    function toOrdinal(num) {
-        const n = parseInt(num, 10);
-        if (isNaN(n)) return '';
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-        if (n === 0) return 'Ground Floor';
+    /* =====================================================
+       LIVE LISTING PREVIEW
+       Mirrors title / category · location / amenity tags /
+       price into the sidebar card as the host types.
+    ====================================================== */
 
-        const rem100 = n % 100;
-        const rem10 = n % 10;
+    var titleInput   = document.getElementById("title");
+    var categorySel  = document.getElementById("category");
+    var locationIn   = document.getElementById("location");
+    var priceIn      = document.getElementById("price");
 
-        let suffix = 'th';
-        if (rem100 < 11 || rem100 > 13) {
-            if (rem10 === 1) suffix = 'st';
-            else if (rem10 === 2) suffix = 'nd';
-            else if (rem10 === 3) suffix = 'rd';
-        }
+    var previewTitle = document.getElementById("previewTitle");
+    var previewMeta  = document.getElementById("previewMeta");
+    var previewTags  = document.getElementById("previewTags");
+    var previewPrice = document.getElementById("previewPriceNum");
 
-        return n + suffix + ' Floor';
-    }
-
-    // When the user focuses the field, show just the raw number
-    // so it's easy to edit.
-    floorInput.addEventListener('focus', function () {
-        const digits = floorInput.value.match(/\d+/);
-        floorInput.value = digits ? digits[0] : '';
-    });
-
-    // Only allow digits while typing.
-    floorInput.addEventListener('input', function () {
-        floorInput.value = floorInput.value.replace(/[^\d]/g, '');
-    });
-
-    // When the user leaves the field, format it as "6th Floor".
-    floorInput.addEventListener('blur', function () {
-        if (floorInput.value.trim() === '') return;
-        floorInput.value = toOrdinal(floorInput.value);
-    });
-})();
-</script>
-
-
-<!-- =========================================================
-     LIVE LISTING PREVIEW
-     Reads the existing form fields (no new inputs, nothing
-     that affects what gets POSTed) and mirrors them into the
-     preview card as the host types.
-========================================================= -->
-
-<script>
-(function () {
-    const titleInput = document.getElementById('title');
-    const locationInput = document.getElementById('location');
-    const propertyTypeSelect = document.getElementById('property_type');
-    const priceInput = document.getElementById('price');
-    const bedroomsInput = document.getElementById('bedrooms');
-    const bathroomsInput = document.getElementById('bathrooms');
-
-    const previewTitle = document.getElementById('previewTitle');
-    const previewMeta = document.getElementById('previewMeta');
-    const previewTags = document.getElementById('previewTags');
-    const previewPrice = document.getElementById('previewPrice');
-
-    if (!previewTitle) return;
-
-    function propertyTypeLabel() {
-        if (!propertyTypeSelect || !propertyTypeSelect.value) return 'property type';
-        const opt = propertyTypeSelect.options[propertyTypeSelect.selectedIndex];
-        return opt ? opt.textContent.trim() : 'property type';
-    }
-
-    function formatPeso(value) {
-        const n = parseFloat(value);
-        if (isNaN(n) || n <= 0) return '0';
-        return n.toLocaleString('en-PH');
-    }
+    var amenityChecks = Array.prototype.slice.call(
+        document.querySelectorAll('.amenities-grid input[type="checkbox"]')
+    );
 
     function updatePreview() {
-        previewTitle.textContent = (titleInput && titleInput.value.trim())
-            ? titleInput.value.trim()
-            : 'Your space title will appear here';
 
-        const locationText = (locationInput && locationInput.value.trim())
-            ? locationInput.value.trim()
-            : 'Location';
-
-        previewMeta.textContent = locationText + ' \u00B7 ' + propertyTypeLabel();
-
-        previewTags.innerHTML = '';
-
-        if (bedroomsInput && bedroomsInput.value) {
-            const tag = document.createElement('span');
-            tag.className = 'listing-preview-tag';
-            tag.textContent = bedroomsInput.value + ' bed';
-            previewTags.appendChild(tag);
+        if (previewTitle && titleInput) {
+            previewTitle.textContent =
+                titleInput.value.trim() || "Your listing title";
         }
 
-        if (bathroomsInput && bathroomsInput.value) {
-            const tag = document.createElement('span');
-            tag.className = 'listing-preview-tag';
-            tag.textContent = bathroomsInput.value + ' bath';
-            previewTags.appendChild(tag);
+        if (previewMeta) {
+            var bits = [];
+
+            if (categorySel && categorySel.value) {
+                bits.push(categorySel.options[categorySel.selectedIndex].text);
+            }
+
+            if (locationIn && locationIn.value.trim()) {
+                bits.push(locationIn.value.trim());
+            }
+
+            previewMeta.textContent =
+                bits.length ? bits.join(" \u00B7 ") : "Category \u00B7 Location";
         }
 
-        previewPrice.innerHTML = '&#8369;' + formatPeso(priceInput ? priceInput.value : 0) + ' <span>/ month</span>';
+        if (previewTags) {
+            previewTags.innerHTML = "";
+
+            var any = false;
+
+            amenityChecks.forEach(function (cb) {
+                if (cb.checked) {
+                    any = true;
+
+                    var tag = document.createElement("span");
+                    tag.className = "listing-preview-tag";
+                    tag.textContent = cb.getAttribute("data-label") || "";
+
+                    previewTags.appendChild(tag);
+                }
+            });
+
+            if (!any) {
+                var hint = document.createElement("span");
+                hint.className = "listing-preview-tag";
+                hint.textContent = "No amenities selected";
+
+                previewTags.appendChild(hint);
+            }
+        }
+
+        if (previewPrice && priceIn) {
+            var value = parseFloat(priceIn.value);
+            previewPrice.textContent = isNaN(value)
+                ? "0"
+                : value.toLocaleString();
+        }
     }
 
-    [titleInput, locationInput, propertyTypeSelect, priceInput, bedroomsInput, bathroomsInput]
-        .filter(Boolean)
-        .forEach(function (el) {
-            el.addEventListener('input', updatePreview);
-            el.addEventListener('change', updatePreview);
-        });
+    [
+        [titleInput, "input"],
+        [categorySel, "change"],
+        [locationIn, "input"],
+        [priceIn, "input"]
+    ].forEach(function (pair) {
+        if (pair[0]) {
+            pair[0].addEventListener(pair[1], updatePreview);
+        }
+    });
 
+    amenityChecks.forEach(function (cb) {
+        cb.addEventListener("change", updatePreview);
+    });
+
+    /* Initial paint — covers the server-repopulate case after
+       a failed POST so the preview matches the form. */
     updatePreview();
-})();
-</script>
 
 
-<!-- =========================================================
-     PIN THE LISTING PREVIEW WHILE SCROLLING
-     Drives the "how renters will see it" panel with JS instead
-     of relying only on CSS position: sticky, since a page-level
-     stylesheet can set overflow on an ancestor in a way that
-     silently breaks sticky. This computes the same "stick to the
-     top, then release once the form card ends" behavior by hand,
-     using the rail (listing-preview-rail) as a fixed-width, empty
-     placeholder that keeps reserving the column while the panel
-     itself is pulled out of flow.
-========================================================= -->
+    /* =====================================================
+       STICKY PREVIEW RAIL
+       Pins the preview under the navbar while the form
+       scrolls, and releases it before the form card ends
+       so it never overlaps the footer. Desktop only.
+    ====================================================== */
 
-<script>
-(function () {
-    const rail = document.getElementById('listingPreviewRail');
-    const panel = document.getElementById('listingPreview');
-    const anchor = document.querySelector('.host-form-card');
+    var rail    = document.getElementById("previewRail");
+    var preview = document.getElementById("listingPreview");
+    var layout  = document.querySelector(".host-layout");
 
-    if (!rail || !panel || !anchor) return;
-
-    const TOP_OFFSET = 24;
-    const DOCK_BREAKPOINT = 900; // matches the .host-layout media query
-
-    function unpin() {
-        panel.classList.remove('is-pinned');
-        panel.style.top = '';
-        panel.style.left = '';
-        panel.style.width = '';
+    if (!rail || !preview || !layout) {
+        return;
     }
 
-    function update() {
-        if (window.innerWidth <= DOCK_BREAKPOINT) {
-            unpin();
+    var NAV_OFFSET = 90;
+    var pinActive = false;
+
+    function pinUpdate() {
+        if (window.innerWidth <= 900 || reduced) {
+            preview.classList.remove("is-pinned");
+            preview.style.left = "";
+            preview.style.width = "";
+            pinActive = false;
             return;
         }
 
-        const railRect = rail.getBoundingClientRect();
-        const anchorRect = anchor.getBoundingClientRect();
-        const panelHeight = panel.offsetHeight;
+        var railRect = rail.getBoundingClientRect();
+        var layoutRect = layout.getBoundingClientRect();
+        var previewHeight = preview.offsetHeight;
 
-        // Haven't scrolled down to the panel's natural position yet —
-        // leave it sitting in normal flow.
-        if (railRect.top > TOP_OFFSET) {
-            unpin();
-            return;
+        var shouldPin =
+            railRect.top <= NAV_OFFSET &&
+            (layoutRect.bottom - NAV_OFFSET) > previewHeight + 24;
+
+        if (shouldPin) {
+            if (!pinActive) {
+                preview.classList.add("is-pinned");
+                preview.style.width = railRect.width + "px";
+                preview.style.left = railRect.left + "px";
+                pinActive = true;
+            }
+
+            /* Stop the preview from sliding past the layout's
+               bottom edge on very long pins. */
+            var overflow =
+                layoutRect.bottom - NAV_OFFSET - previewHeight - 24;
+
+            preview.style.top =
+                overflow < 0 ? (NAV_OFFSET + overflow) + "px" : NAV_OFFSET + "px";
+
+        } else if (pinActive) {
+            preview.classList.remove("is-pinned");
+            preview.style.left = "";
+            preview.style.width = "";
+            preview.style.top = "";
+            pinActive = false;
         }
-
-        // Don't let the pinned panel run past the bottom of the form
-        // card it's riding alongside.
-        const lowestAllowedTop = anchorRect.bottom - panelHeight;
-        const pinnedTop = Math.min(TOP_OFFSET, lowestAllowedTop);
-
-        panel.classList.add('is-pinned');
-        panel.style.top = pinnedTop + 'px';
-        panel.style.left = railRect.left + 'px';
-        panel.style.width = railRect.width + 'px';
     }
 
-    let ticking = false;
+    window.addEventListener("scroll", pinUpdate, { passive: true });
+    window.addEventListener("resize", pinUpdate);
 
-    function onScrollOrResize() {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(function () {
-            update();
-            ticking = false;
-        });
-    }
-
-    window.addEventListener('scroll', onScrollOrResize, { passive: true });
-    window.addEventListener('resize', onScrollOrResize);
-
-    update();
+    pinUpdate();
 })();
 </script>
+
 
 </body>
 

@@ -10,17 +10,17 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 /* =========================
    LOGIN STATUS
 ========================== */
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
-$userName = $_SESSION['user_name'] ?? 'Guest';
+ $userName = $_SESSION['user_name'] ?? 'Guest';
 
 /* Same nav-avatar staleness handling as listing.php / listing-detail.php,
    so a freshly-uploaded profile photo shows immediately in the navbar
    without a re-login. */
-$navAvatar = '/webprogg/images/default-avatar.png';
+ $navAvatar = '/webprogg/images/default-avatar.png';
 
 if ($isLoggedIn && isset($_SESSION['user_id'])) {
     $navAvatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
@@ -33,7 +33,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
    RESOLVE HOST FROM ?id=
 ========================== */
 
-$hostId = isset($_GET['id']) && is_numeric($_GET['id'])
+ $hostId = isset($_GET['id']) && is_numeric($_GET['id'])
     ? (int) $_GET['id']
     : 0;
 
@@ -45,14 +45,14 @@ $hostId = isset($_GET['id']) && is_numeric($_GET['id'])
  * SELECT below and this page will pick it up automatically — see
  * the $host['bio'] assignment further down.
  */
-$hostStmt = $pdo->prepare(
+ $hostStmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host, created_at
      FROM users
      WHERE id = :id AND is_host = 1
      LIMIT 1"
 );
-$hostStmt->execute(['id' => $hostId]);
-$hostRow = $hostStmt->fetch();
+ $hostStmt->execute(['id' => $hostId]);
+ $hostRow = $hostStmt->fetch();
 
 /* No such host, or the account isn't (or is no longer) an approved
    host — send back to Listings rather than show a broken profile. */
@@ -61,7 +61,7 @@ if ($hostRow === false) {
     exit;
 }
 
-$isOwnProfile = $isLoggedIn && (int) ($_SESSION['user_id'] ?? 0) === (int) $hostRow['id'];
+ $isOwnProfile = $isLoggedIn && (int) ($_SESSION['user_id'] ?? 0) === (int) $hostRow['id'];
 
 /* =========================
    HOST'S APPROVED LISTINGS
@@ -71,7 +71,7 @@ $isOwnProfile = $isLoggedIn && (int) ($_SESSION['user_id'] ?? 0) === (int) $host
    folder this needs to check.
 ========================== */
 
-$hostListingsStmt = $pdo->prepare(
+ $hostListingsStmt = $pdo->prepare(
     "SELECT l.id, l.title, l.category, l.location, l.price, l.bedrooms, l.created_at,
             p.photo_path AS cover_photo
      FROM listings l
@@ -80,9 +80,9 @@ $hostListingsStmt = $pdo->prepare(
      WHERE l.user_id = :host_id AND l.status = 'approved'
      ORDER BY l.created_at DESC"
 );
-$hostListingsStmt->execute(['host_id' => $hostRow['id']]);
+ $hostListingsStmt->execute(['host_id' => $hostRow['id']]);
 
-$hostListings = array_map(function ($row) {
+ $hostListings = array_map(function ($row) {
     return [
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
@@ -102,23 +102,23 @@ $hostListings = array_map(function ($row) {
    shape as $hostReviewsStmt in listing-detail.php.
 ========================== */
 
-$hostReviewsStmt = $pdo->prepare(
+ $hostReviewsStmt = $pdo->prepare(
     "SELECT r.rating
      FROM reviews r
      JOIN listings l2 ON l2.id = r.listing_id
      WHERE l2.user_id = :host_id"
 );
-$hostReviewsStmt->execute(['host_id' => $hostRow['id']]);
-$hostReviewRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
+ $hostReviewsStmt->execute(['host_id' => $hostRow['id']]);
+ $hostReviewRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
 
-$hostRating  = count($hostReviewRatings) > 0 ? round(array_sum($hostReviewRatings) / count($hostReviewRatings), 1) : 0;
-$hostReviews = count($hostReviewRatings);
+ $hostRating  = count($hostReviewRatings) > 0 ? round(array_sum($hostReviewRatings) / count($hostReviewRatings), 1) : 0;
+ $hostReviews = count($hostReviewRatings);
 
 /* =========================
    ASSEMBLE HOST
 ========================== */
 
-$host = [
+ $host = [
     'id'            => (int) $hostRow['id'],
     'name'          => $hostRow['name'],
     'avatar'        => !empty($hostRow['avatar_path'])
@@ -144,7 +144,7 @@ function roomhive_detail_url($listing)
     return '/webprogg/Listings/listing-detail.php?id=' . urlencode($listing['id']);
 }
 
-$listingCount = count($hostListings);
+ $listingCount = count($hostListings);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -157,12 +157,448 @@ $listingCount = count($hostListings);
     <title>RoomHive - <?= htmlspecialchars($host['name'], ENT_QUOTES, 'UTF-8') ?></title>
 
     <link
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
     <link rel="stylesheet" href="/webprogg/assets/style.css">
     <link rel="stylesheet" href="/webprogg/assets/host-profile.css">
+    <link rel="stylesheet" href="/webprogg/assets/listings-style.css">
+
+    <!-- NEW: enables JS-gated entrance reveals -->
+    <script>document.documentElement.classList.add("js");</script>
+
+    <!-- =====================================================
+         HOST PUBLIC PROFILE — HIVE POLISH LAYER (NEW)
+         Loads AFTER host-profile.css so it wins the cascade at
+         equal specificity. Upgrades colors, buttons, badges,
+         cards and the listing grid to the site-wide hive design
+         language (honey #eda423 / moss #2f9e5b / ink #1c2a38)
+         WITHOUT touching any structural layout rules.
+    ====================================================== -->
+
+    <style>
+
+        .hp-page {
+            --hp-honey: #eda423;
+            --hp-honey-light: #f6c04e;
+            --hp-honey-dark: #d99218;
+            --hp-moss: #2f9e5b;
+            --hp-ink: #1c2a38;
+            --hp-ink-soft: #5d6875;
+            --hp-line: rgba(28, 42, 56, 0.08);
+            --hp-gold-shadow: 0 14px 28px rgba(237, 164, 35, 0.16);
+
+            position: relative;
+
+            /* clip (not hidden) so blobs can bleed off the edges
+               without creating a scroll container that would break
+               position: sticky inside the layout. */
+            overflow-x: clip;
+        }
+
+        /* =====================================================
+           DECORATION LAYER — honeycomb + glow blobs.
+           New class names only: cannot collide with anything
+           in host-profile.css.
+        ====================================================== */
+
+        .hp-deco {
+            position: absolute;
+            inset: 0;
+
+            background-image: url("data:image/svg+xml,%3Csvg width='28' height='49' viewBox='0 0 28 49' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23eda423' fill-opacity='0.07' fill-rule='nonzero'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/svg%3E");
+            background-size: 28px 49px;
+
+            -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 45%);
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 45%);
+
+            pointer-events: none;
+
+            z-index: 0;
+        }
+
+        .hp-blob {
+            position: absolute;
+
+            border-radius: 50%;
+            filter: blur(70px);
+
+            pointer-events: none;
+        }
+
+        .hp-blob-1 {
+            width: 360px;
+            height: 360px;
+
+            top: -140px;
+            right: -120px;
+
+            background: radial-gradient(circle at 30% 30%, rgba(246, 196, 78, 0.8), rgba(237, 164, 35, 0.22) 60%, transparent 75%);
+
+            animation: hpDrift 14s ease-in-out infinite alternate;
+        }
+
+        .hp-blob-2 {
+            width: 260px;
+            height: 260px;
+
+            top: 380px;
+            left: -140px;
+
+            background: radial-gradient(circle at 60% 40%, rgba(246, 196, 78, 0.6), rgba(237, 164, 35, 0.18) 60%, transparent 75%);
+
+            animation: hpDrift 18s ease-in-out infinite alternate-reverse;
+        }
+
+        @keyframes hpDrift {
+            from { transform: translate(0, 0) scale(1); }
+            to   { transform: translate(30px, -24px) scale(1.08); }
+        }
+
+        /* =====================================================
+           ENTRANCE REVEALS (JS-gated)
+        ====================================================== */
+
+        @keyframes hpRise {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .js .hp-reveal {
+            opacity: 0;
+
+            animation: hpRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0s) forwards;
+        }
+
+        /* =====================================================
+           BACK LINK
+        ====================================================== */
+
+        .hp-back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+
+            color: var(--hp-ink-soft) !important;
+
+            font-weight: 600;
+
+            text-decoration: none;
+
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+
+        .hp-back-link:hover {
+            color: var(--hp-honey-dark) !important;
+
+            transform: translateX(-3px);
+        }
+
+        /* =====================================================
+           HERO — name shimmer, gold-ring avatar, badges
+        ====================================================== */
+
+        .hp-avatar {
+            border: 3px solid #ffffff !important;
+
+            box-shadow:
+                0 0 0 3px var(--hp-honey),
+                0 14px 28px rgba(237, 164, 35, 0.3) !important;
+
+            transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .hp-avatar:hover {
+            transform: scale(1.04) rotate(-2deg);
+        }
+
+        .hp-name {
+            color: var(--hp-ink) !important;
+
+            font-weight: 800 !important;
+            letter-spacing: -0.6px;
+
+            /* Gradient shimmer, same treatment as the host
+               wizard and every page hero. */
+            background: linear-gradient(92deg, var(--hp-ink) 0%, var(--hp-ink) 55%, #eda423 85%, #f6c04e 100%);
+            background-size: 200% auto;
+
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+
+            animation: hpShimmer 5s linear infinite;
+        }
+
+        @keyframes hpShimmer {
+            to { background-position: 200% center; }
+        }
+
+        .hp-joined {
+            color: var(--hp-ink-soft) !important;
+        }
+
+        .hp-badge {
+            font-weight: 700 !important;
+
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .hp-badge:hover {
+            transform: translateY(-2px);
+        }
+
+        .hp-badge-verified {
+            background: linear-gradient(135deg, #f6b93b, var(--hp-honey)) !important;
+
+            border-color: transparent !important;
+
+            color: var(--hp-ink) !important;
+
+            box-shadow: 0 6px 14px rgba(237, 164, 35, 0.35);
+        }
+
+        .hp-badge-superhost {
+            background: var(--hp-moss) !important;
+
+            border-color: transparent !important;
+
+            color: #ffffff !important;
+
+            box-shadow: 0 6px 14px rgba(47, 158, 91, 0.35);
+        }
+
+        .hp-rating {
+            color: #b07708 !important;
+
+            font-weight: 700 !important;
+        }
+
+        .hp-rating-count {
+            color: var(--hp-ink-soft) !important;
+
+            font-weight: 500 !important;
+        }
+
+        /* =====================================================
+           SECTION HEADINGS — gold accent bar
+        ====================================================== */
+
+        .hp-about h2,
+        .hp-listings h2 {
+            position: relative;
+
+            display: inline-block;
+
+            color: var(--hp-ink) !important;
+
+            font-weight: 800 !important;
+        }
+
+        .hp-about h2::after,
+        .hp-listings h2::after {
+            content: "";
+
+            position: absolute;
+
+            width: 36px;
+            height: 3px;
+
+            left: 0;
+            bottom: -7px;
+
+            background: linear-gradient(90deg, #f6b93b, var(--hp-honey));
+
+            border-radius: 2px;
+        }
+
+        .hp-about-text {
+            color: var(--hp-ink-soft) !important;
+
+            line-height: 1.75 !important;
+        }
+
+        .hp-about-empty,
+        .hp-listings-empty {
+            color: var(--hp-ink-soft) !important;
+        }
+
+        /* =====================================================
+           LISTING CARDS — hover lift + image zoom + gold price
+        ====================================================== */
+
+        .hp-listings-grid .listing-box {
+            border-radius: 16px;
+
+            transition:
+                transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.3s ease,
+                border-color 0.3s ease;
+        }
+
+        .hp-listings-grid .listing-box:hover {
+            transform: translateY(-6px);
+
+            border-color: rgba(237, 164, 35, 0.45) !important;
+
+            box-shadow: var(--hp-gold-shadow) !important;
+        }
+
+        .hp-listings-grid .rh-card-media {
+            aspect-ratio: 4 / 3;
+
+            overflow: hidden;
+        }
+
+        .hp-listings-grid .rh-card-media img {
+            width: 100%;
+            height: 100%;
+
+            object-fit: cover;
+
+            display: block;
+
+            transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .hp-listings-grid .listing-box:hover .rh-card-media img {
+            transform: scale(1.06);
+        }
+
+        .hp-listings-grid .listing-box-title {
+            color: var(--hp-ink) !important;
+
+            font-weight: 700 !important;
+        }
+
+        .hp-listings-grid .listing-box-location {
+            color: var(--hp-ink-soft) !important;
+        }
+
+        .hp-listings-grid .listing-box-price {
+            color: var(--hp-ink) !important;
+        }
+
+        .hp-listings-grid .listing-box-price .peso {
+            color: var(--hp-honey-dark) !important;
+        }
+
+        /* =====================================================
+           SIDEBAR CARD — honey top bar + hover rows
+        ====================================================== */
+
+        .hp-card {
+            border-top: 4px solid var(--hp-honey) !important;
+
+            transition:
+                box-shadow 0.25s ease,
+                border-color 0.25s ease;
+        }
+
+        .hp-card:hover {
+            box-shadow: var(--hp-gold-shadow) !important;
+        }
+
+        .hp-card h3 {
+            color: var(--hp-ink) !important;
+
+            font-weight: 800 !important;
+        }
+
+        .hp-detail-row {
+            transition: background 0.15s ease, transform 0.15s ease;
+
+            border-radius: 10px;
+        }
+
+        .hp-detail-row:hover {
+            background: #fff8ec;
+
+            transform: translateX(3px);
+        }
+
+        .hp-detail-row strong {
+            color: var(--hp-ink) !important;
+        }
+
+        /* Hex marks honey */
+        .hp-hex {
+            background: var(--hp-honey) !important;
+        }
+
+        .hp-hex-sm {
+            background: var(--hp-honey) !important;
+        }
+
+        /* =====================================================
+           BUTTONS — gradient honey primary
+        ====================================================== */
+
+        .hp-btn-primary {
+            background: linear-gradient(135deg, #f6b93b, var(--hp-honey)) !important;
+
+            border: none !important;
+
+            color: var(--hp-ink) !important;
+
+            font-weight: 700 !important;
+
+            box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35) !important;
+
+            transition:
+                transform 0.2s ease,
+                box-shadow 0.2s ease !important;
+        }
+
+        .hp-btn-primary:hover {
+            transform: translateY(-2px);
+
+            box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45) !important;
+        }
+
+        .hp-btn-primary:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* =====================================================
+           RESPONSIVE / MOTION SAFETY
+        ====================================================== */
+
+        @media (max-width: 700px) {
+            .hp-deco {
+                -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 30%);
+                mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 30%);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .hp-deco,
+            .hp-blob,
+            .hp-name {
+                animation: none !important;
+            }
+
+            .js .hp-reveal {
+                animation: none !important;
+
+                opacity: 1 !important;
+                transform: none !important;
+            }
+
+            .hp-avatar,
+            .hp-badge,
+            .hp-listings-grid .listing-box,
+            .hp-listings-grid .rh-card-media img,
+            .hp-detail-row,
+            .hp-btn-primary,
+            .hp-back-link {
+                transition: none !important;
+            }
+        }
+
+    </style>
 
 </head>
 
@@ -173,50 +609,6 @@ $listingCount = count($hostListings);
      (identical markup to listing.php / listing-detail.php)
 ========================== -->
 
-<header class="navbar">
-
-    <a href="<?= $isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php' ?>" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-
-        <a href="<?= $isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php' ?>">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="<?= $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php' ?>">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <?php if ($isLoggedIn): ?>
-
-            <div class="account-dropdown js-account-dropdown">
-
-                <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                    <span class="account-circle">
-                        <img src="<?= htmlspecialchars($navAvatar, ENT_QUOTES, 'UTF-8') ?>" alt="My Account">
-                    </span>
-                    <span>MY PROFILE</span>
-                    <span class="dropdown-caret">&#9662;</span>
-                </button>
-
-                <div class="account-dropdown-menu" id="accountDropdownMenu">
-                    <a href="/webprogg/user/userprofile.php">My Profile</a>
-                    <a href="/webprogg/auth/logout.php">Logout</a>
-                </div>
-
-            </div>
-
-        <?php else: ?>
-
-            <a href="/webprogg/auth/loginform.php" class="list-space">LIST YOUR SPACE</a>
-
-        <?php endif; ?>
-
-    </nav>
-
-</header>
-
 <style>
 .account-dropdown { position: relative; }
 .account-dropdown .my-account { display: flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; font: inherit; color: inherit; }
@@ -225,7 +617,7 @@ $listingCount = count($hostListings);
 .account-dropdown-menu { display: none; position: absolute; top: 100%; right: 0; min-width: 160px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); overflow: hidden; z-index: 1000; margin-top: 8px; }
 .account-dropdown.open .account-dropdown-menu { display: block; }
 .account-dropdown-menu a { display: block; padding: 10px 16px; text-decoration: none; color: #333; white-space: nowrap; }
-.account-dropdown-menu a:hover { background: #f5f5f5; }
+.account-dropdown-menu a:hover { background: #fff5e6; color: #b07708; }
 </style>
 
 <!-- =========================
@@ -234,13 +626,22 @@ $listingCount = count($hostListings);
 
 <main class="hp-page">
 
-    <a href="/webprogg/Listings/listing.php" class="hp-back-link">&#8592; Back to Listings</a>
+    <!-- NEW: decoration layer — honeycomb texture + glow
+         blobs, in brand-new class names so they can't
+         collide with host-profile.css -->
+    <div class="hp-deco" aria-hidden="true">
+        <span class="hp-blob hp-blob-1"></span>
+        <span class="hp-blob hp-blob-2"></span>
+    </div>
+
+    <a href="/webprogg/Listings/listing.php" class="hp-back-link hp-reveal" style="--d: .05s;">&#8592; Back to Listings</a>
 
     <!-- =========================
          HERO
     ========================== -->
 
-    <section class="hp-hero">
+    <!-- CHANGED: entrance reveal -->
+    <section class="hp-hero hp-reveal" style="--d: .1s;">
 
         <div class="hp-hero-inner">
 
@@ -297,7 +698,8 @@ $listingCount = count($hostListings);
 
         <div class="hp-main">
 
-            <section class="hp-about">
+            <!-- CHANGED: entrance reveal -->
+            <section class="hp-about hp-reveal" style="--d: .18s;">
 
                 <h2>About <?= htmlspecialchars($host['name'], ENT_QUOTES, 'UTF-8') ?></h2>
 
@@ -311,7 +713,8 @@ $listingCount = count($hostListings);
 
             </section>
 
-            <section class="hp-listings">
+            <!-- CHANGED: entrance reveal -->
+            <section class="hp-listings hp-reveal" style="--d: .24s;">
 
                 <h2>
                     <?= $listingCount > 0
@@ -383,7 +786,8 @@ $listingCount = count($hostListings);
              SIDEBAR
         ========================== -->
 
-        <aside class="hp-sidebar">
+        <!-- CHANGED: entrance reveal -->
+        <aside class="hp-sidebar hp-reveal" style="--d: .2s;">
 
             <div class="hp-card">
 
@@ -438,66 +842,7 @@ $listingCount = count($hostListings);
 
 </main>
 
-<!-- =========================
-     FOOTER (shared markup)
-========================== -->
-
-<footer class="site-footer">
-
-    <div class="footer-top">
-
-        <div class="footer-brand">
-
-            <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
-
-            <p class="footer-tagline">
-                Find your next room, studio, or shared space —
-                verified listings, no hidden fees.
-            </p>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0917 156 3974</span>
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>iamroomhivehost@gmail.com</span>
-            </div>
-
-        </div>
-
-        <div class="footer-links">
-            <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
-            <a href="/webprogg/Listings/listing.php">Featured Stays</a>
-        </div>
-
-        <div class="footer-links">
-            <span class="footer-heading">QUICK LINKS</span>
-            <a href="/webprogg/index.php">About Us</a>
-            <a href="/webprogg/misc/contacts.php">Contact</a>
-            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
-            <a href="/webprogg/hiveclub.php">Hive Club</a>
-        </div>
-
-        <div class="footer-contact">
-            <span class="footer-heading">GET THE APP</span>
-            <div class="footer-app-badges">
-                <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
-                <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
-            </div>
-        </div>
-
-    </div>
-
-    <div class="footer-bottom">
-        <p>&copy; <?= date('Y') ?> RoomHive. All rights reserved.</p>
-    </div>
-
-</footer>
+<
 
 <!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
 <script src="/webprogg/assets/javaScript.js"></script>

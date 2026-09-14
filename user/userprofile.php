@@ -10,7 +10,6 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
 /* -----------------------------------------------------
    AUTH GUARD
-   Redirect to login if nobody is signed in.
 ----------------------------------------------------- */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
@@ -19,22 +18,13 @@ if (!isset($_SESSION['user_id'])) {
 
 /* -----------------------------------------------------
    USER DATA
-   Pulled straight from the `users` row created back on
-   createaccount.php — Full Name -> name, Email -> email.
-
-   avatar_path is now a real column (added for the profile
-   photo upload feature). phone/location ARE real columns
-   too (set on becomeahost.php), so we pull them for real.
 ----------------------------------------------------- */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, phone, age, location, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
-/* If the session points at a user that no longer exists
-   (e.g. deleted account), don't render with fake data —
-   send them back to log in cleanly instead. */
 if (!$dbUser) {
     session_destroy();
     header("Location: /webprogg/auth/loginform.php");
@@ -43,23 +33,15 @@ if (!$dbUser) {
 
 /* -----------------------------------------------------
    HOST REDIRECT
-   userprofile.php is the regular-user account page. Once a
-   user has been approved as a host (users.is_host = 1, set
-   by the admin's Approve action in hostapplication.php),
-   their account page IS the host dashboard — send them to
-   hostprofile.php instead of rendering the plain user view.
 ----------------------------------------------------- */
 if ((int) $dbUser['is_host'] === 1) {
     header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
 
-/* Keep the navbar's account icon in sync, and mirror is_host
-   into the session for any older code that still checks
-   $_SESSION['is_host'] directly. */
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$user = [
+ $user = [
     'name'          => $dbUser['name'],
     'avatar'        => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : '/webprogg/images/default-avatar.png',
     'location'      => $dbUser['location'] ?? '',
@@ -67,45 +49,37 @@ $user = [
     'phone'         => $dbUser['phone'] ?? '',
     'age'           => $dbUser['age'] ?? '',
     'member_since'  => date('F Y', strtotime($dbUser['created_at'])),
-    'about'         => '', // no column in `users` yet
+    'about'         => '',
 ];
 
 /* -----------------------------------------------------
    HIVE CLUB MEMBERSHIP
-   Looks up the user's row in hive_members (if any) so the
-   profile card can show their tier instead of a generic
-   "Verified" badge. No row = not a Hive Club member yet.
 ----------------------------------------------------- */
-$membershipStmt = $pdo->prepare(
+ $membershipStmt = $pdo->prepare(
     "SELECT tier, membership_status FROM hive_members WHERE user_id = :id LIMIT 1"
 );
-$membershipStmt->execute(['id' => $_SESSION['user_id']]);
-$membership = $membershipStmt->fetch();
+ $membershipStmt->execute(['id' => $_SESSION['user_id']]);
+ $membership = $membershipStmt->fetch();
 
-$notification_count = 0;
+ $notification_count = 0;
 
 /* -----------------------------------------------------
    REVIEWS
-   SELECT rating FROM reviews WHERE user_id = ?
 ----------------------------------------------------- */
-$reviewsStmt = $pdo->prepare(
+ $reviewsStmt = $pdo->prepare(
     "SELECT rating FROM reviews WHERE user_id = :id"
 );
-$reviewsStmt->execute(['id' => $_SESSION['user_id']]);
-$reviews = array_map('floatval', array_column($reviewsStmt->fetchAll(), 'rating'));
+ $reviewsStmt->execute(['id' => $_SESSION['user_id']]);
+ $reviews = array_map('floatval', array_column($reviewsStmt->fetchAll(), 'rating'));
 
-$average_rating = count($reviews) > 0
+ $average_rating = count($reviews) > 0
     ? round(array_sum($reviews) / count($reviews), 1)
     : 0;
 
 /* -----------------------------------------------------
    RECENT BOOKINGS
-   Real query against `bookings`, joined to `listings` for
-   the title/location and `listing_photos` for the cover
-   thumbnail. Most recent 3 shown here; full history lives
-   on userbookings.php.
 ----------------------------------------------------- */
-$bookingsStmt = $pdo->prepare(
+ $bookingsStmt = $pdo->prepare(
     "SELECT b.id, b.total, b.status, b.booked_at,
             l.title, l.location,
             p.photo_path AS cover_photo
@@ -117,9 +91,9 @@ $bookingsStmt = $pdo->prepare(
      ORDER BY b.booked_at DESC
      LIMIT 3"
 );
-$bookingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $bookingsStmt->execute(['id' => $_SESSION['user_id']]);
 
-$bookings = array_map(function ($row) {
+ $bookings = array_map(function ($row) {
     return [
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
@@ -133,21 +107,19 @@ $bookings = array_map(function ($row) {
 
 /* -----------------------------------------------------
    PAYMENT SUMMARY — BOOKINGS SPENT
-   Sums the user's own bookings (all statuses except
-   cancelled), split into "this week" and "all time".
 ----------------------------------------------------- */
-$allBookingsStmt = $pdo->prepare(
+ $allBookingsStmt = $pdo->prepare(
     "SELECT total, booked_at
      FROM bookings
      WHERE user_id = :id AND status != 'cancelled'"
 );
-$allBookingsStmt->execute(['id' => $_SESSION['user_id']]);
-$allBookingsForSpend = $allBookingsStmt->fetchAll();
+ $allBookingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $allBookingsForSpend = $allBookingsStmt->fetchAll();
 
-$oneWeekAgo = strtotime('-7 days');
+ $oneWeekAgo = strtotime('-7 days');
 
-$bookings_spent_all_time = 0;
-$bookings_spent_this_week = 0;
+ $bookings_spent_all_time = 0;
+ $bookings_spent_this_week = 0;
 
 foreach ($allBookingsForSpend as $b) {
     $amount = (float) $b['total'];
@@ -160,20 +132,17 @@ foreach ($allBookingsForSpend as $b) {
 
 /* -----------------------------------------------------
    HIVE CLUB MEMBERSHIP PAYMENTS
-   Every successful membership purchase should already be
-   recorded as a row in hiveclub_transactions (payment_status
-   = 'paid') at the point of purchase.
 ----------------------------------------------------- */
-$transactionsStmt = $pdo->prepare(
+ $transactionsStmt = $pdo->prepare(
     "SELECT amount, purchased_at
      FROM hiveclub_transactions
      WHERE user_id = :id AND payment_status = 'paid'"
 );
-$transactionsStmt->execute(['id' => $_SESSION['user_id']]);
-$membershipTransactions = $transactionsStmt->fetchAll();
+ $transactionsStmt->execute(['id' => $_SESSION['user_id']]);
+ $membershipTransactions = $transactionsStmt->fetchAll();
 
-$membership_spent_all_time = 0;
-$membership_spent_this_week = 0;
+ $membership_spent_all_time = 0;
+ $membership_spent_this_week = 0;
 
 foreach ($membershipTransactions as $txn) {
     $amount = (float) $txn['amount'];
@@ -186,68 +155,48 @@ foreach ($membershipTransactions as $txn) {
 
 /* -----------------------------------------------------
    COMBINED TOTALS
-   "This Week" folds together real bookings and paid Hive
-   Club membership transactions. "All Time" is kept for the
-   stats row below (Total Spent All Time).
 ----------------------------------------------------- */
-$total_spent_this_week = number_format($bookings_spent_this_week + $membership_spent_this_week, 2);
-$total_spent_all_time  = number_format($bookings_spent_all_time + $membership_spent_all_time, 2);
+ $total_spent_this_week = number_format($bookings_spent_this_week + $membership_spent_this_week, 2);
+ $total_spent_all_time  = number_format($bookings_spent_all_time + $membership_spent_all_time, 2);
 
 /* -----------------------------------------------------
    PENDING TO PAY
-   Bookings still sitting at status = 'pending' are waiting
-   on the host to accept or reject them — nothing has been
-   charged yet, so this is what the user still owes if/once
-   each one gets accepted. Any Hive Club transaction stuck
-   at payment_status = 'pending' counts too.
 ----------------------------------------------------- */
-$pendingBookingsStmt = $pdo->prepare(
+ $pendingBookingsStmt = $pdo->prepare(
     "SELECT total
      FROM bookings
      WHERE user_id = :id AND status = 'pending'"
 );
-$pendingBookingsStmt->execute(['id' => $_SESSION['user_id']]);
-$bookings_pending_to_pay = array_sum(array_map(
+ $pendingBookingsStmt->execute(['id' => $_SESSION['user_id']]);
+ $bookings_pending_to_pay = array_sum(array_map(
     'floatval',
     array_column($pendingBookingsStmt->fetchAll(), 'total')
 ));
 
-$pendingTxnStmt = $pdo->prepare(
+ $pendingTxnStmt = $pdo->prepare(
     "SELECT amount
      FROM hiveclub_transactions
      WHERE user_id = :id AND payment_status = 'pending'"
 );
-$pendingTxnStmt->execute(['id' => $_SESSION['user_id']]);
-$membership_pending_to_pay = array_sum(array_map(
+ $pendingTxnStmt->execute(['id' => $_SESSION['user_id']]);
+ $membership_pending_to_pay = array_sum(array_map(
     'floatval',
     array_column($pendingTxnStmt->fetchAll(), 'amount')
 ));
 
-$total_pending_to_pay = number_format($bookings_pending_to_pay + $membership_pending_to_pay, 2);
+ $total_pending_to_pay = number_format($bookings_pending_to_pay + $membership_pending_to_pay, 2);
 
 /* -----------------------------------------------------
    PAYMENT METHODS
-   New site — nobody has saved a card yet, so this starts
-   empty. Once a real payments flow exists, replace with:
-   SELECT * FROM payment_methods WHERE user_id = ?
 ----------------------------------------------------- */
-$payment_methods = [];
+ $payment_methods = [];
 
-/* TODO: replace with a real `users.two_factor_enabled` column
-   (or a separate `two_factor_auth` table) once the actual 2FA
-   setup flow exists. Defaulting to false since nothing has
-   enabled it yet — showing "Enabled" here would be inaccurate. */
-$two_factor_enabled = false;
+ $two_factor_enabled = false;
 
 /* -----------------------------------------------------
    WISHLIST
-   Real query against the `wishlist` table (each row links a
-   user to a listing they've saved), joined to `listings` for
-   title/location/price and `listing_photos` for the cover
-   thumbnail. Only the 6 most recently saved show up here on
-   Overview — the full list lives on userwishlist.php.
 ----------------------------------------------------- */
-$wishlistStmt = $pdo->prepare(
+ $wishlistStmt = $pdo->prepare(
     "SELECT l.id, l.title, l.location, l.price,
             p.photo_path AS cover_photo
      FROM wishlist w
@@ -258,9 +207,9 @@ $wishlistStmt = $pdo->prepare(
      ORDER BY w.created_at DESC
      LIMIT 6"
 );
-$wishlistStmt->execute(['id' => $_SESSION['user_id']]);
+ $wishlistStmt->execute(['id' => $_SESSION['user_id']]);
 
-$wishlist = array_map(function ($row) {
+ $wishlist = array_map(function ($row) {
     return [
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
@@ -273,23 +222,21 @@ $wishlist = array_map(function ($row) {
     ];
 }, $wishlistStmt->fetchAll());
 
-/* Derived counts — always reflect the actual $wishlist array,
-   never hardcode these separately or they'll drift out of sync. */
-$wishlist_total = count($wishlist);
+ $wishlist_total = count($wishlist);
 
 /* -----------------------------------------------------
    STATS ROW
-   Bookings Total is now a real count; the rest follow the
-   same "no fake data" rule as before.
+   NEW: numeric stats carry data-count so JS can count
+   them up when they scroll into view.
 ----------------------------------------------------- */
-$stats = [
-    ['icon' => 'bookingsicon-userprofile.png',     'value' => count($bookings),  'label' => 'Bookings Total'],
-    ['icon' => 'wihlistedicon-userprofile.png',    'value' => $wishlist_total,   'label' => 'Wishlisted Properties'],
-    ['icon' => 'averageratinsicon-userprofile.png','value' => $average_rating,      'label' => 'Average Rating From Reviews'],
-    ['icon' => 'totalspenticon-userprofile.png',   'value' => '&#8369; ' . $total_spent_all_time, 'label' => 'Total Spent All Time'],
+ $stats = [
+    ['icon' => 'bookingsicon-userprofile.png',     'value' => count($bookings),  'label' => 'Bookings Total',            'count' => count($bookings), 'decimals' => 0],
+    ['icon' => 'wihlistedicon-userprofile.png',    'value' => $wishlist_total,   'label' => 'Wishlisted Properties',     'count' => $wishlist_total,  'decimals' => 0],
+    ['icon' => 'averageratinsicon-userprofile.png','value' => $average_rating,   'label' => 'Average Rating From Reviews','count' => $average_rating, 'decimals' => 1],
+    ['icon' => 'totalspenticon-userprofile.png',   'value' => '&#8369; ' . $total_spent_all_time, 'label' => 'Total Spent All Time', 'count' => null, 'decimals' => 0],
 ];
 
-$activeSidebar = 'overview';
+ $activeSidebar = 'overview';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -300,6 +247,9 @@ $activeSidebar = 'overview';
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<!-- NEW: enables scroll-reveal only when JS is available -->
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -362,24 +312,127 @@ $activeSidebar = 'overview';
 </header>
 
 <?php if (isset($_GET['booked'])): ?>
-<section style="max-width:900px; margin:16px auto 0; padding:12px 18px; border-radius:10px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:0.9rem;">
-    Your inquiry was sent! Check "My Bookings" below for the details.
+<!-- CHANGED: inline styles replaced with .up-notice class -->
+<section class="up-notice">
+    &#10003; Your inquiry was sent! Check "My Bookings" below for the details.
 </section>
 <?php endif; ?>
 
 <!-- =========================================================
-     WELCOME BANNER
+     WELCOME HERO (CHANGED — full redesign)
 ========================================================= -->
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Welcome back,</p>
-    <h1><?php echo h($user['name']); ?>!</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Manage your bookings, favorites, and account settings all in one place.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
-  </div>
+<section class="up-hero">
+
+    <!-- Decorative background: glow blobs + honeycomb (in ::before) -->
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <!-- HERO TEXT -->
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+
+                <span class="up-pulse-dot"></span>
+
+                Member Dashboard
+
+            </span>
+
+
+            <p class="up-hero-eyebrow up-anim" style="--d: .12s;">
+                Welcome back,
+            </p>
+
+
+            <h1 class="up-anim" style="--d: .18s;">
+
+                <span class="up-shimmer"><?php echo h($user['name']); ?>!</span>
+
+            </h1>
+
+
+            <span class="up-welcome-underline up-anim" style="--d: .24s;"></span>
+
+
+            <p class="up-hero-sub up-anim" style="--d: .3s;">
+
+                Manage your bookings, favorites, and account
+                settings all in one place.
+
+            </p>
+
+        </div>
+
+
+        <!-- HERO ART -->
+        <div class="up-hero-art up-anim" style="--d: .3s;">
+
+            <span class="up-art-glow" aria-hidden="true"></span>
+
+            <img
+                src="/webprogg/images/livingroomicon-userprofile.png"
+                alt=""
+            >
+
+
+            <!-- Floating glass chips -->
+            <div class="up-chip up-chip-1">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2.5"/>
+                    <path d="m3.5 7 8.5 6 8.5-6"/>
+                </svg>
+
+                <span>Recent Bookings</span>
+
+            </div>
+
+
+            <div class="up-chip up-chip-2">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 21s-7.5-4.7-9.5-9A5.4 5.4 0 0 1 12 6.5 5.4 5.4 0 0 1 21.5 12c-2 4.3-9.5 9-9.5 9z"/>
+                </svg>
+
+                <span>Saved Favorites</span>
+
+            </div>
+
+
+            <div class="up-chip up-chip-3">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+
+                <span>Secure Account</span>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- Wave divider -->
+    <svg
+        class="up-hero-wave"
+        viewBox="0 0 1440 90"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+    >
+        <path
+            d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z"
+            fill="#ffffff"
+        >
+        </path>
+    </svg>
+
 </section>
 
 <!-- =========================================================
@@ -388,18 +441,8 @@ $activeSidebar = 'overview';
 <main class="up-dashboard">
 
   <?php
-  /* FIX: this sidebar previously hand-rolled its own links and
-     had drifted badly out of sync with the real filenames:
-       - Reviews    -> "userreview  s.php" (literal typo/extra
-                        spaces in the filename — 404)
-       - Messages   -> "messages.php" (should be
-                        usermessages.php — 404)
-       - Notification Settings -> "notificationsettings.php"
-                        (should be usernotificationsettings.php
-                        — 404)
-     The shared partial below is the single source of truth,
-     so this class of bug can't reappear here or on any other
-     /my-account page. */
+  /* Shared sidebar partial — single source of truth for the
+     account nav links (see includes/sidebar.php). */
   require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
   ?>
 
@@ -407,7 +450,8 @@ $activeSidebar = 'overview';
   <div class="up-content">
 
     <!-- PROFILE CARD -->
-    <section class="up-card up-profile-card">
+    <section class="up-card up-profile-card up-reveal">
+
       <div class="up-profile-photo">
         <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>" id="profileAvatarImg">
         <button type="button" class="up-photo-edit" id="photoButton" aria-label="Change profile photo">
@@ -425,7 +469,7 @@ $activeSidebar = 'overview';
               <?php echo h(ucfirst($membership['tier'])); ?> Member
             </span>
           <?php else: ?>
-            <a href="/webprogg/hiveclub.php" class="up-badge-verified" style="text-decoration:none; background:#f0f0f0; color:#777777;">
+            <a href="/webprogg/hiveclub.php" class="up-badge-verified" style="text-decoration:none; background:#f0f0f0; color:#777777; border-color:transparent;">
               Join Hive Club
             </a>
           <?php endif; ?>
@@ -454,11 +498,22 @@ $activeSidebar = 'overview';
 
     <!-- STATS ROW -->
     <section class="up-stats">
-      <?php foreach ($stats as $stat): ?>
-        <div class="up-stat-card<?php echo $stat['label'] === 'Wishlisted Properties' ? ' up-stat-wishlist' : ''; ?>">
+      <?php foreach ($stats as $i => $stat): ?>
+        <div
+            class="up-stat-card up-reveal"
+            style="--i: <?php echo (int) $i; ?>;"
+        >
           <img src="/webprogg/images/<?php echo h($stat['icon']); ?>" alt="">
           <div>
-            <strong><?php echo $stat['value']; /* may contain an HTML entity, not user input */ ?></strong>
+            <?php if ($stat['count'] !== null): ?>
+                <!-- NEW: numeric stats count up when revealed -->
+                <strong
+                    data-count="<?php echo h($stat['count']); ?>"
+                    data-decimals="<?php echo (int) $stat['decimals']; ?>"
+                ><?php echo $stat['value']; ?></strong>
+            <?php else: ?>
+                <strong><?php echo $stat['value']; /* may contain an HTML entity, not user input */ ?></strong>
+            <?php endif; ?>
             <span><?php echo h($stat['label']); ?></span>
           </div>
         </div>
@@ -468,7 +523,7 @@ $activeSidebar = 'overview';
     <!-- RECENT BOOKINGS + PAYMENT SUMMARY -->
     <section class="up-two-col">
 
-      <div class="up-card up-bookings-card">
+      <div class="up-card up-bookings-card up-reveal" style="--i: 1;">
         <div class="up-card-header">
           <h3>Recent Bookings</h3>
           <a href="/webprogg/booking/userbookings.php" class="up-link-view-all">View All</a>
@@ -510,19 +565,19 @@ $activeSidebar = 'overview';
 
       <div class="up-right-col">
 
-        <div class="up-card up-payment-summary">
+        <div class="up-card up-payment-summary up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3>Payment Summary</h3>
             <a href="/webprogg/user/userpayments.php" class="up-link-view-all">View All</a>
           </div>
 
-          <!-- WEEK / ALL TIME TOGGLE -->
-          <div class="up-summary-toggle" role="tablist" style="display:flex; gap:6px; margin-bottom:12px;">
+          <!-- CHANGED: week/pending toggle — inline styles moved
+               into .up-summary-toggle / .up-summary-tab CSS -->
+          <div class="up-summary-toggle" role="tablist">
             <button
               type="button"
               class="up-summary-tab active"
               data-range="week"
-              style="flex:1; padding:6px 10px; border:1px solid var(--up-border); border-radius:8px; background:var(--up-orange-light); color:var(--up-orange); font-size:11px; font-weight:700; cursor:pointer;"
             >
               This Week
             </button>
@@ -530,7 +585,6 @@ $activeSidebar = 'overview';
               type="button"
               class="up-summary-tab"
               data-range="pending"
-              style="flex:1; padding:6px 10px; border:1px solid var(--up-border); border-radius:8px; background:#ffffff; color:#777777; font-size:11px; font-weight:700; cursor:pointer;"
             >
               Pending to Pay
             </button>
@@ -553,16 +607,16 @@ $activeSidebar = 'overview';
           </div>
         </div>
 
-        <div class="up-card up-payment-methods">
+        <div class="up-card up-payment-methods up-reveal" style="--i: 3;">
           <div class="up-card-header">
             <h3>Payment Methods</h3>
             <a href="/webprogg/user/userpayments.php" class="up-link-view-all">Manage</a>
           </div>
 
           <?php if (empty($payment_methods)): ?>
-            <div class="up-payment-methods-empty" style="text-align:center; padding:20px 8px; color:#777777;">
-              <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38);">No payment methods yet</p>
-              <p style="margin:0; font-size:13px;">Add a card to make booking faster.</p>
+            <div class="up-payment-methods-empty">
+              <p>No payment methods yet</p>
+              <p>Add a card to make booking faster.</p>
             </div>
           <?php else: ?>
             <?php foreach ($payment_methods as $method): ?>
@@ -579,7 +633,7 @@ $activeSidebar = 'overview';
           <button type="button" class="up-btn-outline up-add-card">+ Add New Card</button>
         </div>
 
-        <div class="up-card up-account-security">
+        <div class="up-card up-account-security up-reveal" style="--i: 4;">
           <div class="up-card-header">
             <h3>Account Security</h3>
             <span class="up-badge-secure">
@@ -589,17 +643,14 @@ $activeSidebar = 'overview';
           </div>
           <div class="up-security-row">
             <span>Two-Factor Authentication</span>
-            <span
-              class="<?php echo $two_factor_enabled ? 'up-security-enabled' : 'up-security-disabled'; ?>"
-              <?php if (!$two_factor_enabled): ?>style="color:#e0524d; font-weight:700;"<?php endif; ?>
-            >
+            <span class="<?php echo $two_factor_enabled ? 'up-security-enabled' : 'up-security-disabled'; ?>">
               <?php echo $two_factor_enabled ? 'Enabled' : 'Disabled'; ?>
             </span>
           </div>
           <a href="/webprogg/user/security.php" class="up-btn-outline up-manage-security">Manage Security</a>
         </div>
 
-        <div class="up-need-help">
+        <div class="up-need-help up-reveal" style="--i: 5;">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Our support team is here to assist you 24/7.</p>
@@ -612,7 +663,7 @@ $activeSidebar = 'overview';
     </section>
 
     <!-- WISHLIST -->
-    <section class="up-card up-wishlist">
+    <section class="up-card up-wishlist up-reveal" style="--i: 1;">
       <div class="up-card-header">
         <h3>Wishlist (<span class="up-wishlist-count"><?php echo h($wishlist_total); ?></span>)</h3>
         <a href="/webprogg/user/userwishlist.php" class="up-link-view-all">View All</a>
@@ -642,7 +693,7 @@ $activeSidebar = 'overview';
 
       <!-- Shown on load when the user has no wishlist items yet, and also
            by JS once every wishlist item has been removed. -->
-      <div class="up-wishlist-empty" id="up-wishlist-empty" style="<?php echo empty($wishlist) ? '' : 'display:none; '; ?>text-align:center; padding:32px 12px; color:#777777;">
+      <div class="up-wishlist-empty" id="up-wishlist-empty" style="<?php echo empty($wishlist) ? '' : 'display:none;'; ?>">
         <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38);">Your wishlist is empty</p>
         <p style="margin:0; font-size:13px;">Save listings you like and they'll show up here.</p>
       </div>
@@ -722,10 +773,95 @@ $activeSidebar = 'overview';
 <script src="/webprogg/assets/javaScript.js"></script>
 
 <!-- =========================================================
+     NEW — SCROLL REVEAL + STAT COUNT-UP (self-contained)
+========================================================= -->
+<script>
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    /* ---- Scroll reveal ---- */
+    var revealEls = Array.prototype.slice.call(
+        document.querySelectorAll(".up-reveal")
+    );
+
+    if (reduced || !("IntersectionObserver" in window)) {
+
+        revealEls.forEach(function (el) {
+            el.classList.add("in-view");
+        });
+
+    } else {
+
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+
+                    window.setTimeout(function () {
+                        el.style.setProperty("--i", "0");
+                    }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+
+        revealEls.forEach(function (el) {
+            io.observe(el);
+        });
+    }
+
+
+    /* ---- Stat count-up (numbers with data-count) ---- */
+    var counters = document.querySelectorAll("[data-count]");
+
+    if (counters.length && !reduced && "IntersectionObserver" in window) {
+
+        var countIo = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+
+                    var el = entry.target;
+                    countIo.unobserve(el);
+
+                    var target = parseFloat(el.getAttribute("data-count")) || 0;
+                    var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
+                    var t0 = null;
+                    var DURATION = 1300;
+
+                    var stepFn = function (ts) {
+                        if (!t0) t0 = ts;
+                        var k = Math.min((ts - t0) / DURATION, 1);
+                        var eased = 1 - Math.pow(1 - k, 3);
+                        el.textContent = (target * eased).toFixed(decimals);
+                        if (k < 1) window.requestAnimationFrame(stepFn);
+                    };
+
+                    window.requestAnimationFrame(stepFn);
+                });
+            },
+            { threshold: 0.6 }
+        );
+
+        Array.prototype.forEach.call(counters, function (el) {
+            countIo.observe(el);
+        });
+    }
+    /* No JS / reduced motion: the server-rendered values
+       are already in the markup. */
+})();
+</script>
+
+<!-- =========================================================
      PAYMENT SUMMARY — WEEK / PENDING TO PAY TOGGLE
-     Both figures are computed server-side in PHP already
-     (bookings + hiveclub_transactions); this just swaps
-     which one is displayed without a page reload.
+     CHANGED: now toggles classes only — all tab styling
+     lives in .up-summary-toggle / .up-summary-tab CSS.
 ========================================================= -->
 <script>
 (function () {
@@ -745,13 +881,9 @@ $activeSidebar = 'overview';
 
             tabs.forEach(function (t) {
                 t.classList.remove('active');
-                t.style.background = '#ffffff';
-                t.style.color = '#777777';
             });
 
             tab.classList.add('active');
-            tab.style.background = 'var(--up-orange-light)';
-            tab.style.color = 'var(--up-orange)';
 
             const range = tab.getAttribute('data-range');
 
@@ -773,9 +905,7 @@ $activeSidebar = 'overview';
 
 <!-- =========================================================
      PROFILE PHOTO — UPLOAD ON CAMERA ICON CLICK
-     Opens the file picker, shows an instant local preview,
-     uploads to uploadavatar.php, then swaps in the real saved
-     image (or reverts + alerts on failure).
+     (unchanged — same logic, same endpoints)
 ========================================================= -->
 <script>
 (function () {
@@ -807,7 +937,6 @@ $activeSidebar = 'overview';
             return;
         }
 
-        // Instant local preview while it uploads
         const previewUrl = URL.createObjectURL(file);
         const previousSrc = avatarImg.src;
         avatarImg.src = previewUrl;
@@ -853,9 +982,7 @@ $activeSidebar = 'overview';
 
 <!-- =========================================================
      WISHLIST — REMOVE FROM WISHLIST (Overview mini-grid)
-     Calls togglewishlist.php to actually delete the row from
-     the `wishlist` table, then updates the count/empty-state
-     in the DOM. See userwishlist.php for the full list.
+     (unchanged — same logic, same endpoints)
 ========================================================= -->
 <script>
 (function () {

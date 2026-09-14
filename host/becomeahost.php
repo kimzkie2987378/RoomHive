@@ -1,11 +1,12 @@
 <?php
 
 /* =========================================================
-   ROOMHIVE - BECOME A HOST
+   ROOMHIVE - BECOME A HOST (STEP 1)
    ========================================================= */
 
 session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';   // ← add this, it's missing
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+
 /*
  * =========================================================
  * AUTHENTICATION CHECK
@@ -38,18 +39,12 @@ if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true) {
  * used across pages).
  */
 
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
-
-/*
- * Get the logged-in user's name.
- * This can be used anywhere on the page if needed.
- */
-
-$userName = $_SESSION["user_name"] ?? "User";
+ $userName = $_SESSION["user_name"] ?? "User";
 
 /*
  * NAVBAR AVATAR
@@ -58,24 +53,24 @@ $userName = $_SESSION["user_name"] ?? "User";
  * so the navbar's account icon reflects it immediately instead
  * of only after logging back in.
  */
-$avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
-$avatarStmt->execute(['id' => $_SESSION['user_id']]);
-$avatarRow = $avatarStmt->fetch();
-$_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+ $avatarStmt->execute(['id' => $_SESSION['user_id']]);
+ $avatarRow = $avatarStmt->fetch();
+ $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 /* Notification bell badge count — same placeholder used across
    every logged-in page's navbar until real notifications land. */
-$notification_count = 0;
+ $notification_count = 0;
 
 // Current page
-$currentPage = "/webprogg/host/becomeahost.php";
+ $currentPage = "/webprogg/host/becomeahost.php";
 
 // =========================================================
 // NAVIGATION
 // =========================================================
 
-$navigation = [
+ $navigation = [
     "HOME" => "/webprogg/index.php",
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
@@ -84,12 +79,11 @@ $navigation = [
     "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
 
-
 // =========================================================
 // HOSTING STEPS
 // =========================================================
 
-$hostSteps = [
+ $hostSteps = [
 
     [
         "number" => 1,
@@ -127,55 +121,43 @@ $hostSteps = [
 
 // The user is on this page to complete Step 1, so the steps
 // strip can highlight where they currently stand.
-$currentHostStep = 1;
-
+ $currentHostStep = 1;
 
 // =========================================================
 // LISTING CATEGORIES
 // =========================================================
 
-$listingCategories = [
+ $listingCategories = [
 
     "Shared Bedroom" => "shared-bedroom",
-
     "Private Room" => "private-room",
-
     "Entire House" => "entire-house",
-
     "Boarding House" => "boarding-house",
-
     "Studio Loft" => "studio-loft"
 
 ];
-
 
 // =========================================================
 // QUICK LINKS
 // =========================================================
 
-$quickLinks = [
+ $quickLinks = [
 
     "About Us" => "/webprogg/index.php",
-
     "How It Works" => "/webprogg/host/howitworks.php",
-
     "Become a Host" => "/webprogg/host/becomeahost.php",
-
     "Hive Club" => "/webprogg/hiveclub.php",
-
     "Contacts" => "/webprogg/misc/contacts.php"
 
 ];
-
 
 // =========================================================
 // FORM PROCESSING
 // =========================================================
 
-$errors = [];
+ $errors = [];
 
-$success = false;
-
+ $success = false;
 
 // Process form when submitted
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -189,7 +171,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $idType = trim($_POST["id_type"] ?? "");
     $idNumber = trim($_POST["id_number"] ?? "");
 
-
     // =====================================================
     // VALIDATION
     // =====================================================
@@ -198,18 +179,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $errors[] = "Please enter your full name.";
     }
 
-
     if ($email === "" || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = "Please enter a valid email address.";
     }
 
-
     if ($phone === "") {
-    $errors[] = "Please enter your phone number.";
-} elseif (!preg_match('/^[0-9]{11}$/', $phone)) {
-    $errors[] = "Phone number must be exactly 11 digits.";
-}
-
+        $errors[] = "Please enter your phone number.";
+    } elseif (!preg_match('/^[0-9]{11}$/', $phone)) {
+        $errors[] = "Phone number must be exactly 11 digits.";
+    }
 
     // =====================================================
     // AGE VALIDATION
@@ -232,21 +210,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     }
 
-
     if ($location === "") {
         $errors[] = "Please enter your location.";
     }
-
 
     if ($idType === "") {
         $errors[] = "Please select your ID type.";
     }
 
-
     if ($idNumber === "") {
         $errors[] = "Please enter your ID number.";
     }
-
 
     // =====================================================
     // DUPLICATE EMAIL / PHONE CHECK
@@ -279,7 +253,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     }
 
-
     if ($phone !== "") {
 
         $phoneCheckStmt = $pdo->prepare(
@@ -299,7 +272,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
     }
-
 
     // =====================================================
     // ID UPLOAD VALIDATION
@@ -323,13 +295,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             "image/png"
         ];
 
-
         if ($file["size"] > $maxSize) {
 
             $errors[] = "ID file must not exceed 5MB.";
 
         }
-
 
         if (!in_array($file["type"], $allowedTypes, true)) {
 
@@ -339,194 +309,193 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     }
 
-
     // =====================================================
     // IF VALID
     // =====================================================
 
     if (empty($errors)) {
 
-    $updateStmt = $pdo->prepare(
-        "UPDATE users SET phone = :phone, location = :location, age = :age WHERE id = :id"
-    );
-    $updateStmt->execute([
-        'phone'    => $phone,
-        'location' => $location,
-        'age'      => (int) $age,
-        'id'       => $_SESSION['user_id'],
-    ]);
-
-    // =================================================
-    // SAVE UPLOADED ID
-    // -------------------------------------------------
-    // Use an ABSOLUTE FILESYSTEM path (via DOCUMENT_ROOT)
-    // to actually write the file, so it's not dependent
-    // on whatever the script's current working directory
-    // happens to be.
-    //
-    // Store an ABSOLUTE WEB path (starting with /webprogg/...)
-    // in the database instead of a relative one. A relative
-    // path like "uploads/host_ids/x.jpg" only resolves
-    // correctly when viewed from a page in the same folder
-    // as becomeahost.php — it breaks the moment it's
-    // rendered from a different directory, like
-    // /webprogg/admin/hostapplicationeye.php, because the
-    // browser resolves relative src attributes against the
-    // CURRENT page's URL, not the upload script's location.
-    // =================================================
-
-    $uploadDirFilesystem = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/host_ids/';
-    $uploadDirWeb        = '/webprogg/uploads/host_ids/';
-
-    if (!is_dir($uploadDirFilesystem)) {
-        mkdir($uploadDirFilesystem, 0755, true);
-    }
-
-    $fileExtension = strtolower(pathinfo($file["name"], PATHINFO_EXTENSION));
-    $newFileName = "host_" . time() . "_" . uniqid() . "." . $fileExtension;
-
-    $uploadPath = $uploadDirFilesystem . $newFileName; // filesystem write target
-    $webPath    = $uploadDirWeb . $newFileName;         // what gets stored in the DB / used in <img src>
-
-    move_uploaded_file($file["tmp_name"], $uploadPath);
-
-    // =====================================================
-    // FIND EXISTING APPLICATION FOR THIS USER, IF ANY
-    // -----------------------------------------------------
-    // Step 2's "BACK" link sends the user right back to this
-    // form. If they fill it out and hit "Next step" again,
-    // this handler runs a second time — without this check
-    // that used to mean a second INSERT and a duplicate row
-    // in the admin's Host Applications list for the same
-    // person. Reuse the existing row (session first, DB as a
-    // fallback for a lost session) instead of inserting again.
-    //
-    // Fallback also matches 'approved' now, not just
-    // 'pending' — once an application is approved, the old
-    // pending-only lookup stopped finding it, so a second
-    // submission (e.g. via "Add Another Space" -> BACK) would
-    // insert a brand new duplicate row instead of updating
-    // the existing approved one.
-    // =====================================================
-
-    $existingApplicationId = $_SESSION['host_application_id'] ?? null;
-
-    if ($existingApplicationId === null) {
-
-        $existingStmt = $pdo->prepare(
-            "SELECT id, id_file FROM host_applications
-             WHERE user_id = :user_id AND status IN ('pending', 'approved')
-             ORDER BY id DESC
-             LIMIT 1"
+        $updateStmt = $pdo->prepare(
+            "UPDATE users SET phone = :phone, location = :location, age = :age WHERE id = :id"
         );
-        $existingStmt->execute(['user_id' => $_SESSION['user_id']]);
-        $existingRow = $existingStmt->fetch();
-
-        if ($existingRow) {
-            $existingApplicationId = $existingRow['id'];
-        }
-
-    } else {
-
-        $existingStmt = $pdo->prepare(
-            "SELECT id_file FROM host_applications WHERE id = :id LIMIT 1"
-        );
-        $existingStmt->execute(['id' => $existingApplicationId]);
-        $existingRow = $existingStmt->fetch();
-
-    }
-
-    if ($existingApplicationId !== null && $existingRow) {
-
-        // Update the application already on file instead of
-        // creating a duplicate.
-        $stmt = $pdo->prepare(
-            "UPDATE host_applications
-    SET full_name = :full_name,
-        email = :email,
-        phone = :phone,
-        age = :age,
-        location = :location,
-        id_type = :id_type,
-        id_number = :id_number,
-        id_file = :id_file,
-        status = CASE
-                    WHEN status = 'rejected' THEN 'pending'
-                    ELSE status
-                 END,
-        updated_at = NOW()
- WHERE id = :id"
-        );
-
-        $stmt->execute([
-            'full_name'  => $fullName,
-            'email'      => $email,
-            'phone'      => $phone,
-            'age'        => (int) $age,
-            'location'   => $location,
-            'id_type'    => $idType,
-            'id_number'  => $idNumber,
-            'id_file'    => $webPath,
-            'id'         => $existingApplicationId,
+        $updateStmt->execute([
+            'phone'    => $phone,
+            'location' => $location,
+            'age'      => (int) $age,
+            'id'       => $_SESSION['user_id'],
         ]);
 
-        // Old ID image has been replaced — remove it so
-        // uploads/host_ids/ doesn't accumulate orphaned files.
-        // id_file in the DB is a WEB path, so translate it back
-        // to a filesystem path before checking/deleting it.
-        if (!empty($existingRow['id_file']) && $existingRow['id_file'] !== $webPath) {
-            $oldFilesystemPath = $_SERVER['DOCUMENT_ROOT'] . $existingRow['id_file'];
-            if (file_exists($oldFilesystemPath)) {
-                unlink($oldFilesystemPath);
+        // =================================================
+        // SAVE UPLOADED ID
+        // -------------------------------------------------
+        // Use an ABSOLUTE FILESYSTEM path (via DOCUMENT_ROOT)
+        // to actually write the file, so it's not dependent
+        // on whatever the script's current working directory
+        // happens to be.
+        //
+        // Store an ABSOLUTE WEB path (starting with /webprogg/...)
+        // in the database instead of a relative one. A relative
+        // path like "uploads/host_ids/x.jpg" only resolves
+        // correctly when viewed from a page in the same folder
+        // as becomeahost.php — it breaks the moment it's
+        // rendered from a different directory, like
+        // /webprogg/admin/hostapplicationeye.php, because the
+        // browser resolves relative src attributes against the
+        // CURRENT page's URL, not the upload script's location.
+        // =================================================
+
+        $uploadDirFilesystem = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/host_ids/';
+        $uploadDirWeb        = '/webprogg/uploads/host_ids/';
+
+        if (!is_dir($uploadDirFilesystem)) {
+            mkdir($uploadDirFilesystem, 0755, true);
+        }
+
+        $fileExtension = strtolower(pathinfo($file["name"], PATHINFO_EXTENSION));
+        $newFileName = "host_" . time() . "_" . uniqid() . "." . $fileExtension;
+
+        $uploadPath = $uploadDirFilesystem . $newFileName; // filesystem write target
+        $webPath    = $uploadDirWeb . $newFileName;         // what gets stored in the DB / used in <img src>
+
+        move_uploaded_file($file["tmp_name"], $uploadPath);
+
+        // =====================================================
+        // FIND EXISTING APPLICATION FOR THIS USER, IF ANY
+        // -----------------------------------------------------
+        // Step 2's "BACK" link sends the user right back to this
+        // form. If they fill it out and hit "Next step" again,
+        // this handler runs a second time — without this check
+        // that used to mean a second INSERT and a duplicate row
+        // in the admin's Host Applications list for the same
+        // person. Reuse the existing row (session first, DB as a
+        // fallback for a lost session) instead of inserting again.
+        //
+        // Fallback also matches 'approved' now, not just
+        // 'pending' — once an application is approved, the old
+        // pending-only lookup stopped finding it, so a second
+        // submission (e.g. via "Add Another Space" -> BACK) would
+        // insert a brand new duplicate row instead of updating
+        // the existing approved one.
+        // =====================================================
+
+        $existingApplicationId = $_SESSION['host_application_id'] ?? null;
+
+        if ($existingApplicationId === null) {
+
+            $existingStmt = $pdo->prepare(
+                "SELECT id, id_file FROM host_applications
+                 WHERE user_id = :user_id AND status IN ('pending', 'approved')
+                 ORDER BY id DESC
+                 LIMIT 1"
+            );
+            $existingStmt->execute(['user_id' => $_SESSION['user_id']]);
+            $existingRow = $existingStmt->fetch();
+
+            if ($existingRow) {
+                $existingApplicationId = $existingRow['id'];
             }
+
+        } else {
+
+            $existingStmt = $pdo->prepare(
+                "SELECT id_file FROM host_applications WHERE id = :id LIMIT 1"
+            );
+            $existingStmt->execute(['id' => $existingApplicationId]);
+            $existingRow = $existingStmt->fetch();
+
         }
 
-        $_SESSION['host_application_id'] = $existingApplicationId;
+        if ($existingApplicationId !== null && $existingRow) {
 
-    } else {
+            // Update the application already on file instead of
+            // creating a duplicate.
+            $stmt = $pdo->prepare(
+                "UPDATE host_applications
+        SET full_name = :full_name,
+            email = :email,
+            phone = :phone,
+            age = :age,
+            location = :location,
+            id_type = :id_type,
+            id_number = :id_number,
+            id_file = :id_file,
+            status = CASE
+                        WHEN status = 'rejected' THEN 'pending'
+                        ELSE status
+                     END,
+            updated_at = NOW()
+     WHERE id = :id"
+            );
 
-        // No application on record yet for this user — first
-        // time through step 1, so insert a new row. This is
-        // what host-step2.php needs as host_application_id
-        // when it creates the listing row.
-        $stmt = $pdo->prepare(
-            "INSERT INTO host_applications
-                (user_id, full_name, email, phone, age, location, id_type, id_number, id_file, status)
-             VALUES
-                (:user_id, :full_name, :email, :phone, :age, :location, :id_type, :id_number, :id_file, 'pending')"
-        );
+            $stmt->execute([
+                'full_name'  => $fullName,
+                'email'      => $email,
+                'phone'      => $phone,
+                'age'        => (int) $age,
+                'location'   => $location,
+                'id_type'    => $idType,
+                'id_number'  => $idNumber,
+                'id_file'    => $webPath,
+                'id'         => $existingApplicationId,
+            ]);
 
-        $stmt->execute([
-            'user_id'    => $_SESSION['user_id'],
-            'full_name'  => $fullName,
-            'email'      => $email,
-            'phone'      => $phone,
-            'age'        => (int) $age,
-            'location'   => $location,
-            'id_type'    => $idType,
-            'id_number'  => $idNumber,
-            'id_file'    => $webPath,
-        ]);
+            // Old ID image has been replaced — remove it so
+            // uploads/host_ids/ doesn't accumulate orphaned files.
+            // id_file in the DB is a WEB path, so translate it back
+            // to a filesystem path before checking/deleting it.
+            if (!empty($existingRow['id_file']) && $existingRow['id_file'] !== $webPath) {
+                $oldFilesystemPath = $_SERVER['DOCUMENT_ROOT'] . $existingRow['id_file'];
+                if (file_exists($oldFilesystemPath)) {
+                    unlink($oldFilesystemPath);
+                }
+            }
 
-        $_SESSION['host_application_id'] = $pdo->lastInsertId();
+            $_SESSION['host_application_id'] = $existingApplicationId;
 
+        } else {
+
+            // No application on record yet for this user — first
+            // time through step 1, so insert a new row. This is
+            // what host-step2.php needs as host_application_id
+            // when it creates the listing row.
+            $stmt = $pdo->prepare(
+                "INSERT INTO host_applications
+                    (user_id, full_name, email, phone, age, location, id_type, id_number, id_file, status)
+                 VALUES
+                    (:user_id, :full_name, :email, :phone, :age, :location, :id_type, :id_number, :id_file, 'pending')"
+            );
+
+            $stmt->execute([
+                'user_id'    => $_SESSION['user_id'],
+                'full_name'  => $fullName,
+                'email'      => $email,
+                'phone'      => $phone,
+                'age'        => (int) $age,
+                'location'   => $location,
+                'id_type'    => $idType,
+                'id_number'  => $idNumber,
+                'id_file'    => $webPath,
+            ]);
+
+            $_SESSION['host_application_id'] = $pdo->lastInsertId();
+
+        }
+
+        $_SESSION["host_application"] = [
+            "full_name" => $fullName,
+            "email"     => $email,
+            "phone"     => $phone,
+            "age"       => (int) $age,
+            "location"  => $location,
+            "id_type"   => $idType,
+            "id_number" => $idNumber,
+            "id_file"   => $webPath,
+        ];
+
+        // Step 1 done — on to "Add Your Space".
+        header("Location: /webprogg/host/host-step2.php");
+        exit;
     }
-
-    $_SESSION["host_application"] = [
-        "full_name" => $fullName,
-        "email"     => $email,
-        "phone"     => $phone,
-        "age"       => (int) $age,
-        "location"  => $location,
-        "id_type"   => $idType,
-        "id_number" => $idNumber,
-        "id_file"   => $webPath,
-    ];
-
-    // Step 1 done — on to "Add Your Space".
-    header("Location: /webprogg/host/host-step2.php");
-    exit;
-}
 
 }
 
@@ -548,34 +517,30 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         RoomHive - Become a Host
     </title>
 
-
-    <!-- =====================================================
-         POPPINS FONT
-    ====================================================== -->
-
+    <!-- POPPINS FONT -->
     <link
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
-
-    <!-- =====================================================
-         MAIN CSS
-    ====================================================== -->
-
+    <!-- MAIN CSS -->
     <link
         rel="stylesheet"
         href="/webprogg/assets/style.css"
     >
 
+    <!-- NEW: enables JS-gated entrance animations -->
+    <script>document.documentElement.classList.add("js");</script>
 
     <!-- =====================================================
-         BECOME-A-HOST ENHANCEMENT LAYER
-         Everything below is scoped to .host-page-v2 so it
-         layers on top of the site-wide stylesheet instead of
-         fighting it. It upgrades the step tracker, the form
-         card, live validation states and the ID upload box
-         without touching any shared component elsewhere.
+         BECOME-A-HOST ENHANCEMENT LAYER (STEP 1)
+         Scoped to .host-page-v2 so it layers on top of
+         style.css. CHANGED: adds the site-wide honeycomb
+         hero texture, shimmer title, balanced form grids
+         (2 + 2 + 3 instead of a 3 + 1 orphan), a trust note
+         under the ID upload, gradient CTA with shine sweep,
+         and a refined reduced-motion block that no longer
+         kills the loading spinner.
     ====================================================== -->
 
     <style>
@@ -583,6 +548,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         .host-page-v2 {
             --hive-amber: #ecac3a;
             --hive-amber-dark: #cf8f1f;
+            --hive-honey: #eda423;
+            --hive-honey-light: #f6c04e;
             --hive-ink: #1c1d22;
             --hive-ink-soft: #565a66;
             --hive-cream: #fffaf1;
@@ -590,27 +557,170 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             --hive-good: #2f9e5b;
             --hive-bad: #e0524d;
             --hive-shadow: 0 18px 40px -22px rgba(28, 29, 34, 0.35);
+
+            position: relative;
         }
 
-        /* ---------- entrance (one orchestrated reveal, not scattered) ---------- */
+        /* ---------- NEW: honeycomb texture + glow blobs ---------- */
+
+        .host-page-v2::before {
+            content: "";
+
+            position: absolute;
+            inset: 0;
+
+            background-image: url("data:image/svg+xml,%3Csvg width='28' height='49' viewBox='0 0 28 49' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23eda423' fill-opacity='0.07' fill-rule='nonzero'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/svg%3E");
+            background-size: 28px 49px;
+
+            -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 55%);
+            mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 55%);
+
+            pointer-events: none;
+
+            z-index: 0;
+        }
+
+        .host-page-v2 > * {
+            position: relative;
+
+            z-index: 1;
+        }
+
+        .hive-blob {
+            position: absolute;
+
+            border-radius: 50%;
+            filter: blur(70px);
+
+            pointer-events: none;
+
+            z-index: 0;
+        }
+
+        .hive-blob-1 {
+            width: 360px;
+            height: 360px;
+
+            top: -140px;
+            right: -120px;
+
+            background: radial-gradient(circle at 30% 30%, rgba(246, 196, 78, 0.8), rgba(237, 164, 35, 0.22) 60%, transparent 75%);
+
+            animation: hiveDrift 14s ease-in-out infinite alternate;
+        }
+
+        .hive-blob-2 {
+            width: 260px;
+            height: 260px;
+
+            top: 420px;
+            left: -140px;
+
+            background: radial-gradient(circle at 60% 40%, rgba(246, 196, 78, 0.6), rgba(237, 164, 35, 0.18) 60%, transparent 75%);
+
+            animation: hiveDrift 18s ease-in-out infinite alternate-reverse;
+        }
+
+        /* ---------- entrance (one orchestrated reveal) ---------- */
 
         @keyframes hiveRise {
             from { opacity: 0; transform: translateY(14px); }
             to   { opacity: 1; transform: translateY(0); }
         }
 
-        @media (prefers-reduced-motion: reduce) {
-            .host-page-v2 * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        .js .host-page-v2 .host-header,
+        .js .host-page-v2 .host-form-card {
+            animation: hiveRise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
-        .host-page-v2 .host-header,
-        .host-page-v2 .host-form-card {
-            animation: hiveRise 0.5s ease both;
+        .js .host-page-v2 .host-form-card { animation-delay: 0.08s; }
+
+        /* ---------- NEW: header polish ---------- */
+
+        .host-page-v2 .host-header {
+            text-align: center;
         }
 
-        .host-page-v2 .host-form-card { animation-delay: 0.08s; }
+        .host-page-v2 .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
 
-        /* ---------- step tracker: show exactly where the applicant stands ---------- */
+            padding: 8px 16px;
+
+            background: #ffffff;
+
+            border: 1px solid rgba(237, 164, 35, 0.35);
+            border-radius: 999px;
+
+            box-shadow: 0 4px 14px rgba(237, 164, 35, 0.12);
+
+            color: #b07708;
+
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .hive-pulse-dot {
+            position: relative;
+
+            width: 8px;
+            height: 8px;
+
+            background: var(--hive-honey);
+            border-radius: 50%;
+        }
+
+        .hive-pulse-dot::after {
+            content: "";
+
+            position: absolute;
+            inset: 0;
+
+            background: var(--hive-honey);
+            border-radius: 50%;
+
+            animation: hivePing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        .host-page-v2 .host-header h1 {
+            position: relative;
+
+            display: inline-block;
+        }
+
+        .host-page-v2 .host-header h1::after {
+            content: "";
+
+            position: absolute;
+
+            width: 64px;
+            height: 4px;
+
+            left: 50%;
+            bottom: -14px;
+            margin-left: -32px;
+
+            background: linear-gradient(90deg, #f6b93b, var(--hive-honey));
+
+            border-radius: 2px;
+        }
+
+        .hive-shimmer {
+            background: linear-gradient(92deg, #eda423 0%, #f6c04e 45%, #eda423 90%);
+            background-size: 200% auto;
+
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+
+            animation: hiveShimmer 3.5s linear infinite;
+        }
+
+        /* ---------- step tracker ---------- */
 
         .host-page-v2 .host-steps { position: relative; }
 
@@ -644,7 +754,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-amber-dark);
         }
 
-        /* ---------- progress bar: how much of the form is filled in ---------- */
+        /* ---------- progress bar ---------- */
 
         .host-progress {
             max-width: 760px;
@@ -731,8 +841,65 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         .host-page-v2 .host-form-card {
             max-width: 760px;
+            margin: 36px auto 0;
             box-shadow: var(--hive-shadow);
             border: 1px solid var(--hive-line);
+            border-radius: 18px;
+        }
+
+        .host-page-v2 .form-heading h2 {
+            position: relative;
+
+            display: inline-block;
+        }
+
+        .host-page-v2 .form-heading h2::after {
+            content: "";
+
+            position: absolute;
+
+            width: 42px;
+            height: 3px;
+
+            left: 0;
+            bottom: -8px;
+
+            background: linear-gradient(90deg, #f6b93b, var(--hive-honey));
+
+            border-radius: 2px;
+        }
+
+        .host-page-v2 .form-heading p {
+            margin-top: 18px;
+        }
+
+        /* NEW: explicit grid definitions — .three-columns was
+           previously only defined scoped to step 2's .rh-step2,
+           so step 1's grids could silently collapse. */
+
+        .host-page-v2 .form-grid {
+            display: grid;
+            gap: 18px 20px;
+            margin-bottom: 22px;
+        }
+
+        .host-page-v2 .form-grid .input-group {
+            margin-bottom: 0;
+        }
+
+        .host-page-v2 .form-grid.two-columns {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .host-page-v2 .form-grid.three-columns {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        @media (max-width: 720px) {
+            .host-page-v2 .form-grid.two-columns,
+            .host-page-v2 .form-grid.three-columns {
+                grid-template-columns: 1fr;
+            }
         }
 
         .host-page-v2 .input-group {
@@ -798,10 +965,52 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         /* ---------- upload box ---------- */
 
+        .host-page-v2 .upload-box {
+            border: 2px dashed #e2d4b6;
+
+            border-radius: 16px;
+
+            background: linear-gradient(160deg, #fffdf6 0%, #fdf3e0 100%);
+
+            cursor: pointer;
+
+            transition:
+                border-color 0.2s ease,
+                background-color 0.2s ease,
+                box-shadow 0.25s ease,
+                transform 0.15s ease;
+        }
+
+        .host-page-v2 .upload-box:hover {
+            border-color: var(--hive-honey);
+
+            box-shadow: 0 12px 26px rgba(237, 164, 35, 0.16);
+
+            transform: translateY(-2px);
+        }
+
+        .host-page-v2 .upload-box .upload-icon {
+            color: var(--hive-honey);
+            font-size: 32px;
+
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .host-page-v2 .upload-box:hover .upload-icon {
+            transform: translateY(-4px) scale(1.12);
+        }
+
+        .host-page-v2 .upload-box .upload-text strong {
+            color: var(--hive-ink);
+        }
+
+        .host-page-v2 .upload-box .upload-text span {
+            color: var(--hive-ink-soft);
+        }
+
         .upload-box {
             position: relative;
             overflow: hidden;
-            transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
         }
 
         .upload-box.drag-over {
@@ -898,6 +1107,29 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         .upload-error.show { display: block; }
 
+        /* NEW: trust note under the ID upload */
+
+        .upload-secure-note {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+
+            margin-top: 10px;
+
+            color: var(--hive-ink-soft);
+
+            font-size: 12px;
+        }
+
+        .upload-secure-note svg {
+            width: 14px;
+            height: 14px;
+
+            color: var(--hive-good);
+            flex-shrink: 0;
+        }
+
         @media (max-width: 600px) {
             .upload-box.has-image {
                 min-height: 220px;
@@ -908,12 +1140,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         .host-page-v2 .next-button {
             position: relative;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+            overflow: hidden;
+
+            background: linear-gradient(135deg, var(--hive-honey-light), var(--hive-honey)) !important;
+
+            border: none !important;
+
+            color: var(--hive-ink) !important;
+
+            font-weight: 700;
+
+            box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35);
+
+            transition:
+                transform 0.15s ease,
+                box-shadow 0.2s ease,
+                opacity 0.15s ease !important;
         }
 
         .host-page-v2 .next-button:not(:disabled):hover {
-            transform: translateY(-1px);
-            box-shadow: 0 12px 24px -10px rgba(236, 172, 58, 0.55);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45);
+        }
+
+        .host-page-v2 .next-button:not(:disabled):active {
+            transform: translateY(0) scale(0.98);
         }
 
         .host-page-v2 .next-button:disabled {
@@ -921,13 +1172,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             cursor: progress;
         }
 
+        /* NEW: infinite shine sweep, matching steps 3 & 4 */
+
+        .host-page-v2 .next-button::after {
+            content: "";
+
+            position: absolute;
+            top: 0;
+            left: -80%;
+
+            width: 50%;
+            height: 100%;
+
+            background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+
+            transform: skewX(-20deg);
+
+            animation: hiveSweep 3.6s ease-in-out infinite;
+
+            pointer-events: none;
+        }
+
+        @keyframes hiveSweep {
+            0%        { left: -80%; }
+            45%, 100% { left: 130%; }
+        }
+
         .btn-spinner {
             display: none;
             width: 15px;
             height: 15px;
             border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.4);
-            border-top-color: #fff;
+            border: 2px solid rgba(28, 29, 34, 0.25);
+            border-top-color: var(--hive-ink);
             margin-right: 8px;
             vertical-align: -2px;
             animation: hiveSpin 0.7s linear infinite;
@@ -936,6 +1213,47 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         @keyframes hiveSpin { to { transform: rotate(360deg); } }
 
         .next-button.is-loading .btn-spinner { display: inline-block; }
+
+        /* ---------- NEW: keyframes for the added decoration ---------- */
+
+        @keyframes hiveDrift {
+            from { transform: translate(0, 0) scale(1); }
+            to   { transform: translate(30px, -24px) scale(1.08); }
+        }
+
+        @keyframes hivePing {
+            0%   { transform: scale(1); opacity: 0.7; }
+            80%, 100% { transform: scale(2.6); opacity: 0; }
+        }
+
+        @keyframes hiveShimmer {
+            to { background-position: 200% center; }
+        }
+
+        /* ---------- reduced motion (FIX: targeted, so the
+           loading spinner still spins for users who need it
+           to know the form is submitting) ---------- */
+
+        @media (prefers-reduced-motion: reduce) {
+            .hive-blob,
+            .hive-pulse-dot::after,
+            .hive-shimmer,
+            .host-page-v2 .next-button::after,
+            .host-page-v2 .upload-box .upload-icon {
+                animation: none !important;
+
+                opacity: 1 !important;
+                transform: none !important;
+            }
+
+            .js .host-page-v2 .host-header,
+            .js .host-page-v2 .host-form-card {
+                animation: none !important;
+
+                opacity: 1 !important;
+                transform: none !important;
+            }
+        }
 
     </style>
 
@@ -950,10 +1268,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 ========================================================= -->
 
 <?php
-$guestCtaHref = '/webprogg/host/becomeahost.php';
+ $guestCtaHref = '/webprogg/host/becomeahost.php';
 include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 ?>
-
 
 
 <!-- =========================================================
@@ -962,6 +1279,10 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 <main class="host-page host-page-v2">
 
+    <!-- NEW: decorative glow blobs (honeycomb lives on ::before) -->
+    <span class="hive-blob hive-blob-1" aria-hidden="true"></span>
+    <span class="hive-blob hive-blob-2" aria-hidden="true"></span>
+
 
     <!-- =====================================================
          HOST HEADER
@@ -969,8 +1290,17 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
     <section class="host-header">
 
+        <!-- NEW: hero badge -->
+        <span class="hero-badge">
 
-        <span class="host-eyebrow">
+            <span class="hive-pulse-dot"></span>
+
+            Host Application &middot; Step 1 of 4
+
+        </span>
+
+
+        <span class="host-eyebrow" style="display:block; margin-top:18px;">
 
             BECOME A HOST
 
@@ -979,7 +1309,9 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
         <h1>
 
-            Start Hosting in 4 Easy Steps
+            Start Hosting in
+
+            <span class="hive-shimmer">4 Easy Steps</span>
 
         </h1>
 
@@ -989,7 +1321,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
              HOST STEPS
         ================================================== -->
 
-        <div class="host-steps">
+        <div class="host-steps" style="margin-top:36px;">
 
 
             <?php foreach ($hostSteps as $index => $step): ?>
@@ -1144,10 +1476,12 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
             <!-- =================================================
-                 FIRST ROW
+                 ROW 1 — CHANGED: rebalanced grids. The old layout
+                 put 4 fields in a 3-column grid, stranding "Age"
+                 alone on a second line. Now 2 + 2 + 3, no orphans.
             ================================================== -->
 
-            <div class="form-grid three-columns">
+            <div class="form-grid two-columns">
 
 
                 <!-- FULL NAME -->
@@ -1200,6 +1534,15 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                 </div>
 
+            </div>
+
+
+
+            <!-- =================================================
+                 ROW 2
+            ================================================== -->
+
+            <div class="form-grid two-columns">
 
 
                 <!-- PHONE -->
@@ -1218,13 +1561,13 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     id="phone"
                     name="phone"
                     placeholder="Enter 11-digit phone number"
-                 value="<?php echo htmlspecialchars($_POST["phone"] ?? ""); ?>"
-                 pattern="[0-9]{11}"
-                 maxlength="11"
-                minlength="11"
-                 inputmode="numeric"
-                 aria-describedby="hint_phone"
-                required
+                    value="<?php echo htmlspecialchars($_POST["phone"] ?? ""); ?>"
+                    pattern="[0-9]{11}"
+                    maxlength="11"
+                    minlength="11"
+                    inputmode="numeric"
+                    aria-describedby="hint_phone"
+                    required
                     >
                     <small class="field-hint" id="hint_phone">e.g. 09171234567</small>
 
@@ -1264,7 +1607,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
             <!-- =================================================
-                 SECOND ROW
+                 ROW 3
             ================================================== -->
 
             <div class="form-grid three-columns">
@@ -1296,7 +1639,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                         <span>
 
-                            ◉
+                            &#9678;
 
                         </span>
 
@@ -1428,7 +1771,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
      in addition to the click-to-browse label.
 ================================================== -->
 
-<div class="upload-section" data-field="upload_id">
+<div class="upload-section" data-field="upload_id" style="margin-bottom:24px;">
 
     <label>
         Upload ID
@@ -1440,7 +1783,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
         id="uploadBox"
     >
         <div class="upload-icon">
-            ☁
+            &#9729;
         </div>
 
         <div class="upload-text">
@@ -1464,6 +1807,15 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
     >
 
     <small class="upload-error" id="uploadError"></small>
+
+    <!-- NEW: trust reassurance -->
+    <p class="upload-secure-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/>
+            <path d="m9 12 2 2 4-4"/>
+        </svg>
+        Your ID is only visible to the RoomHive admin team.
+    </p>
 
 </div>
 
@@ -1508,9 +1860,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
     <div class="footer-top">
 
 
-        <!-- =================================================
-             BRAND
-        ================================================== -->
+        <!-- BRAND -->
 
         <div class="footer-brand">
 
@@ -1538,9 +1888,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             LISTINGS
-        ================================================== -->
+        <!-- LISTINGS -->
 
         <div class="footer-links">
 
@@ -1554,9 +1902,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             <?php foreach ($listingCategories as $category => $type): ?>
 
-           <a                
-                    href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>"
-                >
+                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
 
                     <?php echo htmlspecialchars($category); ?>
 
@@ -1569,9 +1915,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             QUICK LINKS
-        ================================================== -->
+        <!-- QUICK LINKS -->
 
         <div class="footer-links">
 
@@ -1585,7 +1929,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             <?php foreach ($quickLinks as $name => $link): ?>
 
-                <a                    href="<?php echo htmlspecialchars($link); ?>"
+                <a href="<?php echo htmlspecialchars($link); ?>"
                     class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
                 >
 
@@ -1600,9 +1944,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             GET THE APP
-        ================================================== -->
+        <!-- GET THE APP -->
 
         <div class="footer-contact">
 
@@ -1613,9 +1955,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             </span>
 
-
-
-            <!-- APP STORE -->
 
             <div class="footer-app-badges">
 
@@ -1635,8 +1974,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- PHONE -->
 
             <div class="footer-contact-line">
 
@@ -1658,8 +1995,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-            <!-- EMAIL -->
-
             <div class="footer-contact-line">
 
 
@@ -1679,8 +2014,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- LOCATION -->
 
             <div class="footer-contact-line">
 
@@ -1706,10 +2039,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
     </div>
 
 
-
-    <!-- =====================================================
-         FOOTER BOTTOM
-    ====================================================== -->
 
     <div class="footer-bottom">
 
@@ -1739,16 +2068,17 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
        SHARED STATE
     ====================================================== */
 
-    const form        = document.getElementById('hostForm');
+    const form         = document.getElementById('hostForm');
     const submitBtn    = document.getElementById('submitBtn');
     const fileInput    = document.getElementById('upload_id');
-    const uploadBox     = document.getElementById('uploadBox');
-    const uploadError   = document.getElementById('uploadError');
-    const progressFill  = document.getElementById('progressFill');
+    const uploadBox    = document.getElementById('uploadBox');
+    const uploadError  = document.getElementById('uploadError');
+    const progressFill = document.getElementById('progressFill');
     const progressCount = document.getElementById('progressCount');
+    const formCard     = form ? form.closest('.host-form-card') : null;
 
     const REQUIRED_FIELDS = ['full_name', 'email', 'phone', 'age', 'location', 'id_type', 'id_number'];
-    const TOTAL_TRACKED    = REQUIRED_FIELDS.length + 1; // +1 for the ID upload
+    const TOTAL_TRACKED   = REQUIRED_FIELDS.length + 1; // +1 for the ID upload
 
     /* =====================================================
        PER-FIELD VALIDATORS
@@ -1806,276 +2136,335 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
     const successHints = {
         full_name: "Looks good.",
         email: "Valid email.",
-        phone: "Valid Philippine mobile number.",
-        age: "You're eligible to host.",
-        location: "Got it.",
-        id_type: "ID type selected.",
-        id_number: "Got it."
+        phone: "Valid phone number.",
+        age: "Looks good.",
+        location: "Looks good.",
+        id_type: "Selected.",
+        id_number: "Looks good."
     };
 
     /* =====================================================
-       VALIDATE ONE FIELD + UPDATE ITS UI
+       LIVE FIELD VALIDATION
+       Marks .is-valid / .is-invalid on the group and fills
+       the hint. silent=true updates the progress bar only —
+       used on load so PHP-repopulated fields aren't painted
+       red before the user touches anything.
     ====================================================== */
 
-    function validateField(name, { silent = false } = {}) {
+    function validateField(name, silent) {
+        const input = document.getElementById(name);
+        const group = document.querySelector(`.input-group[data-field="${name}"]`);
 
-        const input = form.elements[name];
-        const group = form.querySelector(`.input-group[data-field="${name}"]`);
-        if (!input || !group) return true;
+        if (!input || !group) return false;
 
-        const hint  = group.querySelector('.field-hint');
-        const value = input.value;
-        const error = validators[name] ? validators[name](value) : "";
+        const message = validators[name] ? validators[name](input.value) : "";
+        const valid = message === "";
 
-        // Don't shout "required" at someone who hasn't touched the field yet.
-        if (silent && value.trim() === "" && !group.dataset.touched) {
-            group.classList.remove('is-valid', 'is-invalid');
-            return false;
+        if (!silent) {
+            group.classList.toggle('is-valid', valid);
+            group.classList.toggle('is-invalid', !valid);
+
+            const hint = group.querySelector('.field-hint');
+            if (hint) {
+                hint.textContent = valid ? (successHints[name] || "") : message;
+            }
         }
 
-        if (error) {
-            group.classList.add('is-invalid');
-            group.classList.remove('is-valid');
-            if (hint) hint.textContent = error;
-        } else {
-            group.classList.remove('is-invalid');
-            group.classList.add('is-valid');
-            if (hint) hint.textContent = successHints[name] || "";
-        }
-
-        return !error;
+        return valid;
     }
 
     /* =====================================================
-       PHONE FORMATTING — digits only, capped at 11
+       PROGRESS BAR
     ====================================================== */
-
-    const phoneInput = form.elements['phone'];
-    if (phoneInput) {
-        phoneInput.addEventListener('input', function () {
-            const digits = phoneInput.value.replace(/\D/g, '').slice(0, 11);
-            phoneInput.value = digits;
-        });
-    }
-
-    /* =====================================================
-       AGE — block non-numeric keystrokes beyond the browser default
-    ====================================================== */
-
-    const ageInput = form.elements['age'];
-    if (ageInput) {
-        ageInput.addEventListener('input', function () {
-            ageInput.value = ageInput.value.replace(/[^\d]/g, '').slice(0, 3);
-        });
-    }
-
-    /* =====================================================
-       WIRE UP LIVE VALIDATION + PROGRESS METER
-    ====================================================== */
-
-    REQUIRED_FIELDS.forEach((name) => {
-        const input = form.elements[name];
-        if (!input) return;
-
-        const group = form.querySelector(`.input-group[data-field="${name}"]`);
-
-        const onInteract = () => {
-            if (group) group.dataset.touched = "1";
-            validateField(name);
-            updateProgress();
-        };
-
-        input.addEventListener('blur', onInteract);
-        input.addEventListener('input', () => { validateField(name, { silent: true }); updateProgress(); });
-        input.addEventListener('change', onInteract);
-    });
 
     function updateProgress() {
-        let complete = 0;
+        let done = REQUIRED_FIELDS.filter((name) => validateField(name, true)).length;
 
-        REQUIRED_FIELDS.forEach((name) => {
-            const input = form.elements[name];
-            if (!input) return;
-            const error = validators[name] ? validators[name](input.value) : (input.value ? "" : "missing");
-            if (!error) complete += 1;
-        });
+        if (fileInput && fileInput.files.length > 0) {
+            done += 1;
+        }
 
-        if (fileInput && fileInput.files && fileInput.files.length > 0) complete += 1;
+        if (progressFill) {
+            progressFill.style.width = `${Math.round((done / TOTAL_TRACKED) * 100)}%`;
+        }
 
-        const pct = Math.round((complete / TOTAL_TRACKED) * 100);
-        progressFill.style.width = pct + '%';
-        progressCount.textContent = complete;
+        if (progressCount) {
+            progressCount.textContent = String(done);
+        }
     }
 
     /* =====================================================
-       ID UPLOAD — drag & drop, preview, remove, validation
+       ID UPLOAD — preview, remove, drag & drop
+       Renders a bottom overlay (filename + size + check)
+       and a floating remove button inside #uploadBox, and
+       paints the preview as the box's background so the
+       whole ID stays legible (.has-image uses contain).
     ====================================================== */
 
+    const MAX_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
+
+    let overlay = null;
+    let removeBtn = null;
+
     function formatSize(bytes) {
-        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        if (bytes >= 1024 * 1024) {
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    }
+
+    function clearUploadUI() {
+        uploadBox.classList.remove('has-image');
+        uploadBox.style.backgroundImage = '';
+
+        if (overlay) { overlay.remove(); overlay = null; }
+        if (removeBtn) { removeBtn.remove(); removeBtn = null; }
+
+        if (uploadError) {
+            uploadError.textContent = '';
+            uploadError.classList.remove('show');
+        }
+
+        updateProgress();
     }
 
     function showUploadError(message) {
+        if (!uploadError) return;
+
         uploadError.textContent = message;
         uploadError.classList.add('show');
     }
 
-    function clearUploadError() {
-        uploadError.textContent = '';
-        uploadError.classList.remove('show');
-    }
-
-    function isAcceptableFile(file) {
-        const allowedTypes = ['image/jpeg', 'image/png'];
-        const maxSize = 5 * 1024 * 1024;
-
-        if (!allowedTypes.includes(file.type)) {
-            showUploadError('Only JPG and PNG files are allowed.');
-            return false;
-        }
-        if (file.size > maxSize) {
-            showUploadError('ID file must not exceed 5MB.');
-            return false;
-        }
-        clearUploadError();
-        return true;
-    }
-
-    function showPreview(file) {
-        const imageUrl = URL.createObjectURL(file);
-
-        uploadBox.style.backgroundImage = `url(${imageUrl})`;
-        uploadBox.classList.add('has-image');
-
-        uploadBox.innerHTML = `
-            <button type="button" class="upload-remove-btn" id="uploadRemoveBtn" aria-label="Remove file">&times;</button>
-            <div class="upload-box-overlay">
-                <strong>${file.name}</strong>
-                <span>${formatSize(file.size)}</span>
-                <span class="upload-check">✓ Ready to submit</span>
-            </div>
-        `;
-
-        document.getElementById('uploadRemoveBtn').addEventListener('click', function (event) {
-            /* uploadBox is a <label for="upload_id">, so any click inside
-               it — including this button — would otherwise re-open the
-               file picker. Stop that before resetting. */
-            event.preventDefault();
-            event.stopPropagation();
-            resetBox();
-        });
-    }
-
-    function resetBox() {
-        fileInput.value = '';
-        uploadBox.style.backgroundImage = '';
-        uploadBox.classList.remove('has-image');
-        uploadBox.innerHTML = `
-            <div class="upload-icon">☁</div>
-            <div class="upload-text">
-                <strong>Click to upload your ID</strong>
-                <span>or drag and drop &middot; JPG, PNG &middot; Max 5MB</span>
-            </div>
-        `;
-        updateProgress();
-    }
-
-    function handleIncomingFile(file) {
-        if (!file) return;
-        if (!isAcceptableFile(file)) {
-            resetBox();
+    function handleFile(file) {
+        if (!file) {
+            clearUploadUI();
             return;
         }
-        showPreview(file);
-        updateProgress();
+
+        if (!ALLOWED_TYPES.includes(file.type)) {
+            clearUploadUI();
+            fileInput.value = '';
+            showUploadError('Only JPG and PNG files are allowed.');
+            return;
+        }
+
+        if (file.size > MAX_SIZE) {
+            clearUploadUI();
+            fileInput.value = '';
+            showUploadError('That file is too large. Maximum is 5MB.');
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function (event) {
+            uploadBox.classList.add('has-image');
+            uploadBox.style.backgroundImage = `url(${event.target.result})`;
+
+            /* Rebuild the overlay + remove button each time */
+            if (overlay) overlay.remove();
+            if (removeBtn) removeBtn.remove();
+
+            overlay = document.createElement('div');
+            overlay.className = 'upload-box-overlay';
+
+            const name = document.createElement('strong');
+            name.textContent = file.name;
+
+            const size = document.createElement('span');
+            size.textContent = formatSize(file.size);
+
+            const check = document.createElement('span');
+            check.className = 'upload-check';
+            check.textContent = 'Uploaded ✓';
+
+            overlay.appendChild(name);
+            overlay.appendChild(size);
+            overlay.appendChild(check);
+
+            removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'upload-remove-btn';
+            removeBtn.setAttribute('aria-label', 'Remove uploaded ID');
+            removeBtn.innerHTML = '&times;';
+
+            removeBtn.addEventListener('click', function (e) {
+                /* The box is a <label for="upload_id"> — without
+                   preventDefault the click would reopen the picker. */
+                e.preventDefault();
+                e.stopPropagation();
+
+                fileInput.value = '';
+                clearUploadUI();
+            });
+
+            uploadBox.appendChild(overlay);
+            uploadBox.appendChild(removeBtn);
+
+            if (uploadError) {
+                uploadError.textContent = '';
+                uploadError.classList.remove('show');
+            }
+
+            updateProgress();
+        };
+
+        reader.readAsDataURL(file);
     }
 
-    fileInput.addEventListener('change', function () {
-        handleIncomingFile(fileInput.files[0]);
-    });
+    if (fileInput && uploadBox) {
 
-    ['dragenter', 'dragover'].forEach((evt) => {
-        uploadBox.addEventListener(evt, function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            uploadBox.classList.add('drag-over');
+        fileInput.addEventListener('change', function () {
+            handleFile(fileInput.files && fileInput.files[0]);
         });
-    });
 
-    ['dragleave', 'drop'].forEach((evt) => {
-        uploadBox.addEventListener(evt, function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            uploadBox.classList.remove('drag-over');
+        /* ---- drag & drop ---- */
+
+        ['dragenter', 'dragover'].forEach(function (eventName) {
+            uploadBox.addEventListener(eventName, function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                uploadBox.classList.add('drag-over');
+            });
         });
-    });
 
-    uploadBox.addEventListener('drop', function (e) {
-        const dropped = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (!dropped) return;
+        ['dragleave', 'drop'].forEach(function (eventName) {
+            uploadBox.addEventListener(eventName, function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                uploadBox.classList.remove('drag-over');
+            });
+        });
 
-        // Reflect the dropped file back onto the real <input type="file">
-        // so the existing form submission still works unchanged.
-        const dt = new DataTransfer();
-        dt.items.add(dropped);
-        fileInput.files = dt.files;
+        uploadBox.addEventListener('drop', function (e) {
+            const files = e.dataTransfer && e.dataTransfer.files;
 
-        handleIncomingFile(dropped);
+            if (files && files.length > 0) {
+                /* Route the dropped file through the same
+                   input so it actually submits with the form. */
+                try {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(files[0]);
+                    fileInput.files = transfer.files;
+                } catch (err) {
+                    /* Older browsers: fall back silently —
+                       the change event below just won't fire. */
+                }
+
+                handleFile(fileInput.files && fileInput.files[0]);
+            }
+        });
+    }
+
+    /* =====================================================
+       WIRE UP LIVE VALIDATION
+    ====================================================== */
+
+    REQUIRED_FIELDS.forEach(function (name) {
+        const input = document.getElementById(name);
+
+        if (!input) return;
+
+        /* Phone: digits only, max 11 — matches the server's
+           /^[0-9]{11}$/ rule and stops paste-mess early. */
+        if (name === 'phone') {
+            input.addEventListener('input', function () {
+                const cleaned = input.value.replace(/\D/g, '').slice(0, 11);
+                if (cleaned !== input.value) {
+                    input.value = cleaned;
+                }
+            });
+        }
+
+        input.addEventListener('input', function () {
+            validateField(name, false);
+            updateProgress();
+        });
+
+        input.addEventListener('change', function () {
+            validateField(name, false);
+            updateProgress();
+        });
+
+        /* Selects clear :invalid styling as soon as a real
+           option is picked, even before blur. */
+        input.addEventListener('blur', function () {
+            validateField(name, false);
+        });
     });
 
     /* =====================================================
-       SUBMIT — validate everything, focus the first problem,
-       shake the card if something's wrong, otherwise show a
-       loading state while the normal POST happens.
+       SUBMIT — validate everything first; shake + focus the
+       first bad field if anything is off. On success, flip
+       the button into its loading state while the POST
+       navigates to step 2.
     ====================================================== */
 
-    const hostFormCard = document.querySelector('.host-form-card');
+    if (form) {
+        form.addEventListener('submit', function (e) {
 
-    form.addEventListener('submit', function (e) {
+            let firstInvalid = null;
 
-        let firstInvalid = null;
+            REQUIRED_FIELDS.forEach(function (name) {
+                const valid = validateField(name, false);
+                if (!valid && !firstInvalid) {
+                    firstInvalid = document.getElementById(name);
+                }
+            });
 
-        REQUIRED_FIELDS.forEach((name) => {
-            const group = form.querySelector(`.input-group[data-field="${name}"]`);
-            if (group) group.dataset.touched = "1";
-            const ok = validateField(name);
-            if (!ok && !firstInvalid) firstInvalid = form.elements[name];
+            let fileOk = fileInput && fileInput.files.length > 0;
+
+            if (!fileOk) {
+                showUploadError('Please upload your ID.');
+                if (!firstInvalid) firstInvalid = fileInput;
+            } else if (uploadError) {
+                uploadError.textContent = '';
+                uploadError.classList.remove('show');
+            }
+
+            if (firstInvalid) {
+                e.preventDefault();
+
+                if (formCard) {
+                    formCard.classList.remove('shake');
+                    /* restart the animation if it's already run */
+                    void formCard.offsetWidth;
+                    formCard.classList.add('shake');
+                }
+
+                if (firstInvalid.focus) {
+                    firstInvalid.focus();
+                }
+
+                if (firstInvalid.scrollIntoView) {
+                    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
+                return;
+            }
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('is-loading');
+
+                const label = submitBtn.querySelector('.btn-label');
+                if (label) label.textContent = 'SUBMITTING...';
+            }
         });
+    }
 
-        if (!fileInput.files || fileInput.files.length === 0) {
-            showUploadError('Please upload your ID.');
-            if (!firstInvalid) firstInvalid = fileInput;
-        } else if (!isAcceptableFile(fileInput.files[0])) {
-            if (!firstInvalid) firstInvalid = fileInput;
-        }
+    /* =====================================================
+       INITIAL STATE
+       Server-side errors re-render the page with values
+       repopulated — compute progress silently so nothing
+       is painted red before the user touches it.
+    ====================================================== */
 
-        updateProgress();
-
-        if (firstInvalid) {
-            e.preventDefault();
-            hostFormCard.classList.remove('shake');
-            // restart the animation
-            void hostFormCard.offsetWidth;
-            hostFormCard.classList.add('shake');
-            firstInvalid.focus({ preventScroll: false });
-            firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
-        }
-
-        submitBtn.classList.add('is-loading');
-        submitBtn.disabled = true;
-        submitBtn.querySelector('.btn-label').textContent = 'SAVING…';
-        // form submits normally — PHP does the real work server-side.
-    });
-
-    /* Initial progress read, e.g. after a validation-error reload that
-       re-populates values from $_POST. */
     updateProgress();
 
 })();
 </script>
-
-<script src="/webprogg/assets/javaScript.js"></script>
 
 </body>
 

@@ -2,34 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    editprofile.php
-
-   Lets the user edit the fields userprofile.php displays:
-   name, phone, age, location, and about (about has no real
-   column yet — see note below). Email is shown read-only
-   since changing it should go through its own verification
-   flow, not a plain profile save.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, phone, age, location, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -42,18 +30,12 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-/* -----------------------------------------------------
-   SAVE
-   Server-side validation mirrors what the HTML attributes
-   already enforce, since the form can be submitted without
-   JS or with attributes stripped.
------------------------------------------------------ */
-$errors = [];
-$saved = false;
+ $errors = [];
+ $saved = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
@@ -83,7 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'id'       => $_SESSION['user_id'],
             ]);
 
-            // Reflect the change immediately without a second query.
             $dbUser['name']     = $name;
             $dbUser['phone']    = $phone;
             $dbUser['age']      = $age;
@@ -94,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$user = [
+ $user = [
     'name'     => $dbUser['name'],
     'avatar'   => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : '/webprogg/images/default-avatar.png',
     'email'    => $dbUser['email'],
@@ -103,7 +84,7 @@ $user = [
     'location' => $dbUser['location'] ?? '',
 ];
 
-$activeSidebar = 'profile';
+ $activeSidebar = 'profile';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -114,6 +95,8 @@ $activeSidebar = 'profile';
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
@@ -157,16 +140,47 @@ $activeSidebar = 'profile';
     </nav>
 </header>
 
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Profile &amp; Account</p>
-    <h1>Keep your details up to date</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Hosts and support use this info to reach you about your bookings.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
-  </div>
+<!-- HERO -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Profile &amp; Account
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                Keep your details <span class="up-shimmer">fresh</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Hosts and support use this info to reach you
+                about your bookings.
+            </p>
+
+        </div>
+
+        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
+        </div>
+
+    </div>
+
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
 <main class="up-dashboard">
@@ -176,68 +190,64 @@ $activeSidebar = 'profile';
   <div class="up-content">
 
     <?php if ($saved): ?>
-      <section style="padding:12px 18px; border-radius:10px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:0.9rem; margin-bottom:18px;">
-        Your profile has been updated.
+      <section class="up-alert up-alert-success">
+        <p>&#10003; Your profile has been updated.</p>
       </section>
     <?php endif; ?>
 
     <?php if (!empty($errors)): ?>
-      <section style="padding:12px 18px; border-radius:10px; background:#fdeceb; border:1px solid #e0524d; color:#a1332e; font-size:0.9rem; margin-bottom:18px;">
+      <section class="up-alert up-alert-error">
         <?php foreach ($errors as $error): ?>
-          <p style="margin:0;"><?php echo h($error); ?></p>
+          <p><?php echo h($error); ?></p>
         <?php endforeach; ?>
       </section>
     <?php endif; ?>
 
     <div class="up-two-col">
 
-      <form method="POST" action="/webprogg/user/editprofile.php" class="up-card up-profile-card" style="display:block;">
+      <form method="POST" action="/webprogg/user/editprofile.php" class="up-card up-reveal" style="display:block;">
         <?php echo csrf_field(); ?>
 
-        <div class="up-profile-photo" style="margin-bottom:16px;">
+        <div class="up-profile-photo" style="margin-bottom:20px;">
           <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>">
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:14px;">
+        <div style="display:flex; flex-direction:column; gap:16px;">
 
-          <label style="display:block;">
-            <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Full Name</span>
-            <input type="text" name="name" value="<?php echo h($user['name']); ?>" required
-                   style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-          </label>
+          <div class="up-field">
+            <label for="epName">Full Name</label>
+            <input type="text" id="epName" name="name" value="<?php echo h($user['name']); ?>" required>
+          </div>
 
-          <label style="display:block;">
-            <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Email</span>
-            <input type="email" value="<?php echo h($user['email']); ?>" disabled
-                   style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box; background:#f5f5f5; color:#777777;">
-            <span style="display:block; font-size:11.5px; color:#999999; margin-top:4px;">Contact support to change the email on your account.</span>
-          </label>
+          <div class="up-field">
+            <label for="epEmail">Email</label>
+            <input type="email" id="epEmail" value="<?php echo h($user['email']); ?>" disabled>
+            <span class="up-field-hint">Contact support to change the email on your account.</span>
+          </div>
 
-          <label style="display:block;">
-            <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Phone Number</span>
-            <input type="tel" name="phone" value="<?php echo h($user['phone']); ?>" placeholder="09XX XXX XXXX"
-                   style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-          </label>
+          <div class="up-field">
+            <label for="epPhone">Phone Number</label>
+            <input type="tel" id="epPhone" name="phone" value="<?php echo h($user['phone']); ?>" placeholder="09XX XXX XXXX">
+          </div>
 
-          <label style="display:block;">
-            <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Age</span>
-            <input type="number" name="age" value="<?php echo h($user['age']); ?>" min="18" max="120"
-                   style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-          </label>
+          <div class="up-field">
+            <label for="epAge">Age</label>
+            <input type="number" id="epAge" name="age" value="<?php echo h($user['age']); ?>" min="18" max="120">
+          </div>
 
-          <label style="display:block;">
-            <span style="display:block; font-size:12.5px; font-weight:700; color:var(--up-navy, #1c2a38); margin-bottom:5px;">Location</span>
-            <input type="text" name="location" value="<?php echo h($user['location']); ?>" placeholder="City, Province"
-                   style="width:100%; padding:10px 14px; border:1px solid var(--up-border); border-radius:8px; font-size:13.5px; box-sizing:border-box;">
-          </label>
+          <div class="up-field">
+            <label for="epLocation">Location</label>
+            <input type="text" id="epLocation" name="location" value="<?php echo h($user['location']); ?>" placeholder="City, Province">
+          </div>
 
         </div>
 
-        <button type="submit" class="up-btn-solid" style="margin-top:18px;">SAVE CHANGES</button>
+        <button type="submit" class="up-btn-solid" style="margin-top:20px;">SAVE CHANGES</button>
       </form>
 
       <div class="up-right-col">
-        <div class="up-card up-account-security">
+
+        <div class="up-card up-account-security up-reveal" style="--i: 1;">
           <div class="up-card-header">
             <h3>Change Password</h3>
           </div>
@@ -245,7 +255,7 @@ $activeSidebar = 'profile';
           <a href="/webprogg/user/security.php" class="up-btn-outline up-manage-security">Manage Security</a>
         </div>
 
-        <div class="up-card up-account-security">
+        <div class="up-card up-account-security up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3>Photo</h3>
           </div>
@@ -253,7 +263,7 @@ $activeSidebar = 'profile';
           <a href="/webprogg/user/userprofile.php" class="up-btn-outline">GO TO OVERVIEW</a>
         </div>
 
-        <div class="up-need-help">
+        <div class="up-need-help up-reveal" style="--i: 3;">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Questions about your account? We're here 24/7.</p>
@@ -261,6 +271,7 @@ $activeSidebar = 'profile';
           </div>
           <img src="/webprogg/images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
         </div>
+
       </div>
 
     </div>
@@ -277,18 +288,9 @@ $activeSidebar = 'profile';
                 Find, stay, relax, at home. RoomHive helps you discover
                 comfortable stays across Negros Oriental.
             </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
 
         <div class="footer-links">
@@ -322,5 +324,31 @@ $activeSidebar = 'profile';
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<script>
+(function () {
+    "use strict";
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+})();
+</script>
+
 </body>
 </html>

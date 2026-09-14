@@ -2,35 +2,24 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    userbookings.php
-
-   Full bookings page — the "View All" / "VIEW ALL BOOKINGS"
-   destination from the Recent Bookings widget on
-   userprofile.php. Same navbar, sidebar, and footer as the
-   rest of the /my-account pages.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
+/* AUTH GUARD */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
-   Same shape as userprofile.php so the shared navbar/sidebar
-   render identically on both pages.
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+/* USER DATA */
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -38,41 +27,24 @@ if (!$dbUser) {
     exit;
 }
 
-/* This is a regular-user account page — hosts land on the
-   host dashboard instead, same redirect rule as userprofile.php. */
 if ($dbUser['is_host']) {
     header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
 
-/* FIX: this page previously set $_SESSION['avatar_path'] by
-   hand and then checked $_SESSION['is_host'] === true in the
-   dropdown below without ever setting it — same stale-fix gap
-   as userwishlist.php. sync_user_session() does both. */
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
 
-/* -----------------------------------------------------
-   STATUS FILTER
-   Tabs above the list let the user narrow down to one
-   status at a time. "all" (the default) shows everything.
------------------------------------------------------ */
-$validStatuses = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
+/* STATUS FILTER */
+ $validStatuses = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
 
-$statusFilter = isset($_GET['status']) && in_array($_GET['status'], $validStatuses, true)
+ $statusFilter = isset($_GET['status']) && in_array($_GET['status'], $validStatuses, true)
     ? $_GET['status']
     : 'all';
 
-/* -----------------------------------------------------
-   ALL BOOKINGS
-   Every booking this user has ever made, most recent first.
-   Joined to `listings` for the title/location and
-   `listing_photos` for the cover thumbnail — same shape as
-   the mini widget on userprofile.php, just without the
-   LIMIT 3.
------------------------------------------------------ */
-$sql = "SELECT b.id, b.total, b.status, b.booked_at,
+/* ALL BOOKINGS */
+ $sql = "SELECT b.id, b.total, b.status, b.booked_at,
                l.title, l.location,
                p.photo_path AS cover_photo
         FROM bookings b
@@ -85,16 +57,16 @@ if ($statusFilter !== 'all') {
     $sql .= " AND b.status = :status";
 }
 
-$sql .= " ORDER BY b.booked_at DESC";
+ $sql .= " ORDER BY b.booked_at DESC";
 
-$bookingsStmt = $pdo->prepare($sql);
-$bookingsStmt->bindValue(':id', $_SESSION['user_id']);
+ $bookingsStmt = $pdo->prepare($sql);
+ $bookingsStmt->bindValue(':id', $_SESSION['user_id']);
 if ($statusFilter !== 'all') {
     $bookingsStmt->bindValue(':status', $statusFilter);
 }
-$bookingsStmt->execute();
+ $bookingsStmt->execute();
 
-$bookings = array_map(function ($row) {
+ $bookings = array_map(function ($row) {
     return [
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
@@ -106,31 +78,26 @@ $bookings = array_map(function ($row) {
     ];
 }, $bookingsStmt->fetchAll());
 
-$bookings_total = count($bookings);
+ $bookings_total = count($bookings);
 
-/* -----------------------------------------------------
-   TAB COUNTS
-   Counts every status regardless of the current filter, so
-   the tab bar's numbers don't shift depending on which tab
-   is active.
------------------------------------------------------ */
-$countsStmt = $pdo->prepare(
+/* TAB COUNTS */
+ $countsStmt = $pdo->prepare(
     "SELECT status, COUNT(*) AS total
      FROM bookings
      WHERE user_id = :id
      GROUP BY status"
 );
-$countsStmt->execute(['id' => $_SESSION['user_id']]);
+ $countsStmt->execute(['id' => $_SESSION['user_id']]);
 
-$statusCounts = ['pending' => 0, 'confirmed' => 0, 'completed' => 0, 'cancelled' => 0];
+ $statusCounts = ['pending' => 0, 'confirmed' => 0, 'completed' => 0, 'cancelled' => 0];
 foreach ($countsStmt->fetchAll() as $row) {
     if (isset($statusCounts[$row['status']])) {
         $statusCounts[$row['status']] = (int) $row['total'];
     }
 }
-$statusCounts['all'] = array_sum($statusCounts);
+ $statusCounts['all'] = array_sum($statusCounts);
 
-$tabs = [
+ $tabs = [
     'all'       => 'All',
     'pending'   => 'Pending',
     'confirmed' => 'Confirmed',
@@ -138,7 +105,7 @@ $tabs = [
     'cancelled' => 'Cancelled',
 ];
 
-$activeSidebar = 'bookings';
+ $activeSidebar = 'bookings';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -150,60 +117,17 @@ $activeSidebar = 'bookings';
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 
-<style>
-    /* Status filter tabs above the bookings list */
-    .ub-tabs {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 18px;
-    }
-
-    .ub-tab {
-        padding: 8px 16px;
-        background: #ffffff;
-        color: #777777;
-        border: 1px solid #eeeeee;
-        border-radius: 999px;
-        font-size: 13px;
-        font-weight: 700;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-
-    .ub-tab.active {
-        background: var(--up-orange-light, #fdf1dc);
-        color: var(--up-orange, #eda423);
-        border-color: var(--up-orange, #eda423);
-    }
-
-    .ub-tab-count {
-        margin-left: 4px;
-        opacity: 0.7;
-    }
-
-    .ub-list {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-</style>
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
 
-<!-- =========================================================
-     NAVBAR (identical to userprofile.php)
-========================================================= -->
+<!-- NAVBAR -->
 <header class="navbar">
-
-    <!-- LOGO -->
     <a href="/webprogg/user/usershome.php" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
-    <!-- NAVIGATION -->
     <nav class="nav-links">
-
         <a href="/webprogg/user/usershome.php">HOME</a>
         <a href="/webprogg/Listings/listing.php">LISTINGS</a>
         <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
@@ -218,16 +142,8 @@ $activeSidebar = 'bookings';
             <?php endif; ?>
         </a>
 
-        <!-- MY ACCOUNT -->
         <div class="account-dropdown js-account-dropdown">
-
-            <button
-                type="button"
-                class="my-account js-account-toggle"
-                id="accountDropdownToggle"
-                aria-haspopup="true"
-                aria-expanded="false"
-            >
+            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
                 <span class="account-circle">
                     <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
                 </span>
@@ -236,62 +152,74 @@ $activeSidebar = 'bookings';
             </button>
 
             <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php /* FIX: was checking $_SESSION['is_host'] === true, which
-                         this page never set — now reads the real DB value. */ ?>
                 <?php if ($dbUser['is_host']): ?>
                     <a href="/webprogg/host/hostprofile.php">Host Profile</a>
                 <?php endif; ?>
                 <a href="/webprogg/user/userprofile.php">My Profile</a>
                 <a href="/webprogg/auth/logout.php">Logout</a>
             </div>
+        </div>
+    </nav>
+</header>
+
+<!-- HERO (CHANGED: new .up-hero design system) -->
+<section class="up-hero up-hero-sub">
+
+    <div aria-hidden="true">
+        <span class="up-hero-blob up-hero-blob-1"></span>
+        <span class="up-hero-blob up-hero-blob-2"></span>
+    </div>
+
+    <div class="up-hero-inner">
+
+        <div class="up-hero-text">
+
+            <span class="up-hero-badge up-anim" style="--d: .05s;">
+                <span class="up-pulse-dot"></span>
+                Every Stay
+            </span>
+
+            <h1 class="up-anim" style="--d: .15s;">
+                My <span class="up-shimmer">Bookings</span>
+            </h1>
+
+            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
+
+            <p class="up-hero-sub up-anim" style="--d: .28s;">
+                Track every inquiry and stay you've booked
+                through RoomHive.
+            </p>
 
         </div>
 
-    </nav>
+        <div class="up-hero-art up-anim" style="--d: .3s;">
+            <span class="up-art-glow" aria-hidden="true"></span>
+            <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
+        </div>
 
-</header>
+    </div>
 
-<!-- =========================================================
-     WELCOME BANNER
-========================================================= -->
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Every stay,</p>
-    <h1>My Bookings</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Track every inquiry and stay you've booked through RoomHive.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
-  </div>
+    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
+    </svg>
+
 </section>
 
-<!-- =========================================================
-     MAIN DASHBOARD LAYOUT
-========================================================= -->
+<!-- DASHBOARD -->
 <main class="up-dashboard">
 
-  <?php
-  /* FIX: this sidebar previously used bare filenames
-     ("payments.php", "reviews.php", "messages.php",
-     "notificationsettings.php") that don't exist anywhere —
-     the real files are userpayments.php, userreviews.php,
-     usermessages.php, usernotificationsettings.php. All four
-     404'd. The shared partial below can't drift like that. */
-  require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
-  ?>
+  <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
 
-  <!-- CONTENT COLUMN -->
   <div class="up-content">
 
-    <!-- BOOKINGS -->
-    <section class="up-card up-bookings-card">
+    <section class="up-card up-bookings-card up-reveal">
+
       <div class="up-card-header">
-        <h3>My Bookings (<?php echo h($bookings_total); ?>)</h3>
+        <h3>My Bookings (<span class="up-wishlist-count"><?php echo h($bookings_total); ?></span>)</h3>
         <a href="/webprogg/Listings/listing.php" class="up-link-view-all">Browse Listings</a>
       </div>
 
-      <!-- STATUS TABS -->
+      <!-- STATUS TABS (restyled segmented pills) -->
       <div class="ub-tabs">
         <?php foreach ($tabs as $key => $label): ?>
           <a
@@ -318,9 +246,13 @@ $activeSidebar = 'bookings';
 
       <?php else: ?>
 
-        <div class="ub-list">
-          <?php foreach ($bookings as $booking): ?>
-            <a href="/webprogg/booking/booking-details.php?id=<?php echo h($booking['id']); ?>" class="up-booking-row">
+        <div class="ub-list" style="display:flex; flex-direction:column;">
+          <?php foreach ($bookings as $i => $booking): ?>
+            <a
+                href="/webprogg/booking/booking-details.php?id=<?php echo h($booking['id']); ?>"
+                class="up-booking-row up-reveal"
+                style="--i: <?php echo (int) min($i, 6); ?>; border-radius:12px;"
+            >
               <img src="<?php echo h($booking['thumb']); ?>" alt="<?php echo h($booking['title']); ?>" class="up-booking-thumb">
               <div class="up-booking-info">
                 <h4><?php echo h($booking['title']); ?></h4>
@@ -346,39 +278,29 @@ $activeSidebar = 'bookings';
 </main>
 
 <footer class="site-footer">
-
     <div class="footer-top">
-
-        <!-- BRAND -->
         <div class="footer-brand">
-
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-
             <p class="footer-tagline">
                 Find, stay, relax, at home. RoomHive helps you discover
                 comfortable stays across Negros Oriental.
             </p>
-
             <div class="footer-contact-line">
                 <img src="/webprogg/images/PhoneIcon.jpg" alt="">
                 <span>0927 569 3574</span>
             </div>
-
             <div class="footer-contact-line">
                 <img src="/webprogg/images/EmailIcon.jpg" alt="">
                 <span>kimdivino55@gmail.com</span>
             </div>
-
             <div class="footer-contact-line">
                 <img src="/webprogg/images/GPSIcon.png" alt="">
                 <span>Dumaguete City, Negros Oriental, Philippines</span>
             </div>
-
         </div>
 
-        <!-- LISTINGS -->
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -387,7 +309,6 @@ $activeSidebar = 'bookings';
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
 
-        <!-- QUICK LINKS -->
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -396,7 +317,6 @@ $activeSidebar = 'bookings';
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
 
-        <!-- GET THE APP -->
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -404,16 +324,42 @@ $activeSidebar = 'bookings';
                 <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
             </div>
         </div>
-
     </div>
 
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
-
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<!-- Reveal (self-contained) -->
+<script>
+(function () {
+    "use strict";
+
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    var el = entry.target;
+                    io.unobserve(el);
+                    el.classList.add("in-view");
+                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+                });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+        );
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+})();
+</script>
 
 </body>
 </html>
