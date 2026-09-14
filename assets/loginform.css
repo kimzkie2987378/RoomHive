@@ -1,0 +1,442 @@
+/* =========================================================
+   ROOMHIVE LOGIN PAGE
+========================================================= */
+
+.login-page {
+  width: 100%;
+  min-height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #ffffff;
+
+  padding: 30px;
+}
+
+/* =========================================================
+   LOGIN CARD
+========================================================= */
+
+.login-card {
+  width: 338px;
+  min-height: 434px;
+
+  background: #ffffff;
+
+  border-radius: 14px;
+
+  padding: 15px 30px 28px;
+
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.login-logo {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 5px;
+}
+
+.login-logo img {
+  width: 105px;
+  height: auto;
+
+  display: block;
+}
+
+/* =========================================================
+   INPUT GROUP
+========================================================= */
+
+.login-input-group {
+  width: 100%;
+
+  margin-bottom: 7px;
+}
+
+/* =========================================================
+   LABEL
+========================================================= */
+
+.login-input-group label {
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  color: #111111;
+
+  font-size: 14px;
+  font-weight: 400;
+
+  cursor: text;
+}
+
+.login-input-group label img {
+  width: 18px;
+  height: 18px;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+.login-input-group input {
+  width: 100%;
+  height: 34px;
+
+  margin-top: 2px;
+
+  padding: 5px 10px;
+
+  background: #ffffff;
+
+  border: 1px solid #d9d9d9;
+  border-radius: 5px;
+
+  outline: none;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+
+  transition: 0.2s ease;
+}
+
+.login-input-group input:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 1px rgba(237, 164, 35, 0.15);
+}
+
+/* =========================================================
+   FORGOT PASSWORD
+========================================================= */
+
+.forgot-password {
+  width: 100%;
+
+  text-align: center;
+
+  margin-top: 9px;
+  margin-bottom: 11px;
+}
+
+.forgot-password a {
+  color: #1c2a38;
+
+  text-decoration: none;
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.forgot-password a:hover {
+  color: #eda423;
+}
+
+/* =========================================================
+   LOGIN BUTTON
+========================================================= */
+
+.login-button {
+  width: 100%;
+  height: 27px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: #eda423;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-bottom: 14px;
+
+  transition: 0.2s ease;
+}
+
+.login-button:hover {
+  background: #d99218;
+}
+
+.login-button:active {
+  transform: scale(0.99);
+}
+
+.login-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   ERROR MESSAGE
+========================================================= */
+
+.login-error {
+  width: 100%;
+
+  margin-bottom: 10px;
+  padding: 8px 10px;
+
+  background: #fdecec;
+  border: 1px solid #f3b9b9;
+  border-radius: 6px;
+
+  color: #a4302f;
+
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.login-success {
+  width: 100%;
+
+  margin-bottom: 10px;
+  padding: 8px 10px;
+
+  background: #eaf7ee;
+  border: 1px solid #b9e3c5;
+  border-radius: 6px;
+
+  color: #206a3c;
+
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* =========================================================
+   SOCIAL LOGIN BUTTONS
+========================================================= */
+
+.social-login {
+  position: relative;
+
+  width: 100%;
+  height: 28px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #ffffff;
+
+  border: 1px solid #999999;
+  border-radius: 5px;
+
+  color: #111111;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+
+  cursor: pointer;
+
+  margin-bottom: 10px;
+
+  transition: 0.2s ease;
+}
+
+.social-login:hover {
+  background: #f7f7f7;
+}
+
+/* =========================================================
+   SOCIAL ICON
+========================================================= */
+
+.social-login img {
+  position: absolute;
+
+  left: 44px;
+
+  width: 16px;
+  height: 16px;
+
+  object-fit: contain;
+}
+
+/* =========================================================
+   CREATE ACCOUNT
+========================================================= */
+
+.create-account {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+
+  font-size: 13px;
+}
+
+.create-account span {
+  color: #555555;
+}
+
+.create-account a {
+  color: #eda423;
+
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.create-account a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   LOGIN CARD — FLOAT ANIMATION
+   Used both on the standalone loginform.php page and inside
+   the login modal on index.php (see below).
+========================================================= */
+
+@keyframes login-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-card-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    transform: translateY(-8px);
+    box-shadow: 0 18px 35px rgba(0, 0, 0, 0.12);
+  }
+}
+
+/* Standalone login page: float from the moment the page loads. */
+.login-page .login-card {
+  animation:
+    login-card-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
+    login-card-float 4.5s ease-in-out 0.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-page .login-card {
+    animation: none;
+  }
+}
+
+/* =========================================================
+   LOGIN MODAL (used on index.php and anywhere the login
+   card is shown as an overlay instead of a full page)
+========================================================= */
+
+.login-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 30px;
+
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.login-modal-overlay.open {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.login-modal-backdrop {
+  position: absolute;
+  inset: 0;
+
+  /* Frosted-glass blur, no dark dimming — matches the reference */
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* Safari needs the prefix */
+
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.login-modal-overlay.open .login-modal-backdrop {
+  opacity: 1;
+}
+
+/* The card itself starts hidden/offset and fades+slides up when
+   the modal opens, then settles into the same gentle float used
+   on the standalone login page. */
+.login-modal-overlay .login-card {
+  position: relative;
+  z-index: 1;
+
+  opacity: 0;
+  transform: translateY(24px) scale(0.96);
+
+  transition:
+    opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.login-modal-overlay.open .login-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+
+  animation: login-card-float 4.5s ease-in-out 0.35s infinite;
+}
+
+.login-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+
+  background: none;
+  border: none;
+
+  font-size: 22px;
+  line-height: 1;
+  color: #8b93a6;
+
+  cursor: pointer;
+}
+
+.login-modal-close:hover {
+  color: #1c2a38;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-modal-overlay .login-card,
+  .login-modal-backdrop {
+    transition: none;
+  }
+
+  .login-modal-overlay.open .login-card {
+    animation: none;
+  }
+}

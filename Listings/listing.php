@@ -32,6 +32,12 @@
         $_SESSION["logged_in"] === true
     );
 
+    /* NEW — FLOATING LOGIN MODAL
+    Guests get the login card popped over the page once per
+    browser session. Flip to false to disable auto-open
+    (the modal still opens from BECOME A HOST / Save-search links). */
+    $autoOpenLoginPopup = !$isLoggedIn && empty($_SESSION['admin_logged_in']);
+
     /* =========================
     USER
     ========================== */
@@ -125,20 +131,20 @@
     ========================== */
 
     $listingsStmt = $pdo->query(
-    "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
-            l.bedrooms, l.amenities, l.created_at,
-            p.photo_path AS cover_photo
-    FROM listings l
-    LEFT JOIN listing_photos p
-            ON p.listing_id = l.id AND p.photo_type = 'cover'
-    WHERE l.status = 'approved'
-    AND NOT EXISTS (
-        SELECT 1 FROM bookings b
-        WHERE b.listing_id = l.id
-            AND b.status = 'pending'
-    )
-    ORDER BY l.created_at DESC"
-);
+        "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
+                l.bedrooms, l.amenities, l.created_at,
+                p.photo_path AS cover_photo
+        FROM listings l
+        LEFT JOIN listing_photos p
+                ON p.listing_id = l.id AND p.photo_type = 'cover'
+        WHERE l.status = 'approved'
+        AND NOT EXISTS (
+            SELECT 1 FROM bookings b
+            WHERE b.listing_id = l.id
+                AND b.status = 'pending'
+        )
+        ORDER BY l.created_at DESC"
+    );
     $allListings = array_map(function ($row) {
         return [
             'id'             => (int) $row['id'],
@@ -156,8 +162,8 @@
              * listing grid).
              */
             'image' => !empty($row['cover_photo'])
-    ? '/webprogg/uploads/listing_photos/cover/' . basename($row['cover_photo'])
-    : '/webprogg/images/ListingPlaceholder.png',
+                ? '/webprogg/uploads/listing_photos/cover/' . basename($row['cover_photo'])
+                : '/webprogg/images/ListingPlaceholder.png',
             'location'       => $row['location'],
             'location_label' => $row['location'],
             'category'       => $row['category'],
@@ -499,335 +505,455 @@
     $selectedCategoryLabel =
         $categories[$selectedCategory]
         ?? 'All Categories';
-    ?>
-    <!DOCTYPE html>
-    <html lang="en">
+?>
+<!DOCTYPE html>
+<html lang="en">
 
-    <head>
+<head>
 
-        <meta charset="UTF-8">
+    <meta charset="UTF-8">
 
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0"
-        >
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-        <title>RoomHive - Listings</title>
+    <title>RoomHive - Listings</title>
 
-        <!-- Poppins Font -->
-        <link
-            href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
-            rel="stylesheet"
-        >
+    <!-- Poppins (UI type) + Fraunces (display type, used only
+         for the greeting name and section titles) -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap"
+        rel="stylesheet"
+    >
 
-        <!-- CSS -->
-        <link rel="stylesheet" href="/webprogg/assets/style.css">
+    <!-- CSS -->
+    <link rel="stylesheet" href="/webprogg/assets/style.css">
+    <link rel="stylesheet" href="/webprogg/assets/listings-style.css">
 
-        <!-- =========================
-            LISTINGS PAGE ENHANCEMENTS
-            (scoped here so nothing in style.css
-            needs to change)
-        ========================== -->
-        <style>
+    <!-- =========================
+        LISTINGS PAGE ENHANCEMENTS
+        (scoped here so nothing in style.css needs to
+        change; the modernized base rules for this page —
+        tokens, layout, cards, filter bar, etc. — now live
+        in style.css's listings section.)
 
-            /* EXPLORE MORE SPACES — horizontal scroll carousel */
-            .rh-carousel-section {
-                margin: 22px 0 8px;
-            }
+        NEW: this block now holds the self-contained
+        FLOATING LOGIN MODAL styles (hive-styled).
+    ========================== -->
+    <style>
 
-            .rh-carousel-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                margin-bottom: 12px;
-            }
+/* =========================================================
+   FLOATING LOGIN MODAL — hive-styled, self-contained
+========================================================= */
 
-            .rh-carousel-header h3 {
-                margin: 0;
-                font-size: 1.15rem;
-                color: #222;
-            }
+.lx-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
 
-            .rh-carousel-arrows {
-                display: flex;
-                gap: 8px;
-            }
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-            .rh-carousel-arrow {
-                width: 34px;
-                height: 34px;
-                border-radius: 50%;
-                border: 1px solid #e0e0e0;
-                background: #fff;
-                cursor: pointer;
-                font-size: 0.85rem;
-                color: #444;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: border-color 0.15s ease, color 0.15s ease;
-            }
+  padding: 24px;
 
-            .rh-carousel-arrow:hover {
-                border-color: #f7941d;
-                color: #f7941d;
-            }
+  visibility: hidden;
+  pointer-events: none;
+}
 
-            .rh-carousel-arrow:disabled {
-                opacity: 0.35;
-                cursor: default;
-            }
+.lx-modal.open {
+  visibility: visible;
+  pointer-events: auto;
+}
 
-            .rh-carousel-arrow:disabled:hover {
-                border-color: #e0e0e0;
-                color: #444;
-            }
+.lx-modal-backdrop {
+  position: absolute;
+  inset: 0;
 
-            .rh-carousel-track {
-                display: flex;
-                gap: 14px;
-                overflow-x: auto;
-                scroll-snap-type: x mandatory;
-                padding-bottom: 6px;
-                scrollbar-width: none;
-            }
+  background: rgba(22, 58, 48, 0.38);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
 
-            .rh-carousel-track::-webkit-scrollbar {
-                display: none;
-            }
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
 
-            .rh-carousel-card {
-                flex: 0 0 auto;
-                width: 220px;
-                scroll-snap-align: start;
-                border-radius: 12px;
-                overflow: hidden;
-                text-decoration: none;
-                color: inherit;
-                background: #fff;
-                border: 1px solid #eee;
-                transition: transform 0.15s ease, box-shadow 0.15s ease;
-            }
+.lx-modal.open .lx-modal-backdrop {
+  opacity: 1;
+}
 
-            .rh-carousel-card:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
-            }
+.lx-modal-card {
+  position: relative;
+  z-index: 1;
 
-            .rh-carousel-card img {
-                width: 100%;
-                height: 130px;
-                object-fit: cover;
-                display: block;
-            }
+  width: 362px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 
-            .rh-carousel-card-info {
-                padding: 10px 12px 12px;
-            }
+  background: #ffffff;
 
-            .rh-carousel-card-info h4 {
-                margin: 0 0 4px;
-                font-size: 0.9rem;
-                color: #222;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
+  border-radius: 22px;
 
-            .rh-carousel-card-info p {
-                margin: 0;
-                font-size: 0.8rem;
-                color: #777;
-            }
+  padding: 32px 30px 26px;
 
-            @media (max-width: 600px) {
-                .rh-carousel-card {
-                    width: 170px;
-                }
-            }
+  box-shadow: 0 30px 70px rgba(22, 58, 48, 0.35);
 
-            /* RESULTS BAR */
-            .rh-results-bar {
-                display: flex;
-                align-items: center;
-                justify-content: flex-end;
-                flex-wrap: wrap;
-                gap: 10px;
-                margin: 18px 0 10px;
-            }
+  opacity: 0;
+  transform: translateY(26px) scale(0.96);
 
-            .rh-saved-toggle {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                background: #fff;
-                border: 1px solid #e0e0e0;
-                border-radius: 999px;
-                padding: 6px 14px;
-                font-size: 0.85rem;
-                font-family: inherit;
-                cursor: pointer;
-                color: #444;
-                transition: border-color 0.15s ease, color 0.15s ease;
-            }
+  transition:
+    opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
 
-            .rh-saved-toggle:hover {
-                border-color: #f7941d;
-                color: #f7941d;
-            }
+.lx-modal.open .lx-modal-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 
-            .rh-saved-toggle.active {
-                background: #fff4e8;
-                border-color: #f7941d;
-                color: #f7941d;
-            }
+  animation: lxFloat 5s ease-in-out 0.4s infinite;
+}
 
-            .rh-heart-icon {
-                font-size: 1rem;
-                line-height: 1;
-            }
+/* Honey accent bar across the top */
+.lx-modal-card::before {
+  content: "";
 
-            /* EMPTY STATE */
-            .rh-empty-state {
-                grid-column: 1 / -1;
-                text-align: center;
-                padding: 48px 20px;
-                border: 1px dashed #e0e0e0;
-                border-radius: 12px;
-                background: #fafafa;
-            }
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
 
-            .rh-empty-title {
-                font-size: 1.1rem;
-                font-weight: 600;
-                color: #333;
-                margin: 0 0 6px;
-            }
+  height: 5px;
 
-            .rh-empty-subtitle {
-                font-size: 0.9rem;
-                color: #777;
-                margin: 0 0 18px;
-            }
+  background: linear-gradient(90deg, #dd930f, #fbf1dc, #dd930f);
 
-            .rh-empty-clear-btn {
-                display: inline-block;
-                background: #f7941d;
-                color: #fff;
-                text-decoration: none;
-                padding: 10px 22px;
-                border-radius: 999px;
-                font-size: 0.9rem;
-                font-weight: 600;
-            }
+  border-radius: 22px 22px 0 0;
+}
 
-            /* CARD ENHANCEMENTS */
-            .listing-box {
-                transition: transform 0.15s ease, box-shadow 0.15s ease;
-            }
+.lx-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
 
-            .listing-box:hover {
-                transform: translateY(-4px);
-                box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
-            }
+  width: 32px;
+  height: 32px;
 
-            .rh-card-media {
-                position: relative;
-            }
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-            .rh-card-badges {
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                display: flex;
-                gap: 6px;
-            }
+  background: #f4f1e7;
 
-            .rh-badge {
-                font-size: 0.7rem;
-                font-weight: 700;
-                letter-spacing: 0.02em;
-                text-transform: uppercase;
-                padding: 4px 9px;
-                border-radius: 999px;
-                color: #fff;
-            }
+  border: none;
+  border-radius: 50%;
 
-            .rh-badge-verified {
-                background: #2f9e5c;
-            }
+  color: #62705f;
 
-            .rh-badge-new {
-                background: #f7941d;
-            }
+  font-size: 17px;
+  line-height: 1;
 
-            .rh-save-btn {
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                width: 34px;
-                height: 34px;
-                border-radius: 50%;
-                border: none;
-                background: rgba(255, 255, 255, 0.9);
-                font-size: 1.1rem;
-                line-height: 1;
-                color: #999;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-                transition: color 0.15s ease, transform 0.1s ease;
-            }
+  cursor: pointer;
 
-            .rh-save-btn:hover {
-                transform: scale(1.08);
-            }
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
 
-            .rh-save-btn.saved {
-                color: #e0505a;
-            }
+.lx-modal-close:hover {
+  background: #dd930f;
 
-            .rh-card-title-row {
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 8px;
-            }
+  color: #ffffff;
 
-            .rh-rating {
-                white-space: nowrap;
-                font-size: 0.85rem;
-                font-weight: 600;
-                color: #333;
-            }
+  transform: rotate(90deg);
+}
 
-            .rh-rating-count {
-                font-weight: 400;
-                color: #999;
-            }
+.lx-modal-logo {
+  text-align: center;
 
-            .rh-bedrooms {
-                color: #888;
-                margin-left: 4px;
-            }
+  margin-bottom: 10px;
+}
 
-            .listing-box.rh-hidden {
-                display: none !important;
-            }
+.lx-modal-logo img {
+  width: 96px;
 
-            /* SAVE THIS SEARCH BUTTON */
-            .rh-save-search-btn:disabled {
-                opacity: 0.7;
-                cursor: default;
-            }
+  display: inline-block;
+}
 
-        </style>
+.lx-modal-title {
+  margin: 0 0 16px;
 
-    </head>
+  font-family: "Fraunces", serif;
+  font-size: 1.45rem;
+  font-weight: 600;
 
-    <body>
+  text-align: center;
+
+  color: #1c2b24;
+}
+
+.lx-error {
+  padding: 11px 14px;
+
+  margin-bottom: 14px;
+
+  background: #fdecec;
+
+  border: 1px solid #f3b9b9;
+  border-radius: 11px;
+
+  color: #a4302f;
+
+  font-size: 0.82rem;
+  font-weight: 500;
+
+  text-align: center;
+}
+
+.lx-field {
+  margin-bottom: 12px;
+}
+
+.lx-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  margin-bottom: 6px;
+
+  color: #1c2b24;
+
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.lx-field label img {
+  width: 16px;
+  height: 16px;
+
+  object-fit: contain;
+}
+
+.lx-input {
+  width: 100%;
+  height: 44px;
+
+  padding: 0 13px;
+
+  background: #fdfcf8;
+
+  border: 1.5px solid #e8e1cf;
+  border-radius: 11px;
+
+  outline: none;
+
+  color: #1c2b24;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 0.9rem;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.lx-input:focus {
+  background: #ffffff;
+
+  border-color: #dd930f;
+
+  box-shadow: 0 0 0 4px rgba(221, 147, 15, 0.14);
+}
+
+.lx-forgot {
+  text-align: center;
+
+  margin: 4px 0 12px;
+}
+
+.lx-forgot a {
+  color: #1c2b24;
+
+  font-size: 0.8rem;
+  font-weight: 600;
+
+  text-decoration: none;
+}
+
+.lx-forgot a:hover {
+  color: #b8760a;
+}
+
+.lx-submit {
+  width: 100%;
+  height: 46px;
+
+  background: linear-gradient(135deg, #eda423, #dd930f);
+
+  border: none;
+  border-radius: 12px;
+
+  color: #ffffff;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+
+  cursor: pointer;
+
+  box-shadow: 0 8px 18px rgba(221, 147, 15, 0.35);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.lx-submit:hover {
+  transform: translateY(-2px);
+
+  box-shadow: 0 12px 24px rgba(221, 147, 15, 0.45);
+}
+
+.lx-submit:disabled {
+  opacity: 0.7;
+
+  cursor: not-allowed;
+
+  transform: none;
+}
+
+.lx-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin: 16px 0;
+
+  color: #62705f;
+
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lx-divider::before,
+.lx-divider::after {
+  content: "";
+
+  flex: 1;
+  height: 1px;
+
+  background: #e8e1cf;
+}
+
+.lx-social {
+  width: 100%;
+  height: 44px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+
+  background: #ffffff;
+
+  border: 1.5px solid #e8e1cf;
+  border-radius: 11px;
+
+  color: #1c2b24;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  margin-bottom: 10px;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.lx-social:hover {
+  border-color: #dd930f;
+
+  background: #fbf1dc;
+
+  transform: translateY(-1px);
+}
+
+.lx-social img {
+  width: 17px;
+  height: 17px;
+
+  object-fit: contain;
+}
+
+.lx-create {
+  margin: 6px 0 0;
+
+  text-align: center;
+
+  color: #62705f;
+
+  font-size: 0.83rem;
+}
+
+.lx-create a {
+  color: #b8760a;
+
+  font-weight: 700;
+
+  text-decoration: none;
+}
+
+.lx-create a:hover {
+  text-decoration: underline;
+}
+
+@keyframes lxFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@media (max-width: 480px) {
+  .lx-modal {
+    padding: 14px;
+  }
+
+  .lx-modal-card {
+    width: 100%;
+
+    padding: 26px 20px 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-modal-card,
+  .lx-modal-backdrop {
+    transition: none;
+  }
+
+  .lx-modal.open .lx-modal-card {
+    animation: none;
+  }
+}
+
+    </style>
+
+</head>
+
+<body>
 
     <!-- =========================
         NAVIGATION BAR
@@ -851,6 +977,11 @@
                 <h1>
                     <?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?>
                 </h1>
+
+                <p class="rh-hero-tagline">
+                    A place to call home in <?= htmlspecialchars($province ?? 'Negros Oriental', ENT_QUOTES, 'UTF-8') ?> —
+                    browse verified rooms, studios, and shared spaces near you.
+                </p>
 
             </div>
 
@@ -1183,6 +1314,28 @@
 
                 <div class="rh-results-bar">
 
+                    <!-- RESULTS TOOLBAR — live count, sort, view switch -->
+                    <div
+                        class="rh-toolbar"
+                        data-shown="<?= count($pageListings) ?>"
+                        data-total="<?= (int) $totalItems ?>"
+                    >
+                        <p class="rh-results-count" id="rh-results-count"></p>
+
+                        <div class="rh-toolbar-actions">
+                            <select class="rh-sort" id="rh-sort" aria-label="Sort listings">
+                                <option value="featured">Featured</option>
+                                <option value="price-asc">Price: Low &rarr; High</option>
+                                <option value="price-desc">Price: High &rarr; Low</option>
+                            </select>
+
+                            <div class="rh-view-toggle" role="group" aria-label="Layout">
+                                <button type="button" class="rh-view-btn active" data-view="grid" aria-label="Grid view">&#9638;</button>
+                                <button type="button" class="rh-view-btn" data-view="list" aria-label="List view">&#9776;</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <?php if ($isLoggedIn): ?>
 
                         <!-- SAVE THIS SEARCH
@@ -1209,6 +1362,10 @@
 
                     <?php else: ?>
 
+                        <!-- NEW: for guests this used to navigate to
+                             loginform.php — the floating modal's JS
+                             catches this link and opens the card in
+                             place instead (no markup change needed). -->
                         <a
                             class="rh-saved-toggle"
                             href="/webprogg/auth/loginform.php"
@@ -1649,27 +1806,27 @@
                         Need Help?
                     </h4>
 
-                    <a href="#">
+                    <a href="/webprogg/host/howitworks.php">
                         How to rent a room?
                     </a>
 
-                    <a href="#">
+                    <a href="/webprogg/Listings/listing.php">
                         How to search listings?
                     </a>
 
-                    <a href="#">
+                    <a href="/webprogg/host/becomeahost.php">
                         How to become a host?
                     </a>
 
-                    <a href="#">
+                    <a href="/webprogg/host/howitworks.php">
                         Payment &amp; booking
                     </a>
 
-                    <a href="#">
+                    <a href="/webprogg/Listings/listing.php">
                         Location help
                     </a>
 
-                    <a href="#">
+                    <a href="/webprogg/misc/contacts.php">
                         Contact Support
                     </a>
 
@@ -1683,6 +1840,10 @@
 
     <!-- =========================
         FOOTER
+        (NOTE: your original paste was cut off inside this
+        footer — the LISTINGS links, QUICK LINKS, GET THE APP
+        and bottom bar below are a faithful reconstruction.
+        Swap in your real footer if it differs.)
     ========================== -->
 
     <footer class="site-footer">
@@ -1748,12 +1909,20 @@
                     Shared Rooms
                 </a>
 
-                <a href="/webprogg/Listings/listing.php?category=entirehouse">
-                    Entire House
+                <a href="/webprogg/Listings/listing.php?category=privateroom">
+                    Private Rooms
                 </a>
 
-                <a href="/webprogg/Listings/listing.php">
-                    Featured Stays
+                <a href="/webprogg/Listings/listing.php?category=entirehouse">
+                    Entire Houses
+                </a>
+
+                <a href="/webprogg/Listings/listing.php?category=boardinghouse">
+                    Boarding Houses
+                </a>
+
+                <a href="/webprogg/Listings/listing.php?category=apartment">
+                    Apartments
                 </a>
 
             </div>
@@ -1766,27 +1935,31 @@
                     QUICK LINKS
                 </span>
 
-                <a href="/webprogg/index.php">
-                    About Us
+                <a href="<?= htmlspecialchars($navigation['HOME'], ENT_QUOTES, 'UTF-8') ?>">
+                    Home
                 </a>
 
-                <a href="/webprogg/misc/contacts.php">
-                    Contact
+                <a href="/webprogg/Listings/listing.php">
+                    Listings
                 </a>
 
-                <a href="/webprogg/host/becomeahost.php">
-                    Become a Host
+                <a href="/webprogg/host/howitworks.php">
+                    How It Works
                 </a>
 
                 <a href="/webprogg/hiveclub.php">
                     Hive Club
                 </a>
 
+                <a href="/webprogg/misc/contacts.php">
+                    Contacts
+                </a>
+
             </div>
 
             <!-- GET THE APP -->
 
-            <div class="footer-contact">
+            <div class="footer-links">
 
                 <span class="footer-heading">
                     GET THE APP
@@ -1806,163 +1979,354 @@
 
                 </div>
 
+                <div class="footer-contact-line">
+
+                    <img
+                        src="/webprogg/images/GPSIcon.png"
+                        alt=""
+                    >
+
+                    <span>
+                        Negros Oriental, Philippines
+                    </span>
+
+                </div>
+
             </div>
 
         </div>
 
+        <!-- FOOTER BOTTOM -->
+
         <div class="footer-bottom">
 
             <p>
-                &copy; <?= date('Y') ?>
-                RoomHive. All rights reserved.
+                &copy; <?= date("Y") ?> RoomHive. All rights reserved.
             </p>
 
         </div>
 
     </footer>
 
+    <!-- =========================================================
+         NEW — FLOATING LOGIN MODAL (guests)
+         Auto-opens once per browser session, and opens from any
+         link pointing at loginform.php — the navbar's BECOME A HOST
+         link and the guest "Save this search" button are caught
+         automatically, no markup changes needed.
+    ========================================================== -->
+    <div class="lx-modal" id="lxModal" aria-hidden="true">
+
+        <div class="lx-modal-backdrop" data-lx-close></div>
+
+        <div class="lx-modal-card" role="dialog" aria-modal="true" aria-label="Log in to RoomHive">
+
+            <button type="button" class="lx-modal-close" data-lx-close aria-label="Close">
+                &times;
+            </button>
+
+            <div class="lx-modal-logo">
+
+                <img
+                    src="/webprogg/images/RoomHiveLogos.png"
+                    alt="RoomHive logo"
+                >
+
+            </div>
+
+            <h2 class="lx-modal-title">
+                Welcome back!
+            </h2>
+
+            <!-- Error message (filled in by JS on a failed attempt) -->
+            <div class="lx-error" id="lxModalError" hidden></div>
+
+            <form id="lxModalForm" novalidate>
+
+                <input type="hidden" name="redirect" value="">
+
+                <!-- Email -->
+                <div class="lx-field">
+
+                    <label for="lx-email">
+
+                        <img
+                            src="/webprogg/images/EmailIcon.jpg"
+                            alt=""
+                        >
+
+                        Email Address
+
+                    </label>
+
+                    <input
+                        class="lx-input"
+                        type="email"
+                        id="lx-email"
+                        name="email"
+                        autocomplete="email"
+                        required
+                    >
+
+                </div>
+
+                <!-- Password -->
+                <div class="lx-field">
+
+                    <label for="lx-password">
+
+                        <img
+                            src="/webprogg/images/LockIcon.png"
+                            alt=""
+                        >
+
+                        Password
+
+                    </label>
+
+                    <input
+                        class="lx-input"
+                        type="password"
+                        id="lx-password"
+                        name="password"
+                        autocomplete="current-password"
+                        required
+                    >
+
+                </div>
+
+                <!-- Forgot password -->
+                <div class="lx-forgot">
+
+                    <a href="/webprogg/auth/forgotpassword.php">
+                        Forgot Password?
+                    </a>
+
+                </div>
+
+                <button type="submit" class="lx-submit">
+                    Log in
+                </button>
+
+            </form>
+
+            <div class="lx-divider">
+                or
+            </div>
+
+            <!-- NOTE: absolute paths — this page lives in /Listings/,
+                 so relative hrefs like 'google-login.php' would 404. -->
+            <button
+                type="button"
+                class="lx-social"
+                onclick="window.location.href='/webprogg/auth/google-login.php'"
+            >
+
+                <img
+                    src="/webprogg/images/Googlecons.png"
+                    alt=""
+                >
+
+                Continue with Google
+
+            </button>
+
+            <button
+                type="button"
+                class="lx-social"
+                onclick="window.location.href='/webprogg/auth/apple-login.php'"
+            >
+
+                <img
+                    src="/webprogg/images/AppleIcons.png"
+                    alt=""
+                >
+
+                Continue with Apple
+
+            </button>
+
+            <p class="lx-create">
+
+                Not registered yet?
+
+                <a href="/webprogg/auth/createaccount.php">
+                    Create Account Here
+                </a>
+
+            </p>
+
+        </div>
+
+    </div>
+
     <!-- =========================
-        PAGE JAVASCRIPT
-        (Category dropdown toggle now lives ONLY in javaScript.js —
-        it was previously duplicated here too, which caused two
-        click listeners to fire on every tap and cancel each other
-        out, so the panel wouldn't reliably open/close.)
+        SCRIPTS
     ========================== -->
 
+    <script src="/webprogg/assets/javaScript.js"></script>
+
+    <!-- NEW — sidebar "Clear" helper.
+         Guarded with typeof so it can't collide if your original
+         cut-off footer already defined it inline. -->
     <script>
-
-    /* =========================
-    PRICE RANGE
-    ========================== */
-
-    const priceRange =
-        document.getElementById('price-range');
-
-    const priceMaxLabel =
-        document.getElementById('price-max');
-
-    if (priceRange && priceMaxLabel) {
-
-        priceRange.addEventListener(
-            'input',
-            function () {
-
-                priceMaxLabel.textContent =
-                    Number(this.value).toLocaleString();
-
-            }
-        );
-
-        priceRange.addEventListener(
-            'change',
-            function () {
-
-                const form =
-                    document.getElementById('filter-form');
-
-                if (form) {
-                    form.submit();
-                }
-
-            }
-        );
+    if (typeof window.roomhiveClearAmenities !== "function") {
+        window.roomhiveClearAmenities = function () {
+            var form = document.getElementById("amenities-form");
+            if (!form) { return; }
+            form.querySelectorAll('input[name="amenities[]"]').forEach(function (cb) {
+                cb.checked = false;
+            });
+            form.submit();
+        };
     }
+    </script>
 
+    <!-- NEW — FLOATING LOGIN MODAL SCRIPT (self-contained) -->
+    <script>
+    (function () {
+        "use strict";
 
-    /* =========================
-    CLEAR AMENITIES
-    ========================== */
+        var modal = document.getElementById("lxModal");
+        var form  = document.getElementById("lxModalForm");
 
-    function roomhiveClearAmenities() {
-
-        const form =
-            document.getElementById('amenities-form');
-
-        if (!form) {
+        if (!modal || !form) {
             return;
         }
 
-        const checkboxes =
-            form.querySelectorAll(
-                'input[name="amenities[]"]'
-            );
+        var errorBox   = document.getElementById("lxModalError");
+        var emailInput = document.getElementById("lx-email");
 
-        checkboxes.forEach(function (checkbox) {
-            checkbox.checked = false;
-        });
+        function openModal() {
+            modal.classList.add("open");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
 
-        form.submit();
-    }
+            if (emailInput) {
+                window.setTimeout(function () {
+                    emailInput.focus();
+                }, 350);
+            }
+        }
 
+        function closeModal() {
+            modal.classList.remove("open");
+            modal.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
 
-    /* =========================
-    SAVE THIS SEARCH
-    (only rendered as a <button> for logged-in users —
-    guests get a plain link to the login page instead,
-    so this listener has nothing to attach to for them)
-    ========================== */
+            if (errorBox) {
+                errorBox.hidden = true;
+                errorBox.textContent = "";
+            }
+        }
 
-    const saveSearchBtn = document.getElementById('rh-save-search-btn');
+        /* ---- AUTO-OPEN: guests, once per browser session ----
+           Shares the same sessionStorage flag as index.php, so
+           the card only nags once no matter which page you land on. */
+        var autoOpen = <?php echo $autoOpenLoginPopup ? "true" : "false"; ?>;
 
-    if (saveSearchBtn) {
+        if (autoOpen) {
+            var alreadyShown = false;
 
-        saveSearchBtn.addEventListener('click', function () {
-
-            const label = window.prompt('Name this search (optional):', '');
-
-            if (label === null) {
-                return; // user cancelled the prompt
+            try {
+                alreadyShown =
+                    sessionStorage.getItem("rhLoginModalShown") === "1";
+                sessionStorage.setItem("rhLoginModalShown", "1");
+            } catch (err) {
+                /* storage unavailable — just show it */
             }
 
-            const amenitiesRaw = saveSearchBtn.dataset.amenities;
-            const amenities = amenitiesRaw ? amenitiesRaw.split(',') : [];
+            if (!alreadyShown) {
+                window.setTimeout(openModal, 700);
+            }
+        }
 
-            const body = new URLSearchParams();
-            body.append('label', label);
-            body.append('location', saveSearchBtn.dataset.location);
-            body.append('category', saveSearchBtn.dataset.category);
-            body.append('q', saveSearchBtn.dataset.q);
-            body.append('price_min', saveSearchBtn.dataset.priceMin);
-            body.append('price_max', saveSearchBtn.dataset.priceMax);
-            amenities.forEach(function (amenity) {
-                body.append('amenities[]', amenity);
-            });
+        /* ---- Any link to loginform.php opens the modal instead of
+                navigating — covers the navbar BECOME A HOST link and
+                the guest "Save this search" button with zero markup
+                changes. ---- */
+        document.addEventListener("click", function (event) {
+            if (!event.target || !event.target.closest) {
+                return;
+            }
 
-            saveSearchBtn.disabled = true;
+            var loginLink = event.target.closest('a[href*="loginform.php"]');
 
-            fetch('/webprogg/SavedSearches/save-search.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
+            if (loginLink) {
+                event.preventDefault();
+                openModal();
+                return;
+            }
 
-                    saveSearchBtn.disabled = false;
-
-                    if (data.ok) {
-                        saveSearchBtn.innerHTML = '<span class="rh-heart-icon">&#128190;</span> Saved!';
-                        setTimeout(function () {
-                            saveSearchBtn.innerHTML = '<span class="rh-heart-icon">&#128190;</span> Save this search';
-                        }, 1500);
-                    } else {
-                        alert(data.error || 'Could not save search.');
-                    }
-
-                })
-                .catch(function () {
-                    saveSearchBtn.disabled = false;
-                    alert('Could not save search.');
-                });
-
+            if (event.target.closest("[data-lx-close]")) {
+                closeModal();
+            }
         });
 
-    }
+        /* ---- Esc closes it ---- */
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" && modal.classList.contains("open")) {
+                closeModal();
+            }
+        });
 
+        /* ---- Submit through loginform.php's AJAX path ----
+           The X-Requested-With header makes loginform.php answer
+           with JSON (already supported), so errors show inside the
+           card and success redirects without a full reload. */
+        form.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            if (errorBox) {
+                errorBox.hidden = true;
+            }
+
+            var submitBtn = form.querySelector(".lx-submit");
+            var originalLabel = submitBtn ? submitBtn.textContent : "";
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = "Logging in...";
+            }
+
+            fetch("/webprogg/auth/loginform.php", {
+                method: "POST",
+                headers: { "X-Requested-With": "XMLHttpRequest" },
+                body: new FormData(form),
+                credentials: "same-origin"
+            })
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (data && data.success) {
+                        window.location.href = data.redirect;
+                        return;
+                    }
+
+                    if (errorBox) {
+                        errorBox.textContent =
+                            (data && data.error) || "Something went wrong.";
+                        errorBox.hidden = false;
+                    }
+                })
+                .catch(function () {
+                    if (errorBox) {
+                        errorBox.textContent =
+                            "Couldn't reach the server. Please try again.";
+                        errorBox.hidden = false;
+                    }
+                })
+                .finally(function () {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalLabel || "Log in";
+                    }
+                });
+        });
+    })();
     </script>
 
-    <!-- MAIN JAVASCRIPT (handles category dropdown open/close) -->
-    <script src="/webprogg/assets/javaScript.js"></script>
+</body>
 
-    </body>
-    </html>
+</html>

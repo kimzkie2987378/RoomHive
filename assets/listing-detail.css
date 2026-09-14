@@ -3,14 +3,46 @@
    Styles scoped to listing-detail.php only.
    Nav bar / footer look and feel come from style.css,
    same as listing.php.
+
+   Shares the RoomHive honey/canopy token system used on
+   listings-style.css so a host page and a detail page never
+   feel like two different products.
 ========================== */
 
+:root {
+  --rh-ink: #1c2b24;
+  --rh-ink-soft: #62705f;
+  --rh-canvas: #faf6ee;
+  --rh-cloud: #ffffff;
+  --rh-line: #e8e1cf;
+  --rh-line-soft: #f0ead9;
+
+  --rh-gold: #dd930f;
+  --rh-gold-deep: #b8760a;
+  --rh-gold-wash: #fbf1dc;
+
+  --rh-canopy: #1f4a3d;
+  --rh-canopy-deep: #163a30;
+
+  --rh-coral: #dd5361;
+
+  --rh-shadow-soft: 0 6px 20px rgba(28, 43, 36, 0.07);
+  --rh-shadow-lift: 0 22px 44px rgba(28, 43, 36, 0.16);
+
+  --rh-radius-card: 20px;
+  --rh-radius-pill: 999px;
+
+  --font-display: "Fraunces", serif;
+  --font-ui: "Poppins", sans-serif;
+}
+
 .listing-detail-page {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
-  font-family: "Poppins", sans-serif;
-  color: #333;
+  padding: 32px 40px 80px;
+  font-family: var(--font-ui);
+  color: var(--rh-ink);
+  background: var(--rh-canvas);
 }
 
 /* =========================
@@ -21,7 +53,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .rd-back-link {
@@ -29,13 +61,14 @@
   align-items: center;
   gap: 6px;
   text-decoration: none;
-  color: #333;
+  color: var(--rh-ink);
   font-weight: 500;
   font-size: 0.95rem;
+  transition: color 0.15s ease;
 }
 
 .rd-back-link:hover {
-  color: #f7941d;
+  color: var(--rh-gold-deep);
 }
 
 .rd-topbar-actions {
@@ -47,28 +80,30 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 999px;
-  padding: 8px 16px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-pill);
+  padding: 9px 18px;
   font-size: 0.85rem;
   font-family: inherit;
   cursor: pointer;
-  color: #444;
+  color: var(--rh-ink-soft);
   transition:
     border-color 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .rd-action-btn:hover {
-  border-color: #f7941d;
-  color: #f7941d;
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
+  box-shadow: var(--rh-shadow-soft);
 }
 
 .rd-action-btn.active {
-  background: #fff4e8;
-  border-color: #f7941d;
-  color: #f7941d;
+  background: var(--rh-gold-wash);
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
 }
 
 /* =========================
@@ -77,12 +112,12 @@
 
 .rd-layout {
   display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 32px;
+  grid-template-columns: 1fr 400px;
+  gap: 40px;
   align-items: start;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .rd-layout {
     grid-template-columns: 1fr;
   }
@@ -94,13 +129,14 @@
 
 .rd-gallery-main {
   position: relative;
-  border-radius: 16px;
+  border-radius: var(--rh-radius-card);
   overflow: hidden;
-  background: #f2f2f2;
+  background: var(--rh-line-soft);
   aspect-ratio: 16 / 10;
   min-height: 340px;
   max-height: 560px;
   cursor: grab;
+  box-shadow: var(--rh-shadow-soft);
 }
 
 .rd-gallery-main:active {
@@ -108,7 +144,7 @@
 }
 
 .rd-gallery-main:focus {
-  outline: 2px solid #f7941d;
+  outline: 2px solid var(--rh-gold);
   outline-offset: 2px;
 }
 
@@ -134,10 +170,10 @@
   height: 46px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
   font-size: 1.05rem;
-  color: #444;
+  color: var(--rh-ink);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -149,7 +185,7 @@
 }
 
 .rd-gallery-arrow:hover {
-  background: #f7941d;
+  background: var(--rh-gold);
   color: #fff;
   transform: translateY(-50%) scale(1.06);
 }
@@ -166,11 +202,11 @@
   position: absolute;
   bottom: 14px;
   right: 14px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(20, 33, 27, 0.72);
   color: #fff;
   font-size: 0.78rem;
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: var(--rh-radius-pill);
 }
 
 /* THUMBNAIL STRIP + SLIDE BUTTONS */
@@ -199,7 +235,7 @@
   width: 104px;
   height: 78px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   opacity: 0.6;
   border: 2px solid transparent;
@@ -218,7 +254,7 @@
 
 .rd-thumb.active {
   opacity: 1;
-  border-color: #f7941d;
+  border-color: var(--rh-gold);
 }
 
 .rd-thumbs-arrow {
@@ -226,11 +262,11 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid #e0e0e0;
-  background: #fff;
+  border: 1px solid var(--rh-line);
+  background: var(--rh-cloud);
   cursor: pointer;
   font-size: 0.85rem;
-  color: #444;
+  color: var(--rh-ink-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -240,8 +276,8 @@
 }
 
 .rd-thumbs-arrow:hover {
-  border-color: #f7941d;
-  color: #f7941d;
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
 }
 
 /* =========================
@@ -249,9 +285,11 @@
 ========================== */
 
 .rd-title {
-  font-size: 1.6rem;
-  margin: 22px 0 6px;
-  color: #222;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.9rem;
+  margin: 26px 0 6px;
+  color: var(--rh-ink);
 }
 
 .rd-subline {
@@ -260,8 +298,8 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 18px;
-  color: #777;
+  margin-bottom: 20px;
+  color: var(--rh-ink-soft);
   font-size: 0.9rem;
 }
 
@@ -274,11 +312,12 @@
 .rd-location img {
   width: 16px;
   height: 16px;
+  opacity: 0.65;
 }
 
 .rd-rating {
   font-weight: 600;
-  color: #333;
+  color: var(--rh-ink);
 }
 
 /* =========================
@@ -288,20 +327,20 @@
 .rd-amenities {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px;
-  padding: 18px 0;
-  border-top: 1px solid #eee;
-  border-bottom: 1px solid #eee;
-  margin-bottom: 22px;
+  gap: 22px;
+  padding: 20px 0;
+  border-top: 1px solid var(--rh-line-soft);
+  border-bottom: 1px solid var(--rh-line-soft);
+  margin-bottom: 26px;
 }
 
 .rd-amenity {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 0.8rem;
-  color: #555;
+  color: var(--rh-ink-soft);
   min-width: 70px;
 }
 
@@ -316,29 +355,31 @@
 ========================== */
 
 .rd-about {
-  margin-bottom: 28px;
+  margin-bottom: 30px;
 }
 
 .rd-about h2,
 .rd-host h2 {
-  font-size: 1.15rem;
-  margin-bottom: 10px;
-  color: #222;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  margin-bottom: 12px;
+  color: var(--rh-ink);
 }
 
 .rd-about-text {
-  color: #555;
-  line-height: 1.6;
-  font-size: 0.92rem;
+  color: var(--rh-ink-soft);
+  line-height: 1.65;
+  font-size: 0.94rem;
   display: -webkit-box;
   -webkit-line-clamp: 3;
-  line-clamp: 3; /* standard property, wider support */
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .rd-about-text.rd-expanded {
-  -webkit-line-clamp: none; /* "none" is the spec's actual reset value */
+  -webkit-line-clamp: none;
   line-clamp: none;
   display: block;
   overflow: visible;
@@ -347,11 +388,11 @@
 .rd-show-more {
   background: none;
   border: none;
-  color: #f7941d;
+  color: var(--rh-gold-deep);
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 /* =========================
@@ -362,11 +403,12 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #fafafa;
-  border: 1px solid #eee;
-  border-radius: 14px;
-  padding: 18px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: 16px;
+  padding: 20px;
   flex-wrap: wrap;
+  box-shadow: var(--rh-shadow-soft);
 }
 
 .rd-host-avatar {
@@ -374,6 +416,7 @@
   height: 64px;
   border-radius: 50%;
   object-fit: cover;
+  border: 2px solid var(--rh-gold-wash);
 }
 
 .rd-host-info {
@@ -391,7 +434,7 @@
 .rd-host-info p {
   margin: 2px 0;
   font-size: 0.85rem;
-  color: #777;
+  color: var(--rh-ink-soft);
 }
 
 .rd-superhost-badge {
@@ -400,22 +443,25 @@
   font-size: 0.72rem;
   font-weight: 600;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--rh-radius-pill);
 }
 
 .rd-host-profile-btn {
-  border: 1px solid #f7941d;
-  color: #f7941d;
+  border: 1px solid var(--rh-gold);
+  color: var(--rh-gold-deep);
   text-decoration: none;
-  padding: 8px 18px;
-  border-radius: 999px;
+  padding: 9px 20px;
+  border-radius: var(--rh-radius-pill);
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .rd-host-profile-btn:hover {
-  background: #f7941d;
+  background: var(--rh-gold);
   color: #fff;
 }
 
@@ -424,41 +470,41 @@
 ========================== */
 
 .rd-card {
-  background: #fff;
-  border: 1px solid #eee;
-  border-radius: 14px;
-  padding: 20px;
-  margin-bottom: 18px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-card);
+  padding: 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--rh-shadow-soft);
 }
 
 /* BOOKING CARD */
 
 .rd-price {
-  font-size: 1.5rem;
+  font-size: 1.55rem;
   font-weight: 700;
-  color: #222;
+  color: var(--rh-ink);
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--rh-line-soft);
 }
 
 .rd-peso {
-  color: #f7941d;
+  color: var(--rh-gold-deep);
 }
 
 .rd-per {
   font-size: 0.85rem;
   font-weight: 400;
-  color: #999;
+  color: var(--rh-ink-soft);
 }
 
 .rd-dates label,
 .rd-guests label {
   display: block;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  color: #777;
+  color: var(--rh-ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 8px;
@@ -477,21 +523,21 @@
 
 .rd-date-summary-field {
   flex: 1;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 8px 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: 12px;
+  padding: 9px 11px;
 }
 
 .rd-date-summary-field span {
   display: block;
   font-size: 0.7rem;
-  color: #999;
+  color: var(--rh-ink-soft);
 }
 
 .rd-date-summary-field strong {
   display: block;
   font-size: 0.85rem;
-  color: #333;
+  color: var(--rh-ink);
   font-weight: 600;
 }
 
@@ -510,8 +556,8 @@
 #rd-calendar .flatpickr-calendar {
   width: 100%;
   box-shadow: none;
-  border: 1px solid #eee;
-  border-radius: 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: 12px;
 }
 
 #rd-calendar .flatpickr-days,
@@ -523,16 +569,16 @@
 #rd-calendar .flatpickr-day.selected,
 #rd-calendar .flatpickr-day.startRange,
 #rd-calendar .flatpickr-day.endRange {
-  background: #f7941d;
-  border-color: #f7941d;
+  background: var(--rh-gold);
+  border-color: var(--rh-gold);
 }
 
 #rd-calendar .flatpickr-day.inRange {
-  background: #fff4e8;
-  border-color: #fff4e8;
+  background: var(--rh-gold-wash);
+  border-color: var(--rh-gold-wash);
   box-shadow:
-    -5px 0 0 #fff4e8,
-    5px 0 0 #fff4e8;
+    -5px 0 0 var(--rh-gold-wash),
+    5px 0 0 var(--rh-gold-wash);
 }
 
 .rd-guests {
@@ -541,12 +587,12 @@
 
 .rd-guests select {
   width: 100%;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid #e0e0e0;
+  padding: 11px;
+  border-radius: 12px;
+  border: 1px solid var(--rh-line);
   font-family: inherit;
   font-size: 0.88rem;
-  color: #333;
+  color: var(--rh-ink);
 }
 
 /* =========================
@@ -564,7 +610,7 @@
   cursor: pointer;
   font-size: 0.85rem !important;
   font-weight: 500 !important;
-  color: #444 !important;
+  color: var(--rh-ink) !important;
   text-transform: none !important;
   letter-spacing: normal !important;
   margin-bottom: 0 !important;
@@ -574,7 +620,7 @@
   width: 17px;
   height: 17px;
   margin: 0;
-  accent-color: #f7941d;
+  accent-color: var(--rh-gold);
   cursor: pointer;
 }
 
@@ -582,40 +628,45 @@
   display: block;
   width: 100%;
   text-align: center;
-  padding: 12px;
-  border-radius: 999px;
+  padding: 13px;
+  border-radius: var(--rh-radius-pill);
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   text-decoration: none;
   margin-bottom: 10px;
   font-family: inherit;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
 }
 
 .rd-btn-primary {
-  background: #f7941d;
+  background: var(--rh-gold);
   color: #fff;
   border: none;
+  box-shadow: 0 8px 20px rgba(221, 147, 15, 0.28);
 }
 
 .rd-btn-primary:hover {
-  background: #e6850f;
+  background: var(--rh-gold-deep);
 }
 
 .rd-btn-outline {
-  background: #fff;
-  color: #f7941d;
-  border: 1px solid #f7941d;
+  background: var(--rh-cloud);
+  color: var(--rh-gold-deep);
+  border: 1px solid var(--rh-gold);
 }
 
 .rd-btn-outline:hover {
-  background: #fff4e8;
+  background: var(--rh-gold-wash);
 }
 
 .rd-charge-note {
   text-align: center;
   font-size: 0.78rem;
-  color: #999;
+  color: var(--rh-ink-soft);
   margin: 6px 0 0;
 }
 
@@ -625,8 +676,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f2f2f2;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rh-line-soft);
   font-size: 0.85rem;
 }
 
@@ -638,36 +689,38 @@
   width: 18px;
   height: 18px;
   object-fit: contain;
+  opacity: 0.7;
 }
 
 .rd-detail-row span {
   flex: 1;
-  color: #777;
+  color: var(--rh-ink-soft);
 }
 
 .rd-detail-row strong {
-  color: #222;
+  color: var(--rh-ink);
 }
 
 /* LOCATION CARD */
 
 .rd-location-card h3 {
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
   margin: 0 0 4px;
-  color: #222;
+  color: var(--rh-ink);
 }
 
 .rd-location-card p {
   font-size: 0.85rem;
-  color: #777;
+  color: var(--rh-ink-soft);
   margin: 0 0 12px;
 }
 
 .rd-map-placeholder {
   position: relative;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
-  background: #f2f2f2;
+  background: var(--rh-line-soft);
   aspect-ratio: 16 / 10;
   margin-bottom: 14px;
 }
@@ -685,9 +738,18 @@
   left: 50%;
   transform: translate(-50%, -100%);
   font-size: 1.6rem;
-  color: #e0505a;
+  color: var(--rh-coral);
 }
 
 .rd-map-btn {
   margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-gallery-arrow,
+  .rd-thumb,
+  .rd-btn,
+  .rd-host-profile-btn {
+    transition: none !important;
+  }
 }

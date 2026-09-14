@@ -30,16 +30,13 @@ session_start();
     [
         'label' => 'BECOME A HOST',
         'href' => $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php',
-        'class' => ''
+        'class' => $isLoggedIn ? '' : 'js-open-login'
     ],
 
     ['label' => 'HIVE CLUB', 'href' => '/webprogg/hiveclub.php', 'class' => ''],
     ['label' => 'CONTACTS', 'href' => '/webprogg/misc/contacts.php', 'class' => ''],
 ];
 
-// FIX: added 'slug' to each listing so the "Top Listings" cards on
-// this page link correctly to listing.php?category=<slug> — these
-// slugs match the $categories keys used in listing.php.
  $listings = [
     ['name' => 'STUDIO LOFT', 'image' => '/webprogg/images/StudioLoft.png', 'slug' => 'studioloft'],
     ['name' => 'SHARED ROOM', 'image' => '/webprogg/images/SharedBedroom.png', 'slug' => 'sharedbedroom'],
@@ -130,6 +127,12 @@ session_start();
  $phoneNumber = '+639275693574';
  $emailAddress = 'RoomHive@gmail.com';
  $currentYear = date('Y');
+
+/*
+ * The login card pops up on load for guests only.
+ * Logged-in users and admins never see it.
+ */
+ $showLoginPopup = !$isLoggedIn && !$isAdminLoggedIn;
 ?>
 
 <!doctype html>
@@ -149,11 +152,9 @@ session_start();
 
     <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css">
-    <!-- Motion & interaction layer (loads after style.css so it can override) -->
     <link rel="stylesheet" href="/webprogg/assets/motion.css">
+    <link rel="stylesheet" href="/webprogg/assets/loginform.css">
 
-    <!-- Enables entrance animations only when JS is available.
-         Without JS, the page renders fully visible / static. -->
     <script>document.documentElement.classList.add("js-animations");</script>
 
     <style>
@@ -171,6 +172,107 @@ session_start();
             opacity: 0.8;
         }
         .footer-admin-link:hover { opacity: 1; text-decoration: underline; }
+
+        /* =========================================================
+           LOGIN MODAL — SELF-CONTAINED STYLES
+           Copied from loginform.css so the popup works even if the
+           browser is serving a stale cached copy of that file.
+        ========================================================= */
+
+        @keyframes login-card-float {
+            0%, 100% {
+                transform: translateY(0px);
+                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            }
+            50% {
+                transform: translateY(-8px);
+                box-shadow: 0 18px 35px rgba(0, 0, 0, 0.12);
+            }
+        }
+
+        .login-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            padding: 30px;
+
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .login-modal-overlay.open {
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .login-modal-backdrop {
+            position: absolute;
+            inset: 0;
+
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            opacity: 0;
+            transition: opacity 0.35s ease;
+        }
+
+        .login-modal-overlay.open .login-modal-backdrop {
+            opacity: 1;
+        }
+
+        .login-modal-overlay .login-card {
+            position: relative;
+            z-index: 1;
+
+            opacity: 0;
+            transform: translateY(24px) scale(0.96);
+
+            transition:
+                opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .login-modal-overlay.open .login-card {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+
+            animation: login-card-float 4.5s ease-in-out 0.35s infinite;
+        }
+
+        .login-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 14px;
+
+            background: none;
+            border: none;
+
+            font-size: 22px;
+            line-height: 1;
+            color: #8b93a6;
+
+            cursor: pointer;
+        }
+
+        .login-modal-close:hover {
+            color: #1c2a38;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .login-modal-overlay .login-card,
+            .login-modal-backdrop {
+                transition: none;
+            }
+            .login-modal-overlay.open .login-card {
+                animation: none;
+            }
+        }
     </style>
 </head>
 
@@ -182,12 +284,10 @@ session_start();
 
 <nav class="navbar">
 
-    <!-- LOGO -->
     <a href="/webprogg/index.php" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
-    <!-- NAVIGATION LINKS -->
     <div class="nav-links">
 
         <?php foreach ($navLinks as $link): ?>
@@ -201,11 +301,9 @@ session_start();
 
         <?php endforeach; ?>
 
-        <!-- LIST YOUR SPACE -->
-
         <a
             href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-            class="list-space"
+            class="list-space<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
         >
             LIST YOUR SPACE
         </a>
@@ -247,7 +345,7 @@ session_start();
 
             <a
                 href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-                class="btn-primary"
+                class="btn-primary<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
             >
                 LIST YOUR SPACE
             </a>
@@ -326,7 +424,7 @@ session_start();
 
             <a
                 href="/webprogg/Listings/listing.php?category=<?php echo urlencode($listing['slug']); ?>"
-        class="listing-card"
+                class="listing-card"
             >
 
                 <img
@@ -523,39 +621,39 @@ session_start();
 
 
     <div class="testimonials-slider">
-    <div class="testimonials-track">
+        <div class="testimonials-track">
 
-        <?php foreach ($testimonials as $testimonial): ?>
+            <?php foreach ($testimonials as $testimonial): ?>
 
-            <div class="testimonial-card">
+                <div class="testimonial-card">
 
-                <p class="testimonial-quote">
-                    "<?php echo htmlspecialchars($testimonial['quote']); ?>"
-                </p>
+                    <p class="testimonial-quote">
+                        "<?php echo htmlspecialchars($testimonial['quote']); ?>"
+                    </p>
 
-                <p class="testimonial-body">
-                    <?php echo htmlspecialchars($testimonial['body']); ?>
-                </p>
+                    <p class="testimonial-body">
+                        <?php echo htmlspecialchars($testimonial['body']); ?>
+                    </p>
 
-                <div class="testimonial-author">
+                    <div class="testimonial-author">
 
-                    <img
-                        src="/webprogg/images/HappyTenantsHumanIcon.png"
-                        alt="Tenant"
-                    >
+                        <img
+                            src="/webprogg/images/HappyTenantsHumanIcon.png"
+                            alt="Tenant"
+                        >
 
-                    <span>
-                        <?php echo htmlspecialchars($testimonial['author']); ?>
-                    </span>
+                        <span>
+                            <?php echo htmlspecialchars($testimonial['author']); ?>
+                        </span>
+
+                    </div>
 
                 </div>
 
-            </div>
+            <?php endforeach; ?>
 
-        <?php endforeach; ?>
-
+        </div>
     </div>
-</div>
 
 </section>
 
@@ -653,7 +751,7 @@ session_start();
 
         <a
             href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-            class="dual-cta-button host-button"
+            class="dual-cta-button host-button<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
         >
             LIST YOUR SPACE
         </a>
@@ -791,7 +889,314 @@ session_start();
 </footer>
 
 
+<!-- =========================================================
+     LOGIN MODAL — pops up over index.php for logged-out visitors
+========================================================= -->
+<div
+    class="login-modal-overlay"
+    id="loginModalOverlay"
+    aria-hidden="true"
+>
+
+    <div class="login-modal-backdrop" data-close-login></div>
+
+    <div class="login-card">
+
+        <button type="button" class="login-modal-close" data-close-login aria-label="Close">
+            &times;
+        </button>
+
+        <!-- RoomHive Logo -->
+        <div class="login-logo">
+
+            <img
+                src="/webprogg/images/RoomHiveLogos.png"
+                alt="RoomHive Logo"
+            >
+
+        </div>
+
+        <!-- Login Title -->
+        <div class="login-header">
+
+            <h1>Welcome Back!</h1>
+
+        </div>
+
+        <!-- Error Message (filled in by JS on a failed attempt) -->
+        <div class="login-error" id="loginModalError" hidden></div>
+
+        <!-- Login Form -->
+        <form id="loginModalForm" novalidate>
+
+            <input type="hidden" name="redirect" value="">
+
+            <!-- Email -->
+            <div class="login-input-group">
+
+                <label for="modal-email">
+
+                    <img
+                        src="/webprogg/images/EmailIcon.jpg"
+                        alt="Email"
+                    >
+
+                    <span>Email Address</span>
+
+                </label>
+
+                <input
+                    type="email"
+                    id="modal-email"
+                    name="email"
+                    autocomplete="email"
+                    required
+                >
+
+            </div>
+
+            <!-- Password -->
+            <div class="login-input-group">
+
+                <label for="modal-password">
+
+                    <img
+                        src="/webprogg/images/LockIcon.png"
+                        alt="Password"
+                    >
+
+                    <span>Password</span>
+
+                </label>
+
+                <input
+                    type="password"
+                    id="modal-password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                >
+
+            </div>
+
+            <!-- Forgot Password -->
+            <div class="forgot-password">
+
+                <a href="/webprogg/auth/forgotpassword.php">
+                    Forgot Password?
+                </a>
+
+            </div>
+
+            <!-- Login Button -->
+            <button
+                type="submit"
+                class="login-button"
+            >
+                Log in
+            </button>
+
+        </form>
+
+        <!-- Google -->
+        <button
+            type="button"
+            class="social-login google-login"
+            onclick="window.location.href='google-login.php'"
+        >
+
+            <img
+                src="/webprogg/images/Googlecons.png"
+                alt="Google"
+            >
+
+            <span>Continue with Google</span>
+
+        </button>
+
+        <!-- Apple -->
+        <button
+            type="button"
+            class="social-login apple-login"
+            onclick="window.location.href='apple-login.php'"
+        >
+
+            <img
+                src="/webprogg/images/AppleIcons.png"
+                alt="Apple"
+            >
+
+            <span>Continue with Apple</span>
+
+        </button>
+
+        <!-- Create Account -->
+        <div class="create-account">
+
+            <span>Not registered yet?</span>
+
+            <a href="/webprogg/auth/createaccount.php">
+                Create Account Here
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+
 <script src="/webprogg/assets/javaScript.js"></script>
+
+<!-- =========================================================
+     LOGIN POPUP SCRIPT — SELF-CONTAINED
+     Lives directly in index.php on purpose: it cannot be
+     broken by a cached or erroring javaScript.js.
+========================================================= -->
+<script>
+(function () {
+    "use strict";
+
+    /* PHP decides: guests get true, logged-in users/admins get false */
+    var AUTO_OPEN = <?php echo $showLoginPopup ? 'true' : 'false'; ?>;
+
+    var overlay  = document.getElementById("loginModalOverlay");
+    var form     = document.getElementById("loginModalForm");
+    var errorBox = document.getElementById("loginModalError");
+
+    if (!overlay || !form) {
+        return;
+    }
+
+    function openModal(redirectTarget) {
+        var redirectInput = overlay.querySelector('input[name="redirect"]');
+
+        if (redirectInput) {
+            redirectInput.value = redirectTarget || "";
+        }
+
+        overlay.classList.add("open");
+        overlay.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        var emailField = document.getElementById("modal-email");
+
+        if (emailField) {
+            window.setTimeout(function () {
+                emailField.focus();
+            }, 400);
+        }
+    }
+
+    function closeModal() {
+        overlay.classList.remove("open");
+        overlay.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+
+        if (errorBox) {
+            errorBox.hidden = true;
+            errorBox.textContent = "";
+        }
+    }
+
+    /* ---- POP UP AUTOMATICALLY ~0.5s after the page loads ---- */
+    if (AUTO_OPEN) {
+        window.setTimeout(function () {
+            openModal("");
+        }, 500);
+    }
+
+    /* ---- Open via BECOME A HOST / LIST YOUR SPACE links,
+            close via backdrop or the × button ---- */
+    document.addEventListener("click", function (event) {
+        if (!event.target || !event.target.closest) {
+            return;
+        }
+
+        var trigger = event.target.closest(".js-open-login");
+
+        if (trigger) {
+            event.preventDefault();
+
+            var redirect = "";
+
+            try {
+                var url = new URL(trigger.href, window.location.origin);
+                redirect = url.searchParams.get("redirect") || "";
+            } catch (err) {
+                redirect = "";
+            }
+
+            openModal(redirect);
+
+            return;
+        }
+
+        if (event.target.closest("[data-close-login]")) {
+            closeModal();
+        }
+    });
+
+    /* ---- Esc closes it ---- */
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && overlay.classList.contains("open")) {
+            closeModal();
+        }
+    });
+
+    /* ---- Submit via fetch so errors show inside the popup ---- */
+    form.addEventListener("submit", function (event) {
+        event.preventDefault();
+
+        if (errorBox) {
+            errorBox.hidden = true;
+        }
+
+        var submitBtn = form.querySelector(".login-button");
+        var originalLabel = submitBtn ? submitBtn.textContent : "";
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Logging in...";
+        }
+
+        fetch("/webprogg/auth/loginform.php", {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: new FormData(form),
+            credentials: "same-origin",
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                if (data && data.success) {
+                    window.location.href = data.redirect;
+                    return;
+                }
+
+                if (errorBox) {
+                    errorBox.textContent =
+                        (data && data.error) || "Something went wrong.";
+                    errorBox.hidden = false;
+                }
+            })
+            .catch(function () {
+                if (errorBox) {
+                    errorBox.textContent =
+                        "Couldn't reach the server. Please try again.";
+                    errorBox.hidden = false;
+                }
+            })
+            .finally(function () {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalLabel || "Log in";
+                }
+            });
+    });
+})();
+</script>
 
 </body>
 

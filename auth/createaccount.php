@@ -109,6 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <!-- Your CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css">
+    <link rel="stylesheet" href="/webprogg/assets/loginform.css">
 </head>
 
 <body class="create-account-page">

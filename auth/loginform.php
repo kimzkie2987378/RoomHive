@@ -30,6 +30,24 @@ $allowedRedirects = ['/webprogg/hiveclub.php', '/webprogg/user/membership.php'];
 // Whichever page sent the person here (from the link's ?redirect=...)
 $redirectParam = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
 
+/*
+ * =========================================================
+ * AJAX DETECTION
+ * =========================================================
+ * The login modal on index.php (and anywhere else it's reused)
+ * submits this form via fetch() with an X-Requested-With header
+ * instead of a normal browser form POST, so it can show errors
+ * in place and redirect via JS instead of a full page navigation.
+ *
+ * Direct visits to loginform.php (bookmarks, no-JS, etc.) never
+ * send that header, so they keep working exactly as before —
+ * this only adds a second response path, nothing is removed.
+ */
+$isAjax = (
+    !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+    strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+);
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $email = trim($_POST["email"] ?? "");
@@ -62,6 +80,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $_SESSION["admin_name"] = ADMIN_NAME;
             $_SESSION["admin_email"] = ADMIN_EMAIL;
             $_SESSION["admin_logged_in"] = true;
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success'  => true,
+                    'redirect' => '/webprogg/admin/admin.php',
+                ]);
+                exit();
+            }
 
             header("Location: /webprogg/admin/admin.php");
             exit();
@@ -106,6 +133,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 ? $redirectParam
                 : "/webprogg/user/usershome.php";
 
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success'  => true,
+                    'redirect' => $redirectTo,
+                ]);
+                exit();
+            }
+
             header("Location: $redirectTo");
             exit();
 
@@ -113,6 +149,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $error = "Incorrect email address or password.";
         }
+    }
+
+    /*
+     * If we got this far on an AJAX request, login failed
+     * (bad input, wrong credentials, etc.) — report it as JSON
+     * instead of falling through to render the full HTML page.
+     */
+    if ($isAjax && !empty($error)) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error'   => $error,
+        ]);
+        exit();
     }
 }
 ?>
@@ -138,10 +188,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     >
 
     <!-- Main CSS -->
-    <link
-        rel="stylesheet"
-        href="/webprogg/assets/style.css"
-    >
+    <link rel="stylesheet" href="/webprogg/assets/style.css">
+<link rel="stylesheet" href="/webprogg/assets/loginform.css">
 
 </head>
 

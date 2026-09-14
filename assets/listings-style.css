@@ -1,0 +1,1942 @@
+/* =========================================================
+   ROOMHIVE — LISTINGS PAGE DESIGN SYSTEM
+   listings-style.css
+
+   Design concept: a hive is warm, ordered and productive.
+   The palette pulls honey-gold and deep canopy-green from
+   Negros Oriental's forests, set on a warm unbleached-paper
+   canvas instead of clinical white. Fraunces (a warm display
+   serif) carries the greeting and section titles; Poppins
+   handles every working UI surface. A soft hexagonal motif
+   (clipped corners, honeycomb dot grid) recurs quietly across
+   the hero, badges and empty state — never as decoration for
+   its own sake, always marking "this is a RoomHive surface."
+
+   Scoped to elements this page actually renders. Built for a
+   1920px desktop canvas first, then stepped down.
+   ========================================================= */
+
+:root {
+  /* ---- color ---- */
+  --rh-ink: #1c2b24;
+  --rh-ink-soft: #62705f;
+  --rh-canvas: #faf6ee;
+  --rh-cloud: #ffffff;
+  --rh-line: #e8e1cf;
+  --rh-line-soft: #f0ead9;
+
+  --rh-gold: #dd930f;
+  --rh-gold-deep: #b8760a;
+  --rh-gold-wash: #fbf1dc;
+
+  --rh-canopy: #1f4a3d;
+  --rh-canopy-deep: #163a30;
+  --rh-canopy-wash: #e8f2ee;
+
+  --rh-coral: #dd5361;
+
+  /* ---- elevation ---- */
+  --rh-shadow-soft: 0 6px 20px rgba(28, 43, 36, 0.07);
+  --rh-shadow-lift: 0 22px 44px rgba(28, 43, 36, 0.16);
+  --rh-shadow-console: 0 10px 30px rgba(28, 43, 36, 0.1);
+
+  /* ---- shape ---- */
+  --rh-radius-card: 20px;
+  --rh-radius-pill: 999px;
+  --rh-radius-sm: 10px;
+
+  /* ---- type ---- */
+  --font-display: "Fraunces", serif;
+  --font-ui: "Poppins", sans-serif;
+}
+
+/* =========================================================
+   PAGE SHELL
+========================================================= */
+
+.listings-page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 40px 48px 96px;
+  background: var(--rh-canvas);
+  font-family: var(--font-ui);
+  color: var(--rh-ink);
+}
+
+@media (max-width: 1180px) {
+  .listings-page {
+    padding: 32px 24px 72px;
+  }
+}
+
+/* =========================================================
+   GREETING HERO
+   Editorial split: name in the display serif set large,
+   a short line of purpose beside it, a single honeycomb-
+   clipped illustration frame anchoring the right edge.
+========================================================= */
+
+.listings-greeting {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  align-items: center;
+  gap: 40px;
+  background: linear-gradient(135deg, var(--rh-canopy) 0%, #26594a 100%);
+  border-radius: 28px;
+  padding: 44px 56px;
+  margin-bottom: 28px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* faint honeycomb dot lattice, brand texture rather than clip-art */
+.listings-greeting::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.14;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    #fff 1.6px,
+    transparent 1.6px
+  );
+  background-size: 26px 26px;
+  mask-image: linear-gradient(115deg, #000 10%, transparent 62%);
+}
+
+.greeting-text {
+  position: relative;
+  z-index: 1;
+}
+
+.greeting-text p {
+  margin: 0;
+  color: #cfe3da;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.greeting-text h1 {
+  margin: 2px 0 14px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 3rem;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.rh-hero-tagline {
+  max-width: 46ch;
+  color: #dcebe4 !important;
+  font-size: 1rem !important;
+  font-weight: 400 !important;
+  line-height: 1.6;
+}
+
+.greeting-illustration {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  width: 260px;
+  height: 200px;
+  object-fit: cover;
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0% 50%);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 900px) {
+  .listings-greeting {
+    grid-template-columns: 1fr;
+    padding: 36px 32px;
+    text-align: left;
+  }
+  .greeting-illustration {
+    display: none;
+  }
+}
+
+/* =========================================================
+   EXPLORE MORE SPACES — CAROUSEL
+========================================================= */
+
+.rh-carousel-section {
+  margin: 8px 0 36px;
+}
+
+.rh-carousel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.rh-carousel-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--rh-ink);
+}
+
+.rh-carousel-arrows {
+  display: flex;
+  gap: 8px;
+}
+
+.rh-carousel-arrow {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--rh-line);
+  background: var(--rh-cloud);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--rh-ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
+}
+
+.rh-carousel-arrow:hover {
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
+  box-shadow: var(--rh-shadow-soft);
+}
+
+.rh-carousel-arrow:active {
+  transform: scale(0.92);
+}
+
+.rh-carousel-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
+}
+
+.rh-carousel-arrow:disabled:hover {
+  border-color: var(--rh-line);
+  color: var(--rh-ink-soft);
+}
+
+.rh-carousel-track {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  cursor: grab;
+}
+
+.rh-carousel-track:active {
+  cursor: grabbing;
+}
+
+.rh-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.rh-carousel-card {
+  flex: 0 0 auto;
+  width: 250px;
+  scroll-snap-align: start;
+  border-radius: var(--rh-radius-card);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  box-shadow: var(--rh-shadow-soft);
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    border-color 0.2s ease;
+}
+
+.rh-carousel-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--rh-shadow-lift);
+  border-color: var(--rh-gold);
+}
+
+.rh-carousel-card img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  display: block;
+}
+
+.rh-carousel-card-info {
+  padding: 13px 15px 15px;
+}
+
+.rh-carousel-card-info h4 {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--rh-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rh-carousel-card-info p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--rh-ink-soft);
+}
+
+@media (max-width: 600px) {
+  .rh-carousel-card {
+    width: 190px;
+  }
+}
+
+/* =========================================================
+   FILTER CONSOLE
+   One continuous pill-shaped bar; a hairline divider marks
+   each control's territory instead of boxing every field.
+========================================================= */
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-pill);
+  padding: 10px 14px;
+  box-shadow: var(--rh-shadow-console);
+  margin-bottom: 8px;
+  position: sticky;
+  top: 16px;
+  z-index: 20;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.filter-bar.rh-stuck {
+  box-shadow: var(--rh-shadow-lift);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.filter-icon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.filter-select {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--rh-ink);
+  cursor: pointer;
+  width: 100%;
+  appearance: none;
+}
+
+.filter-select:focus-visible {
+  outline: 2px solid var(--rh-gold);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.filter-arrow {
+  width: 10px;
+  height: 10px;
+  object-fit: contain;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--rh-line);
+  flex-shrink: 0;
+}
+
+/* CATEGORY DROPDOWN */
+
+.category-filter {
+  position: relative;
+}
+
+.category-dropdown-btn {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--rh-ink);
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-dropdown-caret {
+  transition: transform 0.18s ease;
+}
+
+.category-filter.open .category-dropdown-caret {
+  transform: rotate(180deg);
+}
+
+.category-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: -14px;
+  min-width: 210px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: 14px;
+  box-shadow: var(--rh-shadow-lift);
+  padding: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 30;
+}
+
+.category-filter.open .category-dropdown-panel {
+  display: flex;
+  animation: rhPop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes rhPop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.category-dropdown-item {
+  border: none;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.87rem;
+  color: var(--rh-ink);
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.category-dropdown-item:hover {
+  background: var(--rh-gold-wash);
+}
+
+.category-dropdown-item.active {
+  background: var(--rh-canopy);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* PRICE SLIDER */
+
+.price-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.price-icon {
+  font-size: 0.9rem;
+  color: var(--rh-gold-deep);
+  font-weight: 700;
+}
+
+.price-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--rh-ink-soft);
+  white-space: nowrap;
+  min-width: 44px;
+}
+
+.price-range {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 999px;
+  --fill: 50%;
+  background: linear-gradient(
+    to right,
+    var(--rh-gold) 0%,
+    var(--rh-gold) var(--fill),
+    var(--rh-line) var(--fill),
+    var(--rh-line) 100%
+  );
+  cursor: pointer;
+}
+
+.price-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--rh-cloud);
+  border: 3px solid var(--rh-gold);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.price-range::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+
+.price-range::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--rh-cloud);
+  border: 3px solid var(--rh-gold);
+  cursor: pointer;
+}
+
+/* SEARCH */
+
+.search-filter {
+  flex: 1.3 1 0;
+}
+
+.search-input {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--rh-ink);
+  width: 100%;
+}
+
+.search-input::placeholder {
+  color: #a9ab9e;
+}
+
+.search-button {
+  border: none;
+  background: var(--rh-gold);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.search-button:hover {
+  background: var(--rh-gold-deep);
+  transform: scale(1.05);
+}
+
+.search-button img {
+  width: 15px;
+  height: 15px;
+  filter: brightness(0) invert(1);
+}
+
+@media (max-width: 1180px) {
+  .filter-bar {
+    flex-wrap: wrap;
+    border-radius: 20px;
+    position: static;
+  }
+  .filter-divider {
+    display: none;
+  }
+  .filter-group {
+    flex: 1 1 45%;
+  }
+}
+
+/* Loading veil while a filter reloads the page */
+.rh-loading-pill {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--rh-ink);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 12px 22px;
+  border-radius: var(--rh-radius-pill);
+  box-shadow: var(--rh-shadow-lift);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rh-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: rhSpin 0.7s linear infinite;
+}
+
+@keyframes rhSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.listings-results.rh-loading {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: saturate(0.7);
+  transition: opacity 0.2s ease;
+}
+
+/* =========================================================
+   RESULTS BAR + TOOLBAR
+========================================================= */
+
+.rh-results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 26px 0 6px;
+}
+
+.rh-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 260px;
+}
+
+.rh-results-count {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--rh-ink-soft);
+}
+
+.rh-results-count strong {
+  color: var(--rh-ink);
+}
+
+.rh-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rh-sort {
+  border: 1px solid var(--rh-line);
+  background: var(--rh-cloud);
+  border-radius: var(--rh-radius-pill);
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--rh-ink);
+  cursor: pointer;
+}
+
+.rh-view-toggle {
+  display: flex;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.rh-view-btn {
+  border: none;
+  background: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--rh-ink-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.rh-view-btn.active {
+  background: var(--rh-canopy);
+  color: #fff;
+}
+
+.rh-saved-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-pill);
+  padding: 9px 18px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--rh-ink-soft);
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.rh-saved-toggle:hover {
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
+}
+
+.rh-saved-toggle.active {
+  background: var(--rh-gold-wash);
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
+}
+
+.rh-heart-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.rh-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rh-reveal.rh-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* =========================================================
+   LISTING CARDS
+========================================================= */
+
+.listings-results {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.listing-box {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-card);
+  overflow: hidden;
+  box-shadow: var(--rh-shadow-soft);
+  position: relative;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    border-color 0.2s ease;
+}
+
+.listing-box::before {
+  /* cursor-follow glow, driven by --mx/--my from javaScript.js */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    220px circle at var(--mx, 50%) var(--my, 0%),
+    rgba(221, 147, 15, 0.14),
+    transparent 70%
+  );
+  transition: opacity 0.25s ease;
+}
+
+.listing-box:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--rh-shadow-lift);
+  border-color: var(--rh-line-soft);
+}
+
+.listing-box:hover::before {
+  opacity: 1;
+}
+
+.rh-card-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+
+.rh-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.listing-box:hover .rh-card-media img {
+  transform: scale(1.06);
+}
+
+.rh-card-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(20, 33, 44, 0.32) 0%,
+    transparent 38%
+  );
+  pointer-events: none;
+}
+
+.rh-card-badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.rh-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 5px 11px;
+  border-radius: var(--rh-radius-pill);
+  color: #fff;
+}
+
+.rh-badge-verified {
+  background: var(--rh-canopy);
+}
+
+.rh-badge-new {
+  background: var(--rh-gold);
+}
+
+.rh-save-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #a3a3a3;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition:
+    color 0.15s ease,
+    transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rh-save-btn:hover {
+  transform: scale(1.1);
+}
+
+.rh-save-btn.saved {
+  color: var(--rh-coral);
+  animation: rhHeartPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes rhHeartPop {
+  0% {
+    transform: scale(0.7);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.rh-burst {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.listing-box-info {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.rh-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.listing-box-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--rh-ink);
+  line-height: 1.35;
+}
+
+.rh-rating {
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--rh-ink);
+}
+
+.rh-rating-count {
+  font-weight: 400;
+  color: var(--rh-ink-soft);
+}
+
+.listing-box-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--rh-ink-soft);
+}
+
+.listing-box-location img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+}
+
+.rh-bedrooms {
+  color: var(--rh-ink-soft);
+  margin-left: 2px;
+}
+
+.listing-box-price {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--rh-line-soft);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--rh-ink);
+}
+
+.listing-box-price .peso {
+  color: var(--rh-gold-deep);
+}
+
+.listing-box-price .per {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--rh-ink-soft);
+}
+
+@media (max-width: 1180px) {
+  .listings-results {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .listings-results {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* LIST VIEW */
+
+.listings-results.rh-list-view {
+  grid-template-columns: 1fr;
+}
+
+.listings-results.rh-list-view .listing-box {
+  flex-direction: row;
+}
+
+.listings-results.rh-list-view .rh-card-media {
+  width: 300px;
+  aspect-ratio: auto;
+  flex-shrink: 0;
+}
+
+.listings-results.rh-list-view .listing-box-info {
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .listings-results.rh-list-view .listing-box {
+    flex-direction: column;
+  }
+  .listings-results.rh-list-view .rh-card-media {
+    width: 100%;
+  }
+}
+
+/* EMPTY STATE */
+
+.rh-empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 72px 20px;
+  border: 1.5px dashed var(--rh-line);
+  border-radius: var(--rh-radius-card);
+  background: var(--rh-cloud);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--rh-line-soft) 1.4px,
+    transparent 1.4px
+  );
+  background-size: 22px 22px;
+}
+
+.rh-empty-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--rh-ink);
+  margin: 0 0 8px;
+}
+
+.rh-empty-subtitle {
+  font-size: 0.92rem;
+  color: var(--rh-ink-soft);
+  margin: 0 0 22px;
+}
+
+.rh-empty-clear-btn {
+  display: inline-block;
+  background: var(--rh-gold);
+  color: #fff;
+  text-decoration: none;
+  padding: 12px 28px;
+  border-radius: var(--rh-radius-pill);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.rh-empty-clear-btn:hover {
+  background: var(--rh-gold-deep);
+}
+
+.rh-empty-clear-btn:active {
+  transform: scale(0.97);
+}
+
+.listing-box.rh-hidden {
+  display: none !important;
+}
+
+/* =========================================================
+   LAYOUT: MAIN + SIDEBAR
+========================================================= */
+
+.listings-content {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  align-items: start;
+  gap: 36px;
+  margin-top: 28px;
+}
+
+@media (max-width: 1180px) {
+  .listings-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   PAGINATION
+========================================================= */
+
+.listings-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 40px;
+}
+
+.page-arrow,
+.page-num {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--rh-line);
+  background: var(--rh-cloud);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--rh-ink-soft);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.page-arrow img {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.page-arrow:hover,
+.page-num:hover {
+  border-color: var(--rh-gold);
+  color: var(--rh-gold-deep);
+}
+
+.page-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.page-arrow:disabled:hover {
+  border-color: var(--rh-line);
+  color: var(--rh-ink-soft);
+}
+
+.page-num.active {
+  background: var(--rh-canopy);
+  border-color: var(--rh-canopy);
+  color: #fff;
+}
+
+.page-dots {
+  color: var(--rh-ink-soft);
+  padding: 0 4px;
+}
+
+/* =========================================================
+   AMENITIES SIDEBAR
+========================================================= */
+
+.amenities-sidebar {
+  position: sticky;
+  top: 100px;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-card);
+  padding: 24px;
+  box-shadow: var(--rh-shadow-soft);
+}
+
+.amenities-sidebar h3 {
+  margin: 0 0 16px;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--rh-ink);
+}
+
+.amenity-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  font-size: 0.9rem;
+  color: var(--rh-ink);
+  cursor: pointer;
+}
+
+.amenity-option input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--rh-gold);
+  cursor: pointer;
+}
+
+.amenities-clear {
+  margin-top: 6px;
+  border: 1px solid var(--rh-line);
+  background: none;
+  border-radius: var(--rh-radius-pill);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--rh-ink-soft);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.amenities-clear:hover {
+  border-color: var(--rh-coral);
+  color: var(--rh-coral);
+}
+
+.need-help {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rh-line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.need-help h4 {
+  margin: 0 0 2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--rh-ink);
+}
+
+.need-help a {
+  font-size: 0.85rem;
+  color: var(--rh-ink-soft);
+  text-decoration: none;
+}
+
+.need-help a:hover {
+  color: var(--rh-gold-deep);
+}
+
+@media (max-width: 1180px) {
+  .amenities-sidebar {
+    position: static;
+  }
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.site-footer {
+  margin-top: 64px;
+  background: var(--rh-canopy-deep);
+  color: #dce8e2;
+  border-radius: 28px;
+  padding: 48px 56px 24px;
+}
+
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.footer-logo {
+  height: 34px;
+  margin-bottom: 14px;
+}
+
+.footer-tagline {
+  font-size: 0.88rem;
+  color: #b7cbc2;
+  line-height: 1.6;
+  max-width: 32ch;
+  margin: 0 0 16px;
+}
+
+.footer-contact-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: #dce8e2;
+  margin-bottom: 8px;
+}
+
+.footer-contact-line img {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+}
+
+.footer-heading {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--rh-gold);
+  margin-bottom: 14px;
+}
+
+.footer-links {
+  display: flex;
+  flex-direction: column;
+}
+
+.footer-links a {
+  font-size: 0.87rem;
+  color: #cfe0d8;
+  text-decoration: none;
+  margin-bottom: 10px;
+  width: fit-content;
+}
+
+.footer-links a:hover {
+  color: #fff;
+}
+
+.footer-app-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer-app-badges img {
+  height: 38px;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.footer-bottom {
+  text-align: center;
+  padding-top: 20px;
+}
+
+.footer-bottom p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #9fb5ac;
+}
+
+@media (max-width: 900px) {
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+  }
+  .site-footer {
+    padding: 36px 28px 20px;
+    border-radius: 20px;
+  }
+}
+
+/* =========================================================
+   TOASTS
+========================================================= */
+
+.rh-toast-stack {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.rh-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--rh-ink);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: var(--rh-shadow-lift);
+  animation: rhToastIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rh-toast.out {
+  animation: rhToastOut 0.25s ease forwards;
+}
+
+.rh-toast-ico {
+  font-size: 1rem;
+}
+
+@keyframes rhToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rhToastOut {
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+/* =========================================================
+   BACK TO TOP
+========================================================= */
+
+.rh-btt {
+  position: fixed;
+  bottom: 28px;
+  left: 28px;
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 50%;
+  background: var(--rh-cloud);
+  box-shadow: var(--rh-shadow-lift);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rh-ink);
+  font-size: 1rem;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  z-index: 900;
+}
+
+.rh-btt.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.rh-btt svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.rh-btt-track {
+  fill: none;
+  stroke: var(--rh-line);
+  stroke-width: 2;
+}
+
+.rh-btt-prog {
+  fill: none;
+  stroke: var(--rh-gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+/* =========================================================
+   MOTION SAFETY
+========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-box,
+  .rh-carousel-card,
+  .rh-card-media img,
+  .rh-save-btn,
+  .rh-toast,
+  .rh-btt {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+/* =========================================================
+   ROOMHIVE — LISTINGS PAGE, INTERACTIVE LAYER
+   listings-interactive.css
+
+   Additive only — nothing here overrides listings-style.css,
+   it layers new motion on top of it. Load this AFTER
+   listings-style.css so the hive tokens (--rh-gold,
+   --rh-canopy, etc.) already exist.
+
+   Everything answers something the visitor does — arriving,
+   moving the cursor, hovering, loading a new page of results
+   — with one deliberate exception: the greeting's opening
+   reveal, the page's single orchestrated moment.
+   ========================================================= */
+
+:root {
+  --rh-hex-clip: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0% 50%);
+}
+
+/* =========================================================
+   1. GREETING — OPENING REVEAL + CURSOR-LIT HONEYCOMB
+========================================================= */
+
+.greeting-text p,
+.greeting-text h1,
+.rh-hero-tagline {
+  animation: rhHiveWipeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.greeting-text h1 {
+  animation-delay: 0.08s;
+}
+.rh-hero-tagline {
+  animation-delay: 0.16s;
+}
+
+.greeting-illustration {
+  animation: rhHexReveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.1s;
+}
+
+@keyframes rhHiveWipeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rhHexReveal {
+  from {
+    opacity: 0;
+    clip-path: polygon(50% 45%, 50% 45%, 50% 55%, 50% 55%, 50% 55%, 50% 45%);
+  }
+  to {
+    opacity: 1;
+    clip-path: var(--rh-hex-clip);
+  }
+}
+
+/* Cursor-lit glow across the honeycomb texture — tracks
+   --hx/--hy, set in JS from pointer position */
+.listings-greeting {
+  --hx: 50%;
+  --hy: 50%;
+}
+
+.listings-greeting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(
+    260px circle at var(--hx) var(--hy),
+    rgba(221, 147, 15, 0.35),
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+}
+
+.listings-greeting.rh-hero-lit::after {
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  .listings-greeting::after {
+    display: none;
+  }
+}
+
+/* =========================================================
+   2. LISTING CARDS — TILT + LIGHT SWEEP + HEX MARK
+========================================================= */
+
+.listing-box {
+  --rh-tilt-x: 0deg;
+  --rh-tilt-y: 0deg;
+  --rh-lift: 0px;
+  transform: translateY(var(--rh-lift)) perspective(900px)
+    rotateX(var(--rh-tilt-x)) rotateY(var(--rh-tilt-y));
+}
+
+/* Same specificity as listings-style.css's .listing-box:hover,
+   loaded after it — wins on the transform property only, so
+   the lift still combines with live tilt instead of one
+   silently overriding the other. */
+.listing-box:hover {
+  transform: translateY(var(--rh-lift, -6px)) perspective(900px)
+    rotateX(var(--rh-tilt-x)) rotateY(var(--rh-tilt-y));
+}
+
+.rh-card-media {
+  --smx: 50%;
+  --smy: 50%;
+}
+
+.rh-card-media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    160px circle at var(--smx) var(--smy),
+    rgba(255, 255, 255, 0.28),
+    transparent 65%
+  );
+  transition: opacity 0.25s ease;
+}
+
+.listing-box:hover .rh-card-media::before {
+  opacity: 1;
+}
+
+/* Quiet hex signature at the corner, not a repeated icon */
+.rh-hex-mark {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  background: var(--rh-gold);
+  clip-path: var(--rh-hex-clip);
+  opacity: 0;
+  transform: scale(0.4) rotate(-25deg);
+  transition:
+    opacity 0.25s ease,
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.listing-box:hover .rh-hex-mark {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .listing-box,
+  .listing-box:hover,
+  .rh-card-media::before,
+  .rh-hex-mark {
+    transition: none !important;
+    animation: none !important;
+  }
+  .listing-box,
+  .listing-box:hover {
+    --rh-tilt-x: 0deg;
+    --rh-tilt-y: 0deg;
+  }
+}
+
+/* =========================================================
+   3. MAGNETIC CONTROLS
+   Circular buttons drift a few px toward the cursor, set by
+   JS via --mgx/--mgy, and snap back on leave.
+========================================================= */
+
+.rh-carousel-arrow,
+.rh-view-btn,
+.search-button {
+  --mgx: 0px;
+  --mgy: 0px;
+  transform: translate(var(--mgx), var(--mgy));
+}
+
+.rh-carousel-arrow,
+.search-button {
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* search-button already scales on hover in listings-style.css —
+   same specificity, loaded after, so the two combine instead
+   of the magnetic drift getting silently dropped on hover. */
+.search-button:hover {
+  transform: translate(var(--mgx), var(--mgy)) scale(1.05);
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .rh-carousel-arrow,
+  .rh-view-btn,
+  .search-button,
+  .search-button:hover {
+    transform: none !important;
+  }
+}
+
+/* =========================================================
+   4. ACTIVE FILTER CHIPS
+========================================================= */
+
+.rh-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.rh-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--rh-gold-wash);
+  border: 1px solid var(--rh-gold);
+  color: var(--rh-gold-deep);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--rh-radius-pill);
+  text-decoration: none;
+  animation: rhChipIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.rh-chip:hover {
+  background: #f7e6bf;
+}
+
+.rh-chip-x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--rh-gold);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.rh-chip:hover .rh-chip-x {
+  background: var(--rh-gold-deep);
+  transform: scale(1.12);
+}
+
+@keyframes rhChipIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rh-chip {
+    animation: none;
+  }
+}
+
+/* =========================================================
+   5. HONEYCOMB LOADING SKELETON
+   Overlays the results grid the instant listing.php's own
+   .rh-loading class appears on it (see JS) — small tiles
+   shimmer in place of the dimmed real content underneath.
+========================================================= */
+
+.listings-results {
+  position: relative;
+}
+
+.rh-skeleton-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.rh-skeleton-overlay.rh-show {
+  opacity: 1;
+}
+
+.rh-skeleton-card {
+  border-radius: var(--rh-radius-card);
+  overflow: hidden;
+  background: var(--rh-cloud);
+  border: 1px solid var(--rh-line);
+  min-height: 260px;
+  position: relative;
+}
+
+.rh-skeleton-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    var(--rh-line-soft) 30%,
+    var(--rh-gold-wash) 50%,
+    var(--rh-line-soft) 70%
+  );
+  background-size: 200% 100%;
+  animation: rhShimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes rhShimmer {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .rh-skeleton-overlay {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 720px) {
+  .rh-skeleton-overlay {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rh-skeleton-card::after {
+    animation: none;
+  }
+  .rh-skeleton-overlay {
+    transition: none;
+  }
+}
+
+/* =========================================================
+   6. SAVE — HEX RING PULSE
+   One quiet ring on top of javaScript.js's existing heart
+   burst — a complement, not a second copy of it.
+========================================================= */
+
+.rh-hex-ring {
+  position: fixed;
+  width: 34px;
+  height: 34px;
+  clip-path: var(--rh-hex-clip);
+  border: 2px solid var(--rh-gold);
+  pointer-events: none;
+  z-index: 999;
+  animation: rhHexPulse 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes rhHexPulse {
+  from {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+/* =========================================================
+   7. EMPTY STATE — DRIFTING HEX ACCENT
+========================================================= */
+
+.rh-empty-state {
+  position: relative;
+}
+
+.rh-empty-drift {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 18px;
+  position: relative;
+}
+
+.rh-empty-drift span {
+  position: absolute;
+  inset: 0;
+  clip-path: var(--rh-hex-clip);
+  background: var(--rh-gold-wash);
+  border: 1.5px solid var(--rh-gold);
+}
+
+.rh-empty-drift span:nth-child(2) {
+  transform: scale(0.55);
+  background: var(--rh-gold);
+  border: none;
+  animation: rhEmptyFloat 2.6s ease-in-out infinite;
+}
+
+@keyframes rhEmptyFloat {
+  0%,
+  100% {
+    transform: scale(0.55) translateY(0);
+  }
+  50% {
+    transform: scale(0.55) translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rh-empty-drift span:nth-child(2) {
+    animation: none;
+  }
+}

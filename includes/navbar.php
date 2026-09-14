@@ -114,6 +114,48 @@
     header.navbar .nav-links {
         overflow: visible;
     }
+    /* =====================================================
+   NAV LINK — SLIDING UNDERLINE
+   Sweeps in from the left on hover, and stays visible
+   for whichever link matches the current page.
+====================================================== */
+
+header.navbar .nav-links a {
+    position: relative;
+    padding-bottom: 6px;
+    color: #1c1c1c;
+    transition: color 0.2s ease;
+}
+
+header.navbar .nav-links a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    background: #dd930f;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+header.navbar .nav-links a:hover,
+header.navbar .nav-links a.active {
+    color: #dd930f;
+}
+
+header.navbar .nav-links a:hover::after,
+header.navbar .nav-links a.active::after {
+    transform: scaleX(1);
+}
+
+/* Guest CTA and the account button aren't part of this —
+   they already look like buttons, not text links */
+header.navbar .nav-links a.list-space::after,
+header.navbar .account-dropdown .my-account::after {
+    display: none;
+}
 </style>
 
 <header class="navbar">
