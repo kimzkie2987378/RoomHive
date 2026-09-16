@@ -1,18 +1,22 @@
 <?php
 /**admin.php
- * RoomHive Admin Dashboard — now backed by real queries.
+ * RoomHive Admin Dashboard — backed by real queries.
  *
- * PHOTO FIX:
- *   - resolve_photo() normalizes listing_photos.photo_path and
- *     users.avatar_path into working URLs (same helper the
- *     tenant/host pages use).
- *   - Host Applications now show the applicant's real avatar
- *     (users.avatar_path) with an initials-avatar fallback.
- *   - Every <img> has an onerror fallback so a missing file on
- *     disk shows the placeholder, never a broken-image icon.
+ * CHART FIX (this version):
+ *   - Bookings by Status is now DYNAMIC: every status that actually
+ *     exists in the DB gets a donut slice + color + legend row.
+ *     Previously a hard-coded 4-status list meant bookings with any
+ *     other status made the donut show a total but NO slices.
+ *   - Revenue Overview now sums amount_paid from ALL bookings (any
+ *     status). Previously only confirmed/completed counted, so a
+ *     dashboard full of pending bookings showed zero-height bars.
+ *   - Donut sizing CSS is defined inline so the chart renders even
+ *     if .donut-wrap / .donut-center are missing from admin.css.
+ *   - Chart.js load guard: if the CDN fails, panels show a message
+ *     instead of silently blank canvases.
  *
- * SCHEMA NOTE: the real `bookings` table has NO `total` and
- * NO `booked_at` columns. Money = amount_paid, time = created_at.
+ * SIDEBAR: RoomHive brand block and the
+ * "Need Help / Contact Support" card are removed.
  */
 
 session_start();
@@ -36,12 +40,6 @@ if (
 
 /* =========================================================
    PHOTO RESOLVER
-   Turns raw DB paths into working URLs:
-     'uploads/listings/x.jpg'   -> /webprogg/uploads/listings/x.jpg
-     '/uploads/listings/x.jpg'  -> /webprogg/uploads/listings/x.jpg
-     'webprogg/uploads/...'     -> /webprogg/uploads/...
-     'https://...'              -> unchanged
-     empty / null               -> $fallback
 ========================================================= */
 if (!function_exists('resolve_photo')) {
     function resolve_photo($path, $fallback = '/webprogg/images/ListingPlaceholder.png') {
@@ -149,37 +147,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
 ];
 
 /* =========================================================
-   BOOKINGS BY STATUS (donut)
+   BOOKINGS BY STATUS (donut) — DYNAMIC
+   Every status that exists in the DB gets a slice.
    ========================================================= */
- $statusColors = [
-    'confirmed' => '#2FA84F',
-    'completed' => '#2F7DE1',
-    'cancelled' => '#E14B4B',
-    'pending'   => '#F5A623',
-];
  $statusCountsRaw = $pdo->query(
     "SELECT status, COUNT(*) AS cnt FROM bookings GROUP BY status"
 )->fetchAll(PDO::FETCH_KEY_PAIR);
 
  $totalBookingsForDonut = array_sum($statusCountsRaw);
 
+ $statusColorMap = [
+    'confirmed' => '#2FA84F',
+    'completed' => '#2F7DE1',
+    'cancelled' => '#E14B4B',
+    'pending'   => '#F5A623',
+    'failed'    => '#B03A3A',
+    'refunded'  => '#9B6BC3',
+];
+ $fallbackPalette = ['#8B93A6', '#5BC0BE', '#E58BB1', '#C7A252', '#7A8CE8', '#9B6BC3'];
+
  $statusBreakdown = [];
-foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
-    $count = (int) ($statusCountsRaw[$statusKey] ?? 0);
-    $pct = $totalBookingsForDonut > 0 ? round(($count / $totalBookingsForDonut) * 100) . '%' : '0%';
+ $fbIdx = 0;
+foreach ($statusCountsRaw as $rawStatus => $count) {
+    $key   = strtolower((string) $rawStatus);
+    $color = $statusColorMap[$key] ?? $fallbackPalette[$fbIdx++ % count($fallbackPalette)];
+    $count = (int) $count;
     $statusBreakdown[] = [
-        'label' => ucfirst($statusKey),
+        'label' => ucfirst($key),
         'value' => $count,
-        'pct'   => $pct,
-        'color' => $statusColors[$statusKey],
+        'pct'   => $totalBookingsForDonut > 0 ? round(($count / $totalBookingsForDonut) * 100) . '%' : '0%',
+        'color' => $color,
     ];
 }
 
 /* =========================================================
    RECENT HOST APPLICATIONS (most recent 4)
-   PHOTO FIX: join users to show the applicant's real avatar.
-   Falls back to the generated initials avatar when the user
-   has no uploaded photo.
    ========================================================= */
  $hostApplications = array_map(function ($row) {
     $initialsAvatar = 'https://ui-avatars.com/api/?background=EDA423&color=fff&bold=true&name=' . urlencode($row['full_name']);
@@ -202,7 +204,6 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    TOP PERFORMING LISTINGS (by revenue, top 4)
-   PHOTO FIX: cover photo goes through resolve_photo().
    ========================================================= */
  $topListings = array_map(function ($row) {
     return [
@@ -227,7 +228,6 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    RECENT BOOKINGS (most recent 4)
-   PHOTO FIX: cover photo goes through resolve_photo().
    ========================================================= */
  $recentBookings = array_map(function ($row) {
     return [
@@ -284,6 +284,8 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    CHART DATA — last 7 days of bookings / revenue
+   FIX: revenue now counts amount_paid from ALL bookings
+   (any status), so pending bookings still draw real bars.
    ========================================================= */
  $chartLabels   = [];
  $bookingSeries = [];
@@ -294,7 +296,7 @@ for ($i = 6; $i >= 0; $i--) {
     $chartLabels[] = date('M j', strtotime($day));
 
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*), COALESCE(SUM(CASE WHEN status IN ('confirmed','completed') THEN amount_paid ELSE 0 END),0)
+        "SELECT COUNT(*), COALESCE(SUM(amount_paid),0)
          FROM bookings WHERE DATE(created_at) = :day"
     );
     $stmt->execute(['day' => $day]);
@@ -303,6 +305,94 @@ for ($i = 6; $i >= 0; $i--) {
     $bookingSeries[] = (int) $dayCount;
     $revenueSeries[] = (float) $dayRevenue;
 }
+
+ $weekBookingTotal = array_sum($bookingSeries);
+ $weekRevenueTotal = array_sum($revenueSeries);
+
+/* =========================================================
+   6-MONTH USER & LISTING GROWTH
+   ========================================================= */
+ $growthMonths = [];
+for ($i = 5; $i >= 0; $i--) {
+    $ts = strtotime("first day of -{$i} months");
+    $growthMonths[date('Y-m', $ts)] = ['label' => date('M Y', $ts), 'users' => 0, 'listings' => 0];
+}
+ $growthStart = date('Y-m-01 00:00:00', strtotime('-5 months'));
+
+ $gUs = $pdo->prepare("SELECT DATE_FORMAT(created_at,'%Y-%m') ym, COUNT(*) c FROM users WHERE created_at >= :s GROUP BY ym");
+ $gUs->execute(['s' => $growthStart]);
+foreach ($gUs->fetchAll() as $r) {
+    if (isset($growthMonths[$r['ym']])) $growthMonths[$r['ym']]['users'] = (int) $r['c'];
+}
+
+ $gLs = $pdo->prepare("SELECT DATE_FORMAT(created_at,'%Y-%m') ym, COUNT(*) c FROM listings WHERE created_at >= :s GROUP BY ym");
+ $gLs->execute(['s' => $growthStart]);
+foreach ($gLs->fetchAll() as $r) {
+    if (isset($growthMonths[$r['ym']])) $growthMonths[$r['ym']]['listings'] = (int) $r['c'];
+}
+
+ $growthLabels   = array_column(array_values($growthMonths), 'label');
+ $growthUsers    = array_column(array_values($growthMonths), 'users');
+ $growthListings = array_column(array_values($growthMonths), 'listings');
+
+/* =========================================================
+   LISTINGS BY STATUS (donut) — DYNAMIC
+   ========================================================= */
+ $listingStatusRaw = $pdo->query(
+    "SELECT status, COUNT(*) c FROM listings GROUP BY status"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+
+ $totalListingsForDonut = array_sum($listingStatusRaw);
+
+ $listingColorMap = [
+    'approved' => '#2FA84F',
+    'pending'  => '#F5A623',
+    'rejected' => '#E14B4B',
+    'unlisted' => '#8B93A6',
+    'draft'    => '#C7CDD9',
+];
+ $listingBreakdown = [];
+ $lfIdx = 0;
+foreach ($listingStatusRaw as $rawStatus => $count) {
+    $key   = strtolower((string) $rawStatus);
+    $color = $listingColorMap[$key] ?? $fallbackPalette[$lfIdx++ % count($fallbackPalette)];
+    $listingBreakdown[] = [
+        'label' => ucfirst($key),
+        'value' => (int) $count,
+        'color' => $color,
+    ];
+}
+
+/* =========================================================
+   RATING DISTRIBUTION (1-5 stars)
+   ========================================================= */
+ $ratingDist = $pdo->query(
+    "SELECT CAST(ROUND(rating) AS SIGNED) star, COUNT(*) c FROM reviews GROUP BY star"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+
+ $ratingLabels = ['5★', '4★', '3★', '2★', '1★'];
+ $ratingSeries = [
+    (int) ($ratingDist[5] ?? 0),
+    (int) ($ratingDist[4] ?? 0),
+    (int) ($ratingDist[3] ?? 0),
+    (int) ($ratingDist[2] ?? 0),
+    (int) ($ratingDist[1] ?? 0),
+];
+
+/* =========================================================
+   TOP LOCATIONS BY BOOKINGS (top 6)
+   ========================================================= */
+ $topLocations = $pdo->query(
+    "SELECT l.location, COUNT(b.id) c
+     FROM bookings b
+     JOIN listings l ON l.id = b.listing_id
+     GROUP BY l.location
+     ORDER BY c DESC
+     LIMIT 6"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+
+ $locLabels = array_keys($topLocations);
+ $locSeries = array_map('intval', array_values($topLocations));
 
 /* ---------- Inline icon helper (lucide-style strokes) ---------- */
 function icon($name, $class = '') {
@@ -374,6 +464,7 @@ function listImage($src, $alt, $class = '') {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
 <style>
+    .sidebar .nav { padding-top: 10px; }
     .admin-chip { position: relative; cursor: pointer; }
     .admin-menu {
         display: none;
@@ -427,13 +518,49 @@ function listImage($src, $alt, $class = '') {
     .host-app-reject { background: #FCEAEA; color: #E14B4B; }
     .host-app-reject:hover { background: #E14B4B; color: #fff; }
 
-    /* Soft neutral background behind thumbnails so placeholder
-       and loading images never look broken */
     .people-list img,
     .listing-list img,
     .booking-list img {
         background: #f6f4ee;
         object-fit: cover;
+    }
+
+    /* ==========================================================
+       DONUT RENDERING FALLBACK — guaranteed correct even if
+       .donut-wrap / .donut-center are missing from admin.css.
+       ========================================================== */
+    .donut-wrap {
+        position: relative;
+        width: 180px;
+        height: 180px;
+        margin: 12px auto;
+    }
+    .donut-wrap canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+    .donut-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+    }
+    .donut-total { font-size: 22px; font-weight: 800; color: #14142B; line-height: 1; }
+    .donut-label { font-size: 11px; color: #8B93A6; margin-top: 3px; }
+
+    /* Visible message if the Chart.js CDN fails to load */
+    .chart-fallback {
+        display: none;
+        padding: 40px 16px;
+        text-align: center;
+        font-size: 13px;
+        color: #8B93A6;
+        background: #F6F7FB;
+        border-radius: 10px;
     }
 </style>
 </head>
@@ -443,16 +570,6 @@ function listImage($src, $alt, $class = '') {
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">
-                <?= icon('home', 'brand-icon') ?>
-            </div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
-
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href'] ?? '#') ?>" class="nav-item <?= !empty($item['active']) ? 'active' : '' ?>">
@@ -461,13 +578,6 @@ function listImage($src, $alt, $class = '') {
                 </a>
             <?php endforeach; ?>
         </nav>
-
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
 
     <!-- ============ MAIN ============ -->
@@ -542,7 +652,7 @@ function listImage($src, $alt, $class = '') {
                 <?php endforeach; ?>
             </div>
 
-            <!-- Row: Bookings Overview / Bookings by Status -->
+            <!-- Row 1: Bookings Overview / Bookings by Status -->
             <div class="grid-3">
                 <div class="panel span-2">
                     <div class="panel-header">
@@ -557,26 +667,30 @@ function listImage($src, $alt, $class = '') {
                         <h2>Bookings by Status</h2>
                         <select class="period-select"><option>All Time</option></select>
                     </div>
-                    <div class="donut-wrap">
-                        <canvas id="statusChart" width="180" height="180"></canvas>
-                        <div class="donut-center">
-                            <span class="donut-total"><?= $totalBookingsForDonut ?></span>
-                            <span class="donut-label">Total</span>
+                    <?php if ($totalBookingsForDonut === 0): ?>
+                        <?php emptyState('No bookings yet — the chart will appear once bookings come in.'); ?>
+                    <?php else: ?>
+                        <div class="donut-wrap">
+                            <canvas id="statusChart"></canvas>
+                            <div class="donut-center">
+                                <span class="donut-total"><?= $totalBookingsForDonut ?></span>
+                                <span class="donut-label">Total</span>
+                            </div>
                         </div>
-                    </div>
-                    <ul class="legend-list">
-                        <?php foreach ($statusBreakdown as $s): ?>
-                            <li>
-                                <span class="dot" style="background:<?= $s['color'] ?>"></span>
-                                <span class="legend-label"><?= htmlspecialchars($s['label']) ?></span>
-                                <span class="legend-value"><?= $s['value'] ?> (<?= $s['pct'] ?>)</span>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
+                        <ul class="legend-list">
+                            <?php foreach ($statusBreakdown as $s): ?>
+                                <li>
+                                    <span class="dot" style="background:<?= $s['color'] ?>"></span>
+                                    <span class="legend-label"><?= htmlspecialchars($s['label']) ?></span>
+                                    <span class="legend-value"><?= $s['value'] ?> (<?= $s['pct'] ?>)</span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                 </div>
             </div>
 
-            <!-- Row: Revenue Overview + Platform Summary / Top Listings / Recent Bookings -->
+            <!-- Row 2: Revenue Overview + Platform Summary / lists -->
             <div class="grid-3">
                 <div class="panel span-2 stack">
                     <div>
@@ -585,10 +699,11 @@ function listImage($src, $alt, $class = '') {
                             <select class="period-select"><option>Last 7 Days</option></select>
                         </div>
                         <div class="revenue-total-row">
-                            <span class="revenue-total">₱<?= number_format(array_sum($revenueSeries)) ?></span>
-                            <span class="stat-caption"><?= array_sum($revenueSeries) > 0 ? 'Last 7 days' : 'No revenue yet' ?></span>
+                            <span class="revenue-total">₱<?= number_format($weekRevenueTotal) ?></span>
+                            <span class="stat-caption"><?= $weekRevenueTotal > 0 ? 'Paid in the last 7 days (all bookings)' : 'No bookings in the last 7 days' ?></span>
                         </div>
                         <canvas id="revenueChart" height="190"></canvas>
+                        <div class="chart-fallback">Chart could not load — check your internet connection (Chart.js CDN).</div>
                     </div>
 
                     <div class="platform-summary">
@@ -701,6 +816,71 @@ function listImage($src, $alt, $class = '') {
                     </div>
                 </div>
             </div>
+
+            <!-- Row 3: User & Listing Growth / Listings by Status -->
+            <div class="grid-3">
+                <div class="panel span-2">
+                    <div class="panel-header">
+                        <h2>User &amp; Listing Growth</h2>
+                        <select class="period-select"><option>Last 6 Months</option></select>
+                    </div>
+                    <canvas id="growthChart" height="150"></canvas>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Listings by Status</h2>
+                        <select class="period-select"><option>All Time</option></select>
+                    </div>
+                    <?php if ($totalListingsForDonut === 0): ?>
+                        <?php emptyState('No listings yet.'); ?>
+                    <?php else: ?>
+                        <div class="donut-wrap">
+                            <canvas id="listingStatusChart"></canvas>
+                            <div class="donut-center">
+                                <span class="donut-total"><?= $totalListingsForDonut ?></span>
+                                <span class="donut-label">Total</span>
+                            </div>
+                        </div>
+                        <ul class="legend-list">
+                            <?php foreach ($listingBreakdown as $s): ?>
+                                <li>
+                                    <span class="dot" style="background:<?= $s['color'] ?>"></span>
+                                    <span class="legend-label"><?= htmlspecialchars($s['label']) ?></span>
+                                    <span class="legend-value"><?= $s['value'] ?></span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Row 4: Rating Distribution / Top Locations -->
+            <div class="grid-3">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Rating Distribution</h2>
+                        <select class="period-select"><option>All Time</option></select>
+                    </div>
+                    <?php if ($totalReviews === 0): ?>
+                        <?php emptyState('No reviews yet.'); ?>
+                    <?php else: ?>
+                        <canvas id="ratingChart" height="200"></canvas>
+                    <?php endif; ?>
+                </div>
+
+                <div class="panel span-2">
+                    <div class="panel-header">
+                        <h2>Top Locations by Bookings</h2>
+                        <select class="period-select"><option>All Time</option></select>
+                    </div>
+                    <?php if (empty($locLabels)): ?>
+                        <?php emptyState('No bookings yet.'); ?>
+                    <?php else: ?>
+                        <canvas id="locationChart" height="200"></canvas>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -722,12 +902,20 @@ function listImage($src, $alt, $class = '') {
 })();
 </script>
 <script>
+/* Guard: if the Chart.js CDN failed, show fallback messages
+   in every panel instead of silently blank canvases. */
+if (typeof Chart === 'undefined') {
+    document.querySelectorAll('.chart-fallback').forEach(function (el) {
+        el.style.display = 'block';
+    });
+} else {
+
 const chartLabels = <?= json_encode($chartLabels) ?>;
 const bookingSeries = <?= json_encode($bookingSeries) ?>;
 const revenueSeries = <?= json_encode($revenueSeries) ?>;
 
-const bookingsCtx = document.getElementById('bookingsChart');
-new Chart(bookingsCtx, {
+/* ===== 1. Bookings Overview (line, last 7 days) ===== */
+new Chart(document.getElementById('bookingsChart'), {
     type: 'line',
     data: {
         labels: chartLabels,
@@ -758,27 +946,30 @@ new Chart(bookingsCtx, {
     }
 });
 
-const statusCtx = document.getElementById('statusChart');
-const statusTotal = <?= $totalBookingsForDonut ?>;
-new Chart(statusCtx, {
-    type: 'doughnut',
-    data: {
-        labels: <?= json_encode(array_column($statusBreakdown, 'label')) ?>,
-        datasets: [{
-            data: statusTotal > 0 ? <?= json_encode(array_column($statusBreakdown, 'value')) ?> : [1],
-            backgroundColor: statusTotal > 0 ? <?= json_encode(array_column($statusBreakdown, 'color')) ?> : ['#EEEAE0'],
-            borderWidth: 0,
-        }]
-    },
-    options: {
-        responsive: false,
-        cutout: '68%',
-        plugins: { legend: { display: false }, tooltip: { enabled: statusTotal > 0 } }
-    }
-});
+/* ===== 2. Bookings by Status (doughnut — dynamic) ===== */
+const statusEl = document.getElementById('statusChart');
+if (statusEl) {
+    new Chart(statusEl, {
+        type: 'doughnut',
+        data: {
+            labels: <?= json_encode(array_column($statusBreakdown, 'label')) ?>,
+            datasets: [{
+                data: <?= json_encode(array_column($statusBreakdown, 'value')) ?>,
+                backgroundColor: <?= json_encode(array_column($statusBreakdown, 'color')) ?>,
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '68%',
+            plugins: { legend: { display: false } }
+        }
+    });
+}
 
-const revenueCtx = document.getElementById('revenueChart');
-new Chart(revenueCtx, {
+/* ===== 3. Revenue Overview (bar, last 7 days — ALL bookings) ===== */
+new Chart(document.getElementById('revenueChart'), {
     type: 'bar',
     data: {
         labels: chartLabels,
@@ -801,7 +992,11 @@ new Chart(revenueCtx, {
                 ticks: {
                     color: '#8B93A6',
                     font: { size: 11 },
-                    callback: (v) => v === 0 ? '0' : (v / 1000) + 'K'
+                    callback: function (v) {
+                        if (v >= 1000000) return (v / 1000000) + 'M';
+                        if (v >= 1000) return (v / 1000) + 'K';
+                        return v;
+                    }
                 },
                 grid: { color: '#EEF1F6' },
                 beginAtZero: true
@@ -809,6 +1004,122 @@ new Chart(revenueCtx, {
         }
     }
 });
+
+/* ===== 4. User & Listing Growth (dual line, 6 months) ===== */
+new Chart(document.getElementById('growthChart'), {
+    type: 'line',
+    data: {
+        labels: <?= json_encode($growthLabels) ?>,
+        datasets: [
+            {
+                label: 'New Users',
+                data: <?= json_encode($growthUsers) ?>,
+                borderColor: '#2F7DE1',
+                backgroundColor: 'rgba(47,125,225,0.10)',
+                fill: true,
+                tension: 0.35,
+                pointRadius: 3
+            },
+            {
+                label: 'New Listings',
+                data: <?= json_encode($growthListings) ?>,
+                borderColor: '#EDA423',
+                backgroundColor: 'rgba(237,164,35,0.10)',
+                fill: true,
+                tension: 0.35,
+                pointRadius: 3
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: true, labels: { color: '#8B93A6', boxWidth: 12, font: { size: 11 } } }
+        },
+        scales: {
+            x: { ticks: { color: '#8B93A6', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#8B93A6', stepSize: 1, font: { size: 10 } }, grid: { color: '#EEF1F6' }, beginAtZero: true }
+        }
+    }
+});
+
+/* ===== 5. Listings by Status (doughnut — dynamic) ===== */
+const listingStatusEl = document.getElementById('listingStatusChart');
+if (listingStatusEl) {
+    new Chart(listingStatusEl, {
+        type: 'doughnut',
+        data: {
+            labels: <?= json_encode(array_column($listingBreakdown, 'label')) ?>,
+            datasets: [{
+                data: <?= json_encode(array_column($listingBreakdown, 'value')) ?>,
+                backgroundColor: <?= json_encode(array_column($listingBreakdown, 'color')) ?>,
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '68%',
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+/* ===== 6. Rating Distribution (horizontal bar) ===== */
+const ratingCtx = document.getElementById('ratingChart');
+if (ratingCtx) {
+    new Chart(ratingCtx, {
+        type: 'bar',
+        data: {
+            labels: <?= json_encode($ratingLabels) ?>,
+            datasets: [{
+                data: <?= json_encode($ratingSeries) ?>,
+                backgroundColor: '#F5B301',
+                borderRadius: 4,
+                maxBarThickness: 16,
+                label: 'Reviews'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#8B93A6', stepSize: 1, font: { size: 10 } }, grid: { color: '#EEF1F6' }, beginAtZero: true },
+                y: { ticks: { color: '#8B93A6', font: { size: 11 } }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+/* ===== 7. Top Locations by Bookings (horizontal bar) ===== */
+const locationCtx = document.getElementById('locationChart');
+if (locationCtx) {
+    new Chart(locationCtx, {
+        type: 'bar',
+        data: {
+            labels: <?= json_encode($locLabels) ?>,
+            datasets: [{
+                data: <?= json_encode($locSeries) ?>,
+                backgroundColor: '#2F7DE1',
+                borderRadius: 4,
+                maxBarThickness: 16,
+                label: 'Bookings'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#8B93A6', stepSize: 1, font: { size: 10 } }, grid: { color: '#EEF1F6' }, beginAtZero: true },
+                y: { ticks: { color: '#8B93A6', font: { size: 11 } }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+} /* end Chart.js guard */
 </script>
 </body>
 </html>

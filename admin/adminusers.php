@@ -3,14 +3,10 @@
  * RoomHive Admin — Users
  * Lists every registered user (all logged-in accounts live in the
  * `users` table) with a Delete action. Deleting a user is destructive
- * and cascades across every table that references that user, either
- * directly (bookings, reviews, wishlist, host_applications,
- * hive_members, hiveclub_transactions) or indirectly through listings
- * the user hosts (listing_photos, and bookings/reviews/wishlist rows
- * tied to those listings).
+ * and cascades across every table that references that user.
  *
- * Same shell (sidebar/topbar) and visual language as admin.php so it
- * drops straight into the existing dashboard.
+ * SIDEBAR CHANGE: RoomHive brand block and the
+ * "Need Help / Contact Support" card removed.
  */
 
 session_start();
@@ -29,26 +25,21 @@ if (
     exit();
 }
 
-$adminName  = $_SESSION['admin_name']  ?? 'Admin User';
-$adminEmail = $_SESSION['admin_email'] ?? '';
+ $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+ $adminEmail = $_SESSION['admin_email'] ?? '';
 
 /* ---------- CSRF token (per-session) ---------- */
 if (empty($_SESSION['admin_csrf'])) {
     $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
 }
-$csrfToken = $_SESSION['admin_csrf'];
+ $csrfToken = $_SESSION['admin_csrf'];
 
 /*
  * =========================================================
  * DELETE USER (cascading)
  * =========================================================
- * Runs before any HTML is echoed so the header() redirect at the
- * end is always safe to send. The confirmation itself happens in
- * the browser (modal) — by the time this POST arrives the admin
- * has already confirmed. Everything here still happens inside a
- * transaction so a mid-way failure can't leave orphaned rows.
  */
-$flash = null;
+ $flash = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
     $targetUserId = (int) $_POST['delete_user_id'];
@@ -62,11 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
         if ($targetUser) {
             $pdo->beginTransaction();
             try {
-                // Listings this user hosts, if any — their child rows
-                // (photos, and any booking/review/wishlist activity on
-                // those listings) have to go too, even though those
-                // bookings/reviews/wishlist entries may belong to a
-                // *different* user (the guest who booked/reviewed it).
                 $stmt = $pdo->prepare("SELECT id FROM listings WHERE user_id = :uid");
                 $stmt->execute(['uid' => $targetUserId]);
                 $ownedListingIds = array_column($stmt->fetchAll(), 'id');
@@ -90,7 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                         ->execute($ownedListingIds);
                 }
 
-                // This user's own activity as a guest/member.
                 $pdo->prepare("DELETE FROM bookings WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
@@ -100,8 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                 $pdo->prepare("DELETE FROM wishlist WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
-                // Hive club: transactions reference hive_members, so
-                // clear those first, then the membership row itself.
                 $stmt = $pdo->prepare("SELECT id FROM hive_members WHERE user_id = :uid");
                 $stmt->execute(['uid' => $targetUserId]);
                 $hiveMemberIds = array_column($stmt->fetchAll(), 'id');
@@ -117,11 +100,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                 $pdo->prepare("DELETE FROM hive_members WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
-                // Host application history.
                 $pdo->prepare("DELETE FROM host_applications WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
-                // Finally, the account itself.
                 $pdo->prepare("DELETE FROM users WHERE id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
@@ -171,20 +152,20 @@ if (isset($_GET['deleted'])) {
 ];
 
 /* ---------- Notifications badge (kept consistent with admin.php) ---------- */
-$pendingHostApps   = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
-$pendingListings   = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
-$notificationCount = $pendingHostApps + $pendingListings;
+ $pendingHostApps   = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
+ $pendingListings   = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
+ $notificationCount = $pendingHostApps + $pendingListings;
 
 /*
  * =========================================================
  * FILTERS: search + role
  * =========================================================
  */
-$search = trim($_GET['q'] ?? '');
-$role   = $_GET['role'] ?? 'all'; // all | host | guest
+ $search = trim($_GET['q'] ?? '');
+ $role   = $_GET['role'] ?? 'all'; // all | host | guest
 
-$where  = [];
-$params = [];
+ $where  = [];
+ $params = [];
 
 if ($search !== '') {
     $where[]          = '(u.name LIKE :search OR u.email LIKE :search OR u.phone LIKE :search)';
@@ -195,14 +176,14 @@ if ($role === 'host') {
 } elseif ($role === 'guest') {
     $where[] = 'u.is_host = 0';
 }
-$whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+ $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 /*
  * =========================================================
  * USERS LIST — with booking/listing/review counts
  * =========================================================
  */
-$sql = "
+ $sql = "
     SELECT
         u.id, u.name, u.email, u.phone, u.age, u.avatar_path, u.location,
         u.created_at, u.is_host,
@@ -213,12 +194,12 @@ $sql = "
     $whereSql
     ORDER BY u.created_at DESC
 ";
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$users = $stmt->fetchAll();
+ $stmt = $pdo->prepare($sql);
+ $stmt->execute($params);
+ $users = $stmt->fetchAll();
 
-$totalUsersCount = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-$totalHostsCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_host = 1")->fetchColumn();
+ $totalUsersCount = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+ $totalHostsCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_host = 1")->fetchColumn();
 
 /* ---------- Inline icon helper (same set as admin.php) ---------- */
 function icon($name, $class = '') {
@@ -267,6 +248,7 @@ function emptyState($text) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
 <style>
+    .sidebar .nav { padding-top: 10px; }
     .admin-chip { position: relative; cursor: pointer; }
     .admin-menu {
         display: none;
@@ -477,16 +459,6 @@ function emptyState($text) {
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">
-                <?= icon('home', 'brand-icon') ?>
-            </div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
-
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href'] ?? '#') ?>" class="nav-item <?= !empty($item['active']) ? 'active' : '' ?>">
@@ -495,13 +467,6 @@ function emptyState($text) {
                 </a>
             <?php endforeach; ?>
         </nav>
-
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
 
     <!-- ============ MAIN ============ -->

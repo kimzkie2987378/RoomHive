@@ -12,8 +12,6 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
  * =========================================================
  * AUTHENTICATION CHECK
  * =========================================================
- *
- * Only logged-in users can access this page.
  */
 
 if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
@@ -27,17 +25,6 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true) {
  * =========================================================
  * STEP 1 CHECK
  * =========================================================
- *
- * The user must have completed step 1 (Tell Us About You)
- * before reaching this page. Session vars set right after
- * step 1's POST are the fast path, but they don't survive
- * a fresh login/session — so for an already-approved host
- * (is_host === true) who doesn't have them, fall back to
- * looking up their most recent host_applications row in
- * the DB instead of bouncing them back to becomeahost.php.
- * becomeahost.php sends every is_host user straight here,
- * so redirecting them back on a missing session var just
- * creates a redirect loop between the two pages.
  */
 
 if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_id"])) {
@@ -61,9 +48,6 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
     if ($application) {
 
-        // Rehydrate the session so the rest of this page
-        // (and the INSERT below) works exactly as if step 1
-        // had just been submitted.
         $_SESSION['host_application_id'] = $application['id'];
 
         $_SESSION['host_application'] = [
@@ -79,8 +63,6 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
     } else {
 
-        // No application on record at all — genuinely needs
-        // to complete step 1 first.
         header("Location: /webprogg/host/becomeahost.php");
         exit();
 
@@ -95,30 +77,18 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
  $userName = $_SESSION["user_name"] ?? "User";
 
-/*
- * NAVBAR AVATAR
- * $_SESSION['avatar_path'] is only set at login time, so if the
- * user uploaded a new profile photo since then, re-check the DB
- * so the navbar's account icon reflects it immediately instead
- * of only after logging back in.
- */
+/* NAVBAR AVATAR */
  $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
  $avatarStmt->execute(['id' => $_SESSION['user_id']]);
  $avatarRow = $avatarStmt->fetch();
  $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
  $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-/* Notification bell badge count — same placeholder used across
-   every logged-in page's navbar until real notifications land. */
  $notification_count = 0;
 
-// Current page (kept as becomeahost.php so the nav /
-// footer "BECOME A HOST" link stays highlighted while the
-// user moves through the multi-step host registration flow)
  $currentPage = "/webprogg/host/becomeahost.php";
  $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
 
-// The step currently active in the host-steps tracker
  $currentStep = 2;
 
 // =========================================================
@@ -221,7 +191,6 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
 // =========================================================
 // PARKING LOT OPTIONS
-// (mirrors the "Parking Lot" row on the listing detail page)
 // =========================================================
 
  $parkingOptions = [
@@ -231,8 +200,6 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
 // =========================================================
 // AMENITIES
-// (same keys/icons used on listing-detail.php, so whatever
-// the host selects here shows up there exactly as-is)
 // =========================================================
 
  $amenityOptions = [
@@ -291,15 +258,18 @@ if (!isset($_SESSION["host_application"]) || !isset($_SESSION["host_application_
 
  $success = false;
 
-// Process form when submitted
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    // Get submitted values
     $title = trim($_POST["title"] ?? "");
     $category = trim($_POST["category"] ?? "");
     $propertyType = trim($_POST["property_type"] ?? "");
     $location = trim($_POST["location"] ?? "");
     $exactAddress = trim($_POST["exact_address"] ?? "");
+
+    /* ===== NEW: MAP PIN — capture coordinates ===== */
+    $latitude  = trim($_POST["latitude"] ?? "");
+    $longitude = trim($_POST["longitude"] ?? "");
+
     $price = trim($_POST["price"] ?? "");
     $capacity = trim($_POST["capacity"] ?? "");
     $bedrooms = trim($_POST["bedrooms"] ?? "");
@@ -310,7 +280,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $description = trim($_POST["description"] ?? "");
     $houseRules = trim($_POST["house_rules"] ?? "");
 
-    // Amenities checklist — keep only keys we actually offer
     $selectedAmenities = $_POST["amenities"] ?? [];
 
     if (!is_array($selectedAmenities)) {
@@ -343,6 +312,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if ($exactAddress === "") {
         $errors[] = "Please enter the exact address.";
+    }
+
+    /* ===== NEW: MAP PIN — validation ===== */
+    if ($latitude === "" || $longitude === "") {
+        $errors[] = "Please pinpoint your space on the map.";
+    }
+
+    if ($latitude !== "" && (!is_numeric($latitude) || (float) $latitude < -90 || (float) $latitude > 90)) {
+        $errors[] = "Invalid map pin latitude.";
+    }
+
+    if ($longitude !== "" && (!is_numeric($longitude) || (float) $longitude < -180 || (float) $longitude > 180)) {
+        $errors[] = "Invalid map pin longitude.";
     }
 
     if ($price === "" || !is_numeric($price) || (float) $price <= 0) {
@@ -383,22 +365,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if (empty($errors)) {
 
-        /*
-         * Insert the new space into the real `listings` table,
-         * attached to the host_applications row created in
-         * Step 1. Starts as 'draft' — becomes 'pending' once
-         * host-step4.php finalizes the application.
-         */
+        /* ===== NEW: MAP PIN — latitude/longitude added to INSERT ===== */
 
         $stmt = $pdo->prepare(
             "INSERT INTO listings
                 (host_application_id, user_id, title, category, property_type, location,
-                 exact_address, price, capacity, bedrooms, bathrooms, size_sqm, floor,
-                 parking, amenities, description, house_rules, status)
+                 exact_address, latitude, longitude, price, capacity, bedrooms, bathrooms,
+                 size_sqm, floor, parking, amenities, description, house_rules, status)
              VALUES
                 (:host_application_id, :user_id, :title, :category, :property_type, :location,
-                 :exact_address, :price, :capacity, :bedrooms, :bathrooms, :size_sqm, :floor,
-                 :parking, :amenities, :description, :house_rules, 'draft')"
+                 :exact_address, :latitude, :longitude, :price, :capacity, :bedrooms, :bathrooms,
+                 :size_sqm, :floor, :parking, :amenities, :description, :house_rules, 'draft')"
         );
 
         $stmt->execute([
@@ -409,6 +386,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             'property_type'       => $propertyType,
             'location'            => $location,
             'exact_address'       => $exactAddress,
+            'latitude'            => (float) $latitude,
+            'longitude'           => (float) $longitude,
             'price'               => $price,
             'capacity'            => $capacity,
             'bedrooms'            => $bedrooms,
@@ -423,20 +402,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $_SESSION['host_application']['listing_id'] = $pdo->lastInsertId();
 
-        // This is a NEW listing — clear any leftover flags/fields from a
-        // previous "Add Another Space" run. Without this, `finalized`
-        // stays true from the last listing and host-step4.php silently
-        // skips flipping THIS listing's status from 'draft' to 'pending'.
         unset($_SESSION['host_application']['finalized']);
         unset($_SESSION['host_application']['cover_photo']);
 
-        // Keep a few fields in session too, in case any later
-        // step wants to read them without hitting the DB.
         $_SESSION["host_application"]["title"] = $title;
         $_SESSION["host_application"]["category"] = $category;
         $_SESSION["host_application"]["property_type"] = $propertyType;
         $_SESSION["host_application"]["location"] = $location;
         $_SESSION["host_application"]["exact_address"] = $exactAddress;
+
+        /* ===== NEW: MAP PIN — keep coords in session ===== */
+        $_SESSION["host_application"]["latitude"] = $latitude;
+        $_SESSION["host_application"]["longitude"] = $longitude;
+
         $_SESSION["host_application"]["price"] = $price;
         $_SESSION["host_application"]["capacity"] = $capacity;
         $_SESSION["host_application"]["bedrooms"] = $bedrooms;
@@ -448,7 +426,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["host_application"]["description"] = $description;
         $_SESSION["host_application"]["house_rules"] = $houseRules;
 
-        // Go to next host registration step
         header("Location: /webprogg/host/host-step3.php");
         exit;
 
@@ -456,12 +433,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 }
 
-// Convenience helper for re-populating the form after a
-// failed submission without losing what the user typed.
+// Helper for re-populating the form after a failed submission
  $old = fn(string $key): string => htmlspecialchars($_POST[$key] ?? "");
 
-// Convenience helper for re-checking an amenity checkbox
-// after a failed submission.
+// Helper for re-checking an amenity checkbox
  $amenityChecked = fn(string $key): string =>
     in_array($key, $_POST["amenities"] ?? [], true) ? "checked" : "";
 
@@ -495,19 +470,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         href="/webprogg/assets/style.css"
     >
 
-    <!-- NEW: enables JS-gated entrance animations -->
-    <script>document.documentElement.classList.add("js");</script>
+    <!-- ===== NEW: FREE MAP — Leaflet + OpenStreetMap (no API key) ===== -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-    <!-- =====================================================
-         STEP 2 — MODERNIZED PAGE STYLES
-         CHANGED: palette aligned to the site-wide hive
-         tokens (honey #eda423 / moss #2f9e5b / ink #1c2a38),
-         honeycomb texture + glow blobs, hero badge + shimmer,
-         centered header, upgraded error banner, gradient CTA
-         with shine sweep, refined reduced-motion rules. All
-         functional rules (stepper, inputs, chips, preview)
-         are preserved.
-    ====================================================== -->
+    <!-- Enables JS-gated entrance animations -->
+    <script>document.documentElement.classList.add("js");</script>
 
     <style>
 
@@ -562,7 +529,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 56px 24px 96px;
         }
 
-        /* ---------- NEW: honeycomb texture + glow blobs ---------- */
+        /* ---------- honeycomb texture + glow blobs ---------- */
 
         .rh-step2 main.host-page::before {
             content: "";
@@ -627,7 +594,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             to   { transform: translate(30px, -24px) scale(1.08); }
         }
 
-        /* ---------- entrance (one orchestrated reveal) ---------- */
+        /* ---------- entrance reveal ---------- */
 
         @keyframes hiveRise {
             from { opacity: 0; transform: translateY(16px); }
@@ -641,7 +608,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         .js .rh-step2 .host-form-card { animation-delay: 0.1s; }
 
-        /* ---------- NEW: hero badge + shimmer ---------- */
+        /* ---------- hero badge + shimmer ---------- */
 
         .rh-step2 .hero-badge {
             display: inline-flex;
@@ -708,7 +675,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             to { background-position: 200% center; }
         }
 
-        /* ---------- HEADER (CHANGED: centered to match step 1) ---------- */
+        /* ---------- HEADER ---------- */
 
         .rh-step2 .host-header {
             max-width: 860px;
@@ -737,7 +704,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-ink);
         }
 
-        /* ---------- STEPPER (kept — now centered) ---------- */
+        /* ---------- STEPPER ---------- */
 
         .rh-step2 .host-steps {
             display: grid;
@@ -869,7 +836,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-ink-soft);
         }
 
-        /* ---------- ERRORS (CHANGED: heading + "!" bullets like step 1) ---------- */
+        /* ---------- ERRORS ---------- */
 
         .rh-step2 .form-errors {
             max-width: 860px;
@@ -915,7 +882,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-weight: 700;
         }
 
-        /* ---------- TWO-COLUMN LAYOUT (kept) ---------- */
+        /* ---------- TWO-COLUMN LAYOUT ---------- */
 
         .rh-step2 .host-layout {
             display: grid;
@@ -958,7 +925,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-ink);
         }
 
-        /* NEW: gold accent bar under each section heading */
         .rh-step2 .form-heading h2::after {
             content: "";
 
@@ -1138,7 +1104,87 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             pointer-events: none;
         }
 
-        /* ---------- AMENITY CHIPS (kept) ---------- */
+        /* =====================================================
+           NEW: MAP PIN — STYLES
+        ====================================================== */
+
+        .rh-step2 .map-hint {
+            margin: -2px 0 12px;
+            font-size: 12.5px;
+            color: var(--hive-ink-soft);
+            line-height: 1.5;
+        }
+
+        .rh-step2 .map-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .rh-step2 .map-locate-btn {
+            font-family: "Poppins", sans-serif;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #b07708;
+            background: #FDF4E3;
+            border: 1.5px solid rgba(237, 164, 35, 0.5);
+            border-radius: 8px;
+            padding: 8px 14px;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.15s ease;
+        }
+
+        .rh-step2 .map-locate-btn:hover {
+            background: #f9e8c8;
+            transform: translateY(-1px);
+        }
+
+        .rh-step2 .map-locate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .rh-step2 .pin-status {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--hive-ink-soft);
+        }
+
+        .rh-step2 .pin-status.has-pin {
+            color: var(--hive-moss);
+        }
+
+        .rh-step2 .location-map {
+            width: 100%;
+            height: 340px;
+            border-radius: 12px;
+            border: 1.5px solid #e3e7ec;
+            background: #eef1f4;
+            z-index: 1;
+        }
+
+        .rh-step2 .pin-address-preview {
+            margin-top: 10px;
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--hive-moss);
+        }
+
+        /* Leaflet emoji pin */
+        .rh-pin-icon {
+            background: transparent;
+            border: none;
+        }
+
+        .rh-pin {
+            font-size: 30px;
+            line-height: 1;
+            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+        }
+
+        /* ---------- AMENITY CHIPS ---------- */
 
         .rh-step2 .amenities-grid {
             display: flex;
@@ -1196,7 +1242,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.3);
         }
 
-        /* ---------- ACTIONS (CHANGED: gradient CTA + styled BACK) ---------- */
+        /* ---------- ACTIONS ---------- */
 
         .rh-step2 .form-actions {
             display: flex;
@@ -1276,7 +1322,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: translateY(0) scale(0.98);
         }
 
-        /* NEW: infinite shine sweep, matching steps 1, 3 and 4 */
         .rh-step2 .next-button::after {
             content: "";
 
@@ -1307,7 +1352,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             outline-offset: 2px;
         }
 
-        /* ---------- LIVE LISTING PREVIEW (kept + hover polish) ---------- */
+        /* ---------- LIVE LISTING PREVIEW ---------- */
 
         .rh-step2 .listing-preview {
             width: 100%;
@@ -1441,7 +1486,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 <main class="host-page">
 
-    <!-- NEW: decorative glow blobs (honeycomb lives on ::before) -->
     <span class="hive-blob hive-blob-1" aria-hidden="true"></span>
     <span class="hive-blob hive-blob-2" aria-hidden="true"></span>
 
@@ -1452,7 +1496,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
     <section class="host-header">
 
-        <!-- NEW: hero badge, matching step 1 -->
         <span class="hero-badge">
 
             <span class="hive-pulse-dot"></span>
@@ -1471,17 +1514,8 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
         </h1>
 
 
-
-        <!-- =================================================
-             HOST STEPS
-        ================================================== -->
-
         <?php
 
-            // One continuous connector behind all four circles, plus a
-            // filled portion showing progress up to the current step.
-            // Both are sized purely from $hostSteps / $currentStep, so
-            // they always line up with however many steps exist.
             $totalSteps = count($hostSteps);
 
             $stepProgressPercent = $totalSteps > 1
@@ -1510,13 +1544,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                 <div class="host-step<?php echo $isActive ? ' active' : ''; ?><?php echo $isDone ? ' completed' : ''; ?>">
 
-
-                    <!-- ICON + NUMBER -->
-                    <!-- Number badge lives inside the circle now, so its
-                         position is always relative to that circle's own
-                         box instead of a hardcoded offset — keeps every
-                         step's badge sitting in exactly the same spot. -->
-
                     <div class="step-circle">
 
                         <img
@@ -1533,16 +1560,12 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     </div>
 
 
-                    <!-- TITLE -->
-
                     <h3>
 
                         <?php echo htmlspecialchars($step["title"]); ?>
 
                     </h3>
 
-
-                    <!-- DESCRIPTION -->
 
                     <p>
 
@@ -1675,7 +1698,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             <option
                                 value=""
                                 disabled
-                                <?php echo empty($_POST["category"]) ? "selected" : ""; ?>
+                                <?php echo $old("category") === "" ? "selected" : ""; ?>
                             >
 
                                 Select a category
@@ -1683,14 +1706,14 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             </option>
 
 
-                            <?php foreach ($listingCategories as $label => $value): ?>
+                            <?php foreach ($listingCategories as $catLabel => $catValue): ?>
 
                                 <option
-                                    value="<?php echo htmlspecialchars($value); ?>"
-                                    <?php echo (($_POST["category"] ?? "") === $value) ? "selected" : ""; ?>
+                                    value="<?php echo htmlspecialchars($catValue); ?>"
+                                    <?php echo $old("category") === $catValue ? "selected" : ""; ?>
                                 >
 
-                                    <?php echo htmlspecialchars($label); ?>
+                                    <?php echo htmlspecialchars($catLabel); ?>
 
                                 </option>
 
@@ -1699,7 +1722,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         </select>
 
                     </div>
-
 
 
                     <!-- PROPERTY TYPE -->
@@ -1722,22 +1744,22 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             <option
                                 value=""
                                 disabled
-                                <?php echo empty($_POST["property_type"]) ? "selected" : ""; ?>
+                                <?php echo $old("property_type") === "" ? "selected" : ""; ?>
                             >
 
-                                Select property type
+                                Select a property type
 
                             </option>
 
 
-                            <?php foreach ($propertyTypes as $label => $value): ?>
+                            <?php foreach ($propertyTypes as $ptLabel => $ptValue): ?>
 
                                 <option
-                                    value="<?php echo htmlspecialchars($value); ?>"
-                                    <?php echo (($_POST["property_type"] ?? "") === $value) ? "selected" : ""; ?>
+                                    value="<?php echo htmlspecialchars($ptValue); ?>"
+                                    <?php echo $old("property_type") === $ptValue ? "selected" : ""; ?>
                                 >
 
-                                    <?php echo htmlspecialchars($label); ?>
+                                    <?php echo htmlspecialchars($ptLabel); ?>
 
                                 </option>
 
@@ -1747,67 +1769,40 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     </div>
 
+
                 </div>
 
 
 
-                <!-- LOCATION / EXACT ADDRESS -->
+                <!-- LOCATION (GENERAL AREA) -->
 
-                <div class="form-grid two-columns">
+                <div class="input-group">
 
+                    <label for="location">
 
-                    <!-- LOCATION -->
+                        Location <span style="font-weight:400; color: var(--hive-ink-soft);">(city / barangay / general area in Negros Oriental)</span>
 
-                    <div class="input-group">
-
-                        <label for="location">
-
-                            Location
-
-                        </label>
+                    </label>
 
 
-                        <div class="input-with-icon">
+                    <div class="icon-input-group">
 
-                            <input
-                                type="text"
-                                id="location"
-                                name="location"
-                                placeholder="City, Province"
-                                value="<?php echo $old("location"); ?>"
-                                required
+                        <span class="icon-input-icon">
+
+                            <img
+                                src="/webprogg/images/GPSIcon.png"
+                                alt=""
                             >
 
-
-                            <span>
-
-                                &#9678;
-
-                            </span>
-
-                        </div>
-
-                    </div>
-
-
-
-                    <!-- EXACT ADDRESS -->
-
-                    <div class="input-group">
-
-                        <label for="exact_address">
-
-                            Exact Address
-
-                        </label>
+                        </span>
 
 
                         <input
                             type="text"
-                            id="exact_address"
-                            name="exact_address"
-                            placeholder="House/Building No., Street, Barangay"
-                            value="<?php echo $old("exact_address"); ?>"
+                            id="location"
+                            name="location"
+                            placeholder="e.g. Dumaguete City, Negros Oriental"
+                            value="<?php echo $old("location"); ?>"
                             required
                         >
 
@@ -1817,106 +1812,110 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-                <!-- PRICE PER MONTH / CAPACITY -->
+                <!-- =============================================
+                     NEW: MAP PIN — PINPOINT EXACT LOCATION
+                     Free Leaflet + OpenStreetMap map, locked to
+                     Negros Oriental. The host types the general
+                     area above, the map geocodes + centers there,
+                     then the host clicks the exact spot.
+                ============================================== -->
 
-                <div class="form-grid two-columns">
+                <div class="input-group map-input-group">
 
+                    <label>
 
-                    <!-- PRICE PER MONTH -->
+                        Pinpoint exact location on map
 
-                    <div class="input-group">
-
-                        <label for="price">
-
-                            Price per month
-
-                        </label>
-
-
-                        <div class="price-input-group">
-
-                            <span class="price-icon">
-
-                                &#8369;
-
-                            </span>
+                    </label>
 
 
-                            <input
-                                type="number"
-                                id="price"
-                                name="price"
-                                min="0"
-                                step="1"
-                                placeholder="e.g. 5000"
-                                value="<?php echo $old("price"); ?>"
-                                required
-                            >
+                    <p class="map-hint">
 
-                        </div>
+                        Type the general area above, then click the exact spot of your
+                        space on the map. You can drag the pin to adjust. Renters will
+                        see this exact pin on your listing.
 
-                    </div>
+                    </p>
 
 
+                    <input type="hidden" id="mapLatitude"  name="latitude"  value="<?php echo $old("latitude"); ?>">
 
-                    <!-- CAPACITY -->
-
-                    <div class="input-group">
-
-                        <label for="capacity">
-
-                            Capacity
-
-                        </label>
+                    <input type="hidden" id="mapLongitude" name="longitude" value="<?php echo $old("longitude"); ?>">
 
 
-                        <select
-                            id="capacity"
-                            name="capacity"
-                            required
-                        >
+                    <div class="map-toolbar">
 
-                            <option
-                                value=""
-                                disabled
-                                <?php echo empty($_POST["capacity"]) ? "selected" : ""; ?>
-                            >
+                        <button type="button" id="locateOnMapBtn" class="map-locate-btn">
 
-                                Maximum number of guests
+                            &#128269; Search area on map
 
-                            </option>
+                        </button>
 
 
-                            <?php foreach ($capacityOptions as $value => $label): ?>
+                        <button type="button" id="useMyLocationBtn" class="map-locate-btn">
 
-                                <option
-                                    value="<?php echo htmlspecialchars($value); ?>"
-                                    <?php echo (($_POST["capacity"] ?? "") === $value) ? "selected" : ""; ?>
-                                >
+                            &#128205; Use my current location
 
-                                    <?php echo htmlspecialchars($label); ?>
+                        </button>
 
-                                </option>
 
-                            <?php endforeach; ?>
+                        <span id="pinStatus" class="pin-status">
 
-                        </select>
+                            No pin dropped yet
+
+                        </span>
 
                     </div>
+
+
+                    <div id="locationMap" class="location-map"></div>
+
+
+                    <p class="pin-address-preview" id="pinAddressPreview">
+
+                        <?php echo $old("latitude") !== ""
+                            ? "Pin saved — your previous pin has been restored."
+                            : "The address of your pin will appear here."; ?>
+
+                    </p>
 
                 </div>
+
+                <!-- ============ END NEW: MAP PIN ============ -->
+
+
+
+                <!-- EXACT ADDRESS -->
+
+                <div class="input-group">
+
+                    <label for="exact_address">
+
+                        Exact Address
+
+                    </label>
+
+
+                    <input
+                        type="text"
+                        id="exact_address"
+                        name="exact_address"
+                        placeholder="e.g. 123 Rizal Blvd, Poblacion 4 (street, building, unit no.)"
+                        value="<?php echo $old("exact_address"); ?>"
+                        required
+                    >
+
+                </div>
+
+
+
+                <div class="form-section-divider"></div>
 
 
 
                 <!-- =================================================
                      SPACE DETAILS
-                     (feeds the "Property Details" card shown on the
-                     listing detail page — same icons: bedicon,
-                     showericon, sizeicon, flooricon, caricon)
                 ================================================== -->
-
-                <div class="form-section-divider"></div>
-
 
                 <div class="form-heading">
 
@@ -1929,9 +1928,89 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     <p>
 
-                        These show up on your listing's property details card.
+                        Tell renters about the size, capacity, and pricing.
 
                     </p>
+
+                </div>
+
+
+
+                <!-- PRICE -->
+
+                <div class="input-group">
+
+                    <label for="price">
+
+                        Price per month
+
+                    </label>
+
+
+                    <div class="price-input-group">
+
+                        <span class="price-icon">&#8369;</span>
+
+
+                        <input
+                            type="number"
+                            id="price"
+                            name="price"
+                            placeholder="0.00"
+                            step="0.01"
+                            min="1"
+                            value="<?php echo $old("price"); ?>"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- CAPACITY -->
+
+                <div class="input-group">
+
+                    <label for="capacity">
+
+                        Maximum Guests
+
+                    </label>
+
+
+                    <select
+                        id="capacity"
+                        name="capacity"
+                        required
+                    >
+
+                        <option
+                            value=""
+                            disabled
+                            <?php echo $old("capacity") === "" ? "selected" : ""; ?>
+                        >
+
+                            Select maximum guests
+
+                        </option>
+
+
+                        <?php foreach ($capacityOptions as $capValue => $capLabel): ?>
+
+                            <option
+                                value="<?php echo htmlspecialchars($capValue); ?>"
+                                <?php echo $old("capacity") === $capValue ? "selected" : ""; ?>
+                            >
+
+                                <?php echo htmlspecialchars($capLabel); ?>
+
+                            </option>
+
+                        <?php endforeach; ?>
+
+                    </select>
 
                 </div>
 
@@ -1941,8 +2020,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                 <div class="form-grid three-columns">
 
-
-                    <!-- BEDROOMS -->
 
                     <div class="input-group">
 
@@ -1957,18 +2034,14 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             type="number"
                             id="bedrooms"
                             name="bedrooms"
-                            min="0"
-                            step="1"
-                            placeholder="e.g. 2"
+                            placeholder="e.g. 1"
+                            min="1"
                             value="<?php echo $old("bedrooms"); ?>"
                             required
                         >
 
                     </div>
 
-
-
-                    <!-- BATHROOMS -->
 
                     <div class="input-group">
 
@@ -1983,9 +2056,8 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             type="number"
                             id="bathrooms"
                             name="bathrooms"
-                            min="0"
-                            step="1"
                             placeholder="e.g. 1"
+                            min="1"
                             value="<?php echo $old("bathrooms"); ?>"
                             required
                         >
@@ -1993,41 +2065,28 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     </div>
 
 
-
-                    <!-- SIZE -->
-
                     <div class="input-group">
 
                         <label for="size_sqm">
 
-                            Size
+                            Size (m&sup2;)
 
                         </label>
 
 
-                        <div class="icon-input-group">
-
-                            <input
-                                type="number"
-                                id="size_sqm"
-                                name="size_sqm"
-                                min="0"
-                                step="0.1"
-                                placeholder="e.g. 25"
-                                value="<?php echo $old("size_sqm"); ?>"
-                                required
-                            >
-
-
-                            <span class="icon-input-suffix">
-
-                                sqm
-
-                            </span>
-
-                        </div>
+                        <input
+                            type="number"
+                            id="size_sqm"
+                            name="size_sqm"
+                            placeholder="e.g. 25"
+                            step="0.01"
+                            min="1"
+                            value="<?php echo $old("size_sqm"); ?>"
+                            required
+                        >
 
                     </div>
+
 
                 </div>
 
@@ -2037,8 +2096,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                 <div class="form-grid two-columns">
 
-
-                    <!-- FLOOR -->
 
                     <div class="input-group">
 
@@ -2053,7 +2110,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             type="text"
                             id="floor"
                             name="floor"
-                            placeholder="e.g. 2nd floor, Ground"
+                            placeholder="e.g. 2nd floor / Ground floor"
                             value="<?php echo $old("floor"); ?>"
                             required
                         >
@@ -2061,14 +2118,11 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     </div>
 
 
-
-                    <!-- PARKING -->
-
                     <div class="input-group">
 
                         <label for="parking">
 
-                            Parking
+                            Parking Lot
 
                         </label>
 
@@ -2082,7 +2136,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             <option
                                 value=""
                                 disabled
-                                <?php echo empty($_POST["parking"]) ? "selected" : ""; ?>
+                                <?php echo $old("parking") === "" ? "selected" : ""; ?>
                             >
 
                                 Is parking available?
@@ -2090,14 +2144,14 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             </option>
 
 
-                            <?php foreach ($parkingOptions as $value => $label): ?>
+                            <?php foreach ($parkingOptions as $parkValue => $parkLabel): ?>
 
                                 <option
-                                    value="<?php echo htmlspecialchars($value); ?>"
-                                    <?php echo (($_POST["parking"] ?? "") === $value) ? "selected" : ""; ?>
+                                    value="<?php echo htmlspecialchars($parkValue); ?>"
+                                    <?php echo $old("parking") === $parkValue ? "selected" : ""; ?>
                                 >
 
-                                    <?php echo htmlspecialchars($label); ?>
+                                    <?php echo htmlspecialchars($parkLabel); ?>
 
                                 </option>
 
@@ -2107,85 +2161,18 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     </div>
 
+
                 </div>
 
 
-
-                <!-- =================================================
-                     ABOUT YOUR SPACE
-                ================================================== -->
 
                 <div class="form-section-divider"></div>
-
-
-                <div class="form-heading">
-
-                    <h2>
-
-                        About your space
-
-                    </h2>
-
-
-                    <p>
-
-                        Tell renters what makes your space special.
-
-                    </p>
-
-                </div>
-
-
-
-                <!-- DESCRIPTION -->
-
-                <div class="input-group full-width">
-
-                    <label for="description">
-
-                        Description
-
-                    </label>
-
-
-                    <textarea
-                        id="description"
-                        name="description"
-                        placeholder="Describe the space, the vibe, what's nearby, and why renters will love it..."
-                        required
-                    ><?php echo $old("description"); ?></textarea>
-
-                </div>
-
-
-
-                <!-- HOUSE RULES -->
-
-                <div class="input-group full-width">
-
-                    <label for="house_rules">
-
-                        House Rules
-
-                    </label>
-
-
-                    <textarea
-                        id="house_rules"
-                        name="house_rules"
-                        placeholder="e.g. No smoking. No pets. Quiet hours after 10 PM..."
-                    ><?php echo $old("house_rules"); ?></textarea>
-
-                </div>
 
 
 
                 <!-- =================================================
                      AMENITIES
                 ================================================== -->
-
-                <div class="form-section-divider"></div>
-
 
                 <div class="form-heading">
 
@@ -2198,25 +2185,27 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
                     <p>
 
-                        Select everything included with your space.
+                        Select everything that's included in your space.
 
                     </p>
 
                 </div>
 
 
+
                 <div class="amenities-grid">
 
-                    <?php foreach ($amenityOptions as $key => $amenity): ?>
+
+                    <?php foreach ($amenityOptions as $amenityKey => $amenity): ?>
+
 
                         <label class="amenity-checkbox">
 
                             <input
                                 type="checkbox"
                                 name="amenities[]"
-                                value="<?php echo htmlspecialchars($key); ?>"
-                                data-label="<?php echo htmlspecialchars($amenity["label"]); ?>"
-                                <?php echo $amenityChecked($key); ?>
+                                value="<?php echo htmlspecialchars($amenityKey); ?>"
+                                <?php echo $amenityChecked($amenityKey); ?>
                             >
 
 
@@ -2230,23 +2219,90 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                             </span>
 
 
-                            <span>
+                            <?php echo htmlspecialchars($amenity["label"]); ?>
 
-                                <?php echo htmlspecialchars($amenity["label"]); ?>
-
-                            </span>
 
                         </label>
 
+
                     <?php endforeach; ?>
+
 
                 </div>
 
 
 
+                <div class="form-section-divider"></div>
+
+
+
                 <!-- =================================================
-                     FORM ACTIONS
+                     DESCRIPTION
                 ================================================== -->
+
+                <div class="form-heading">
+
+                    <h2>
+
+                        Description
+
+                    </h2>
+
+
+                    <p>
+
+                        Describe your space — what makes it special?
+
+                    </p>
+
+                </div>
+
+
+
+                <!-- DESCRIPTION -->
+
+                <div class="input-group">
+
+                    <label for="description">
+
+                        About your space
+
+                    </label>
+
+
+                    <textarea
+                        id="description"
+                        name="description"
+                        placeholder="e.g. Bright and airy studio in the heart of the city, walking distance to schools, cafes, and the boulevard..."
+                        required
+                    ><?php echo $old("description"); ?></textarea>
+
+                </div>
+
+
+
+                <!-- HOUSE RULES (OPTIONAL) -->
+
+                <div class="input-group">
+
+                    <label for="house_rules">
+
+                        House Rules <span style="font-weight:400; color: var(--hive-ink-soft);">(optional)</span>
+
+                    </label>
+
+
+                    <textarea
+                        id="house_rules"
+                        name="house_rules"
+                        placeholder="e.g. No smoking. Quiet hours after 10 PM. Visitors allowed until 8 PM."
+                    ><?php echo $old("house_rules"); ?></textarea>
+
+                </div>
+
+
+
+                <!-- ACTIONS -->
 
                 <div class="form-actions">
 
@@ -2256,9 +2312,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         class="back-button"
                     >
 
-                        <span class="btn-arrow">&#8249;</span>
-
-                        BACK
+                        &#8592; Back
 
                     </a>
 
@@ -2268,9 +2322,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         class="next-button"
                     >
 
-                        NEXT STEP
-
-                        <span class="btn-arrow">&#8250;</span>
+                        Continue &#8594;
 
                     </button>
 
@@ -2283,35 +2335,37 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
         </section>
 
 
-        <!-- ================================================
-             LIVE LISTING PREVIEW RAIL
-        ================================================== -->
 
-        <div class="listing-preview-rail" id="previewRail">
+        <!-- =====================================================
+             LIVE PREVIEW SIDEBAR
+        ====================================================== -->
 
-            <aside class="listing-preview" id="listingPreview">
+        <aside class="listing-preview-rail">
+
+
+            <div class="listing-preview" id="listingPreview">
 
                 <span class="listing-preview-label">
 
-                    Live preview
+                    Live Preview
 
                 </span>
 
 
                 <div class="listing-preview-photo">
 
-                    Photo appears in Step 3
+                    Photo added in Step 3
 
                 </div>
 
 
                 <div class="listing-preview-body">
 
-                    <h4 class="listing-preview-title" id="previewTitle">
+                    <h3 class="listing-preview-title" id="previewTitle">
 
-                        Your listing title
+                        Your listing title appears here
 
-                    </h4>
+                    </h3>
 
 
                     <p class="listing-preview-meta" id="previewMeta">
@@ -2321,415 +2375,314 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     </p>
 
 
-                    <div class="listing-preview-tags" id="previewTags">
+                    <div class="listing-preview-tags" id="previewTags"></div>
 
-                        <span class="listing-preview-tag">
 
-                            No amenities selected
+                    <div class="listing-preview-price" id="previewPrice">
 
-                        </span>
+                        &#8369;0
+
+                        <span>/ month</span>
 
                     </div>
 
-
-                    <p class="listing-preview-price">
-
-                        &#8369; <span id="previewPriceNum">0</span>
-
-                        <span>/month</span>
-
-                    </p>
-
                 </div>
 
-            </aside>
+            </div>
 
-        </div>
+
+        </aside>
+
 
     </div>
 
-</main>
 
+</main>
 
 
 <!-- =========================================================
      FOOTER
 ========================================================= -->
 
-<footer class="site-footer">
-
-
-    <div class="footer-top">
-
-
-        <!-- BRAND -->
-
-        <div class="footer-brand">
-
-
-            <a href="/webprogg/index.php">
-
-                <img
-                    src="/webprogg/images/RoomHiveLogos.png"
-                    alt="RoomHive Logo"
-                    class="footer-logo"
-                >
-
-            </a>
-
-
-            <p class="footer-tagline">
-
-                Your trusted platform for finding and listing
-                quality living spaces — made simple, safe,
-                and stress-free.
-
-            </p>
-
-        </div>
-
-
-
-        <!-- LISTINGS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                LISTINGS
-
-            </span>
-
-
-            <?php foreach ($listingCategories as $category => $type): ?>
-
-                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
-
-                    <?php echo htmlspecialchars($category); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- QUICK LINKS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                QUICK LINKS
-
-            </span>
-
-
-            <?php foreach ($quickLinks as $name => $link): ?>
-
-                <a href="<?php echo htmlspecialchars($link); ?>">
-
-                    <?php echo htmlspecialchars($name); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- GET THE APP -->
-
-        <div class="footer-contact">
-
-
-            <span class="footer-heading">
-
-                GET THE APP
-
-            </span>
-
-
-            <div class="footer-app-badges">
-
-
-                <img
-                    src="/webprogg/images/GooglePlay.jpg"
-                    alt="Get it on Google Play"
-                >
-
-
-                <img
-                    src="/webprogg/images/AppStore.jpg"
-                    alt="Download on the App Store"
-                >
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/PhoneIcon.jpg"
-                    alt="Phone"
-                >
-
-
-                <span>
-
-                    +63 927 569 3574
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/EmailIcon.jpg"
-                    alt="Email"
-                >
-
-
-                <span>
-
-                    hello@roomhive.ph
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/GPSIcon.png"
-                    alt="Location"
-                >
-
-
-                <span>
-
-                    Dumaguete City, Negros Oriental
-
-                </span>
-
-
-            </div>
-
-
-        </div>
-
-    </div>
-
-
-
-    <div class="footer-bottom">
-
-
-        <p>
-
-            &copy;
-
-            <?php echo date("Y"); ?>
-
-            RoomHive.
-
-            All rights reserved.
-
-        </p>
-
-
-    </div>
-
-</footer>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
 
 <!-- =========================================================
-     LIVE PREVIEW + STICKY RAIL SCRIPT
+     LIVE PREVIEW UPDATER
 ========================================================= -->
+
 <script>
 (function () {
-    "use strict";
 
-    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    /* =====================================================
-       LIVE LISTING PREVIEW
-       Mirrors title / category · location / amenity tags /
-       price into the sidebar card as the host types.
-    ====================================================== */
-
-    var titleInput   = document.getElementById("title");
-    var categorySel  = document.getElementById("category");
-    var locationIn   = document.getElementById("location");
-    var priceIn      = document.getElementById("price");
+    var titleInput = document.getElementById("title");
+    var categorySelect = document.getElementById("category");
+    var locationInput = document.getElementById("location");
+    var priceInput = document.getElementById("price");
+    var amenityBoxes = document.querySelectorAll('input[name="amenities[]"]');
 
     var previewTitle = document.getElementById("previewTitle");
-    var previewMeta  = document.getElementById("previewMeta");
-    var previewTags  = document.getElementById("previewTags");
-    var previewPrice = document.getElementById("previewPriceNum");
+    var previewMeta = document.getElementById("previewMeta");
+    var previewTags = document.getElementById("previewTags");
+    var previewPrice = document.getElementById("previewPrice");
 
-    var amenityChecks = Array.prototype.slice.call(
-        document.querySelectorAll('.amenities-grid input[type="checkbox"]')
-    );
+    function categoryLabel(value) {
+        var map = {
+            "shared-bedroom": "Shared Bedroom",
+            "private-room": "Private Room",
+            "entire-house": "Entire House",
+            "boarding-house": "Boarding House",
+            "studio-loft": "Studio Loft"
+        };
+        return map[value] || value;
+    }
 
     function updatePreview() {
 
-        if (previewTitle && titleInput) {
-            previewTitle.textContent =
-                titleInput.value.trim() || "Your listing title";
+        previewTitle.textContent = titleInput.value.trim()
+            || "Your listing title appears here";
+
+        var metaParts = [];
+        if (categorySelect.value) {
+            metaParts.push(categoryLabel(categorySelect.value));
         }
+        if (locationInput.value.trim()) {
+            metaParts.push(locationInput.value.trim());
+        }
+        previewMeta.textContent = metaParts.length
+            ? metaParts.join(" · ")
+            : "Category · Location";
 
-        if (previewMeta) {
-            var bits = [];
-
-            if (categorySel && categorySel.value) {
-                bits.push(categorySel.options[categorySel.selectedIndex].text);
+        previewTags.innerHTML = "";
+        amenityBoxes.forEach(function (box) {
+            if (box.checked) {
+                var tag = document.createElement("span");
+                tag.className = "listing-preview-tag";
+                tag.textContent = box.parentNode.textContent.trim();
+                previewTags.appendChild(tag);
             }
+        });
 
-            if (locationIn && locationIn.value.trim()) {
-                bits.push(locationIn.value.trim());
-            }
+        var priceVal = parseFloat(priceInput.value);
+        previewPrice.innerHTML = "&#8369;" +
+            (isNaN(priceVal) ? "0" : priceVal.toLocaleString()) +
+            " <span>/ month</span>";
 
-            previewMeta.textContent =
-                bits.length ? bits.join(" \u00B7 ") : "Category \u00B7 Location";
-        }
-
-        if (previewTags) {
-            previewTags.innerHTML = "";
-
-            var any = false;
-
-            amenityChecks.forEach(function (cb) {
-                if (cb.checked) {
-                    any = true;
-
-                    var tag = document.createElement("span");
-                    tag.className = "listing-preview-tag";
-                    tag.textContent = cb.getAttribute("data-label") || "";
-
-                    previewTags.appendChild(tag);
-                }
-            });
-
-            if (!any) {
-                var hint = document.createElement("span");
-                hint.className = "listing-preview-tag";
-                hint.textContent = "No amenities selected";
-
-                previewTags.appendChild(hint);
-            }
-        }
-
-        if (previewPrice && priceIn) {
-            var value = parseFloat(priceIn.value);
-            previewPrice.textContent = isNaN(value)
-                ? "0"
-                : value.toLocaleString();
-        }
     }
 
-    [
-        [titleInput, "input"],
-        [categorySel, "change"],
-        [locationIn, "input"],
-        [priceIn, "input"]
-    ].forEach(function (pair) {
-        if (pair[0]) {
-            pair[0].addEventListener(pair[1], updatePreview);
+    [titleInput, categorySelect, locationInput, priceInput].forEach(function (el) {
+        if (el) {
+            el.addEventListener("input", updatePreview);
+            el.addEventListener("change", updatePreview);
         }
     });
 
-    amenityChecks.forEach(function (cb) {
-        cb.addEventListener("change", updatePreview);
+    amenityBoxes.forEach(function (box) {
+        box.addEventListener("change", updatePreview);
     });
 
-    /* Initial paint — covers the server-repopulate case after
-       a failed POST so the preview matches the form. */
     updatePreview();
 
+})();
+</script>
 
-    /* =====================================================
-       STICKY PREVIEW RAIL
-       Pins the preview under the navbar while the form
-       scrolls, and releases it before the form card ends
-       so it never overlaps the footer. Desktop only.
-    ====================================================== */
 
-    var rail    = document.getElementById("previewRail");
-    var preview = document.getElementById("listingPreview");
-    var layout  = document.querySelector(".host-layout");
+<!-- =========================================================
+     NEW: MAP PIN — LEAFLET + OPENSTREETMAP (100% FREE)
+     No API key. Map is locked to Negros Oriental, PH.
+========================================================== -->
 
-    if (!rail || !preview || !layout) {
-        return;
-    }
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    var NAV_OFFSET = 90;
-    var pinActive = false;
+<script>
+(function () {
 
-    function pinUpdate() {
-        if (window.innerWidth <= 900 || reduced) {
-            preview.classList.remove("is-pinned");
-            preview.style.left = "";
-            preview.style.width = "";
-            pinActive = false;
-            return;
+    var mapEl = document.getElementById("locationMap");
+    if (!mapEl || typeof L === "undefined") return;
+
+    var locationInput = document.getElementById("location");
+    var latInput      = document.getElementById("mapLatitude");
+    var lngInput      = document.getElementById("mapLongitude");
+    var pinStatus     = document.getElementById("pinStatus");
+    var pinAddress    = document.getElementById("pinAddressPreview");
+    var form          = document.getElementById("hostStep2Form");
+
+    /* =============================================
+       NEGROS ORIENTAL, PHILIPPINES
+       The map cannot be panned outside this box.
+    ============================================== */
+    var NEGROS_CENTER = [9.55, 122.95];
+    var NEGROS_BOUNDS = L.latLngBounds([8.40, 122.20], [10.55, 123.70]);
+
+    var pinIcon = L.divIcon({
+        className: "rh-pin-icon",
+        html: '<div class="rh-pin">📍</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 34]
+    });
+
+    var map = L.map("locationMap", {
+        center: NEGROS_CENTER,
+        zoom: 10,
+        minZoom: 9,
+        maxZoom: 19,
+        maxBounds: NEGROS_BOUNDS,
+        maxBoundsViscosity: 0.9
+    });
+
+    /* Two free tile layers — hosts can switch to satellite
+       to pinpoint the exact building/roof. */
+    var standard = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+
+    var satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri"
+    });
+
+    standard.addTo(map);
+
+    L.control.layers({
+        "Map": standard,
+        "Satellite": satellite
+    }).addTo(map);
+
+    var marker = null;
+
+    function placePin(lat, lng) {
+        if (!marker) {
+            marker = L.marker([lat, lng], {
+                draggable: true,
+                icon: pinIcon
+            }).addTo(map);
+
+            marker.on("dragend", function () {
+                var p = marker.getLatLng();
+                savePin(p.lat, p.lng);
+            });
+        } else {
+            marker.setLatLng([lat, lng]);
         }
 
-        var railRect = rail.getBoundingClientRect();
-        var layoutRect = layout.getBoundingClientRect();
-        var previewHeight = preview.offsetHeight;
+        savePin(lat, lng);
+    }
 
-        var shouldPin =
-            railRect.top <= NAV_OFFSET &&
-            (layoutRect.bottom - NAV_OFFSET) > previewHeight + 24;
+    function savePin(lat, lng) {
+        latInput.value = lat;
+        lngInput.value = lng;
+        pinStatus.textContent = "✔ Pin dropped — drag it or click the map to adjust.";
+        pinStatus.classList.add("has-pin");
+        reverseGeocode(lat, lng);
+    }
 
-        if (shouldPin) {
-            if (!pinActive) {
-                preview.classList.add("is-pinned");
-                preview.style.width = railRect.width + "px";
-                preview.style.left = railRect.left + "px";
-                pinActive = true;
+    /* Free reverse geocoding via Nominatim (no key) */
+    function reverseGeocode(lat, lng) {
+        fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&zoom=18&addressdetails=1")
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                pinAddress.textContent = (data && data.display_name)
+                    ? data.display_name
+                    : "Pin saved at " + Number(lat).toFixed(6) + ", " + Number(lng).toFixed(6);
+            })
+            .catch(function () {
+                pinAddress.textContent = "Pin saved at " + Number(lat).toFixed(6) + ", " + Number(lng).toFixed(6);
+            });
+    }
+
+    /* Search typed location — results LIMITED to Negros Oriental
+       via viewbox + bounded=1 (Nominatim, free, no key) */
+    function searchLocation() {
+        var q = locationInput.value.trim();
+        if (!q) return;
+
+        pinStatus.textContent = "Searching…";
+        pinStatus.classList.remove("has-pin");
+
+        var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1" +
+                  "&countrycodes=ph" +
+                  "&viewbox=122.20,10.55,123.70,8.40&bounded=1" +
+                  "&q=" + encodeURIComponent(q);
+
+        fetch(url)
+            .then(function (res) { return res.json(); })
+            .then(function (results) {
+                if (results && results.length > 0) {
+                    map.setView([parseFloat(results[0].lat), parseFloat(results[0].lon)], 16);
+                    pinStatus.textContent = "Now click the exact spot of your space.";
+                } else {
+                    pinStatus.textContent = "Couldn't find that area — try the town name (e.g. 'Dumaguete City').";
+                }
+            })
+            .catch(function () {
+                pinStatus.textContent = "Search failed — pan the map manually instead.";
+            });
+    }
+
+    /* Click map = drop / move pin */
+    map.on("click", function (e) {
+        placePin(e.latlng.lat, e.latlng.lng);
+    });
+
+    if (locationInput) {
+        locationInput.addEventListener("change", searchLocation);
+    }
+
+    var locateBtn = document.getElementById("locateOnMapBtn");
+    if (locateBtn) {
+        locateBtn.addEventListener("click", searchLocation);
+    }
+
+    /* Browser GPS — also 100% free, no key */
+    var geoBtn = document.getElementById("useMyLocationBtn");
+    if (geoBtn) {
+        geoBtn.addEventListener("click", function () {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser.");
+                return;
             }
 
-            /* Stop the preview from sliding past the layout's
-               bottom edge on very long pins. */
-            var overflow =
-                layoutRect.bottom - NAV_OFFSET - previewHeight - 24;
+            geoBtn.disabled = true;
 
-            preview.style.top =
-                overflow < 0 ? (NAV_OFFSET + overflow) + "px" : NAV_OFFSET + "px";
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    geoBtn.disabled = false;
+                    var lat = pos.coords.latitude;
+                    var lng = pos.coords.longitude;
 
-        } else if (pinActive) {
-            preview.classList.remove("is-pinned");
-            preview.style.left = "";
-            preview.style.width = "";
-            preview.style.top = "";
-            pinActive = false;
-        }
+                    if (!NEGROS_BOUNDS.contains([lat, lng])) {
+                        alert("You appear to be outside Negros Oriental. Please click the map instead.");
+                        return;
+                    }
+
+                    map.setView([lat, lng], 17);
+                    placePin(lat, lng);
+                },
+                function () {
+                    geoBtn.disabled = false;
+                    alert("Couldn't get your location. Allow location access, or click the map instead.");
+                }
+            );
+        });
     }
 
-    window.addEventListener("scroll", pinUpdate, { passive: true });
-    window.addEventListener("resize", pinUpdate);
+    /* Restore pin after a failed validation resubmit */
+    if (latInput.value && lngInput.value) {
+        var sLat = parseFloat(latInput.value);
+        var sLng = parseFloat(lngInput.value);
+        map.setView([sLat, sLng], 17);
+        placePin(sLat, sLng);
+    }
 
-    pinUpdate();
+    /* Require a pin before submitting */
+    form.addEventListener("submit", function (e) {
+        if (!latInput.value || !lngInput.value) {
+            e.preventDefault();
+            alert("Please pinpoint your space on the map before continuing.");
+            mapEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    });
+
 })();
 </script>
 

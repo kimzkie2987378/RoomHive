@@ -236,15 +236,8 @@ function emptyState($text) {
 <div class="layout">
 
     <!-- ============ SIDEBAR ============ -->
+        <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark"><?= icon('home', 'brand-icon') ?></div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
-
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href']) ?>" class="nav-item <?= !empty($item['active']) ? 'active' : '' ?>">
@@ -253,13 +246,6 @@ function emptyState($text) {
                 </a>
             <?php endforeach; ?>
         </nav>
-
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
 
     <!-- ============ MAIN ============ -->

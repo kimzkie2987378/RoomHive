@@ -38,8 +38,6 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
 /* =========================
    CAPACITY LABELS
-   (mirrors $capacityOptions in host-step2.php so the value
-   the host picked there renders identically here)
 ========================== */
  $capacityLabels = [
     "1"   => "1 Guest",
@@ -55,18 +53,12 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
 /* =========================
    RESOLVE LISTING FROM ?id=
-   Pulled from the real `listings` table, joined against the
-   owning host's user row and their photos/reviews.
 ========================== */
 
  $listingId = isset($_GET['id']) && is_numeric($_GET['id'])
     ? (int) $_GET['id']
     : 0;
 
-/* FIX: also pull u.avatar_path (aliased host_avatar_path) so the
-   "Meet your host" card can show the host's REAL profile photo
-   instead of a hardcoded default image, same as hostprofile.php /
-   userprofile.php already do for the logged-in user's own avatar. */
  $listingStmt = $pdo->prepare(
     "SELECT l.*, u.name AS host_name, u.email AS host_email, u.created_at AS host_created_at,
             u.avatar_path AS host_avatar_path
@@ -101,57 +93,29 @@ if ($listingRow === false) {
         return '/webprogg/images/ListingPlaceholder.png';
     }
 
-    // Full URL
     if (preg_match('#^https?://#i', $path)) {
         return $path;
     }
 
-    // Normalize Windows paths
     $path = str_replace('\\', '/', $path);
-
-    // Remove leading slash
     $path = ltrim($path, '/');
 
-    /*
-     * Your actual listing image folders:
-     *
-     * /webprogg/uploads/listing_photos/cover/
-     * /webprogg/uploads/listing_photos/additional/
-     *
-     * (host-step3.php writes here using an ABSOLUTE path built
-     * from $_SERVER['DOCUMENT_ROOT'] and stores the RELATIVE
-     * path "uploads/listing_photos/..." in the DB — no leading
-     * "/webprogg/" and no "host/" segment.)
-     */
-
-    // If database already contains the full web path
     if (stripos($path, 'webprogg/') === 0) {
         return '/' . $path;
     }
 
-    // If database contains host/uploads/... (legacy rows saved
-    // before the host-step3.php path fix — those files really do
-    // live under /webprogg/host/uploads/...)
     if (stripos($path, 'host/uploads/') === 0) {
         return '/webprogg/' . $path;
     }
 
-    // If database contains uploads/listing_photos/...
-    // FIX: this must resolve to /webprogg/uploads/listing_photos/...
-    // to match where host-step3.php actually writes the file on
-    // disk. The old code prepended "/webprogg/host/" here, which
-    // pointed at a directory that doesn't exist, so every newly
-    // uploaded photo 404'd on this page.
     if (stripos($path, 'uploads/listing_photos/') === 0) {
         return '/webprogg/' . $path;
     }
 
-    // If database contains only the filename
     if (stripos($path, 'cover_') === 0) {
         return '/webprogg/uploads/listing_photos/cover/' . basename($path);
     }
 
-    // Fallback
     return '/webprogg/uploads/listing_photos/' . $path;
 
 }, $photoRows);
@@ -183,14 +147,8 @@ if (empty($galleryImages)) {
  $hostRating  = count($hostReviewRatings) > 0 ? round(array_sum($hostReviewRatings) / count($hostReviewRatings), 1) : 0;
  $hostReviews = count($hostReviewRatings);
 
-/* Whether this listing is currently bookable (approved AND
-   no active booking) — used to decide whether to show the
-   "Send Inquiry" button or an "Already booked" state. */
 /* =========================================================
    LISTING AVAILABILITY
-   The listing remains available for inquiry if it is approved.
-   Individual confirmed/pending booking dates are disabled in
-   the calendar below.
 ========================================================= */
 
  $availabilityStmt = $pdo->prepare(
@@ -207,15 +165,8 @@ if (empty($galleryImages)) {
 
  $isBookable = (bool) $availabilityStmt->fetchColumn();
 
-
 /* =========================================================
    GET UNAVAILABLE DATES
-   Both CONFIRMED bookings and PENDING holds block dates on
-   the calendar — a pending booking means someone else is
-   mid-checkout for those dates, so they shouldn't look free.
-   The authoritative double-booking guard still lives in
-   book.php (transaction + row lock at insert time); this
-   query is only for what the calendar displays.
 ========================================================= */
 
  $unavailableDatesStmt = $pdo->prepare(
@@ -237,10 +188,6 @@ if (empty($galleryImages)) {
 
 /* =========================
    MY APPLICATION STATUS
-   If the logged-in visitor has ever applied (booked/sent an
-   inquiry) for this specific listing, pull the status of
-   their most recent application so we can show them where
-   it stands with the host (pending / accepted / rejected).
 ========================== */
  $myApplicationStatus = null;
 
@@ -277,10 +224,15 @@ if ($isLoggedIn && !$isOwnListing) {
     'floor'          => $listingRow['floor'],
     'parking'        => $listingRow['parking'],
 
-    // Guest capacity — pulled straight from the value the host
-    // picked on host-step2.php (the `capacity` column on
-    // `listings`), so the detail page can never disagree with
-    // what the host actually set.
+    /* ===== NEW: MAP PIN =====
+       Exact pin coordinates saved by the host on host-step2.php.
+       isset() guards keep this page working even on listings
+       created before the latitude/longitude columns existed. */
+    'latitude'       => isset($listingRow['latitude']) && $listingRow['latitude'] !== null
+                            ? (float) $listingRow['latitude'] : null,
+    'longitude'      => isset($listingRow['longitude']) && $listingRow['longitude'] !== null
+                            ? (float) $listingRow['longitude'] : null,
+
     'capacity'       => $listingRow['capacity'],
     'capacity_label' => $capacityLabels[$listingRow['capacity']] ?? ($listingRow['capacity'] . ' Guests'),
 
@@ -292,17 +244,9 @@ if ($isLoggedIn && !$isOwnListing) {
     'host'           => [
         'id'            => (int) $listingRow['user_id'],
         'name'          => $listingRow['host_name'],
-
-        // FIX: use the host's real saved avatar_path (same column
-        // hostprofile.php / userprofile.php read) instead of a
-        // hardcoded default image. avatar_path is stored as a full
-        // "/webprogg/..." path by uploadavatar.php, so it's already
-        // web-resolvable as-is — no resolve_photo()-style rewrite
-        // needed like the listing cover photos above.
         'avatar'        => !empty($listingRow['host_avatar_path'])
                                 ? $listingRow['host_avatar_path']
                                 : '/webprogg/images/default-avatar.png',
-
         'superhost'     => false,
         'member_since'  => date('F Y', strtotime($listingRow['host_created_at'])),
         'rating'        => $hostRating,
@@ -339,18 +283,10 @@ if ($isLoggedIn && !$isOwnListing) {
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
-    <!-- NEW: enables JS-gated entrance reveals -->
-    <script>document.documentElement.classList.add("js");</script>
+    <!-- ===== NEW: FREE MAP — Leaflet + OpenStreetMap (no API key) ===== -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-    <!-- =====================================================
-         LISTING DETAIL — HIVE POLISH LAYER (NEW)
-         Loads AFTER listing-detail.css so it wins the cascade
-         at equal specificity. It upgrades colors, buttons,
-         chips, pills, cards and the flatpickr calendar to the
-         site-wide hive design language (honey #eda423 / moss
-         #2f9e5b / ink #1c2a38) WITHOUT touching any layout
-         rules — the structure from listing-detail.css stands.
-    ====================================================== -->
+    <script>document.documentElement.classList.add("js");</script>
 
     <style>
 
@@ -366,8 +302,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           ENTRANCE REVEALS (JS-gated — page stays fully
-           visible without JS)
+           ENTRANCE REVEALS
         ====================================================== */
 
         @keyframes rdRise {
@@ -382,7 +317,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           TOP BAR — back link + save/share
+           TOP BAR
         ====================================================== */
 
         .rd-back-link {
@@ -434,7 +369,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           NOTICE BANNERS — soft toast style
+           NOTICE BANNERS
         ====================================================== */
 
         .rd-notice {
@@ -457,7 +392,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           APPLICATION STATUS PILLS — refined
+           APPLICATION STATUS PILLS
         ====================================================== */
 
         .rd-application-status {
@@ -496,7 +431,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           GALLERY — arrow + count polish
+           GALLERY
         ====================================================== */
 
         .rd-gallery-arrow,
@@ -561,7 +496,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           SECTION HEADINGS — gold accent bar
+           SECTION HEADINGS
         ====================================================== */
 
         .rd-about h2,
@@ -677,7 +612,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           BOOKING CARD — price + primary CTA
+           BOOKING CARD
         ====================================================== */
 
         .rd-booking-card {
@@ -767,7 +702,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           PROPERTY DETAILS CARD — hover rows
+           PROPERTY DETAILS CARD
         ====================================================== */
 
         .rd-detail-row {
@@ -801,6 +736,51 @@ if ($isLoggedIn && !$isOwnListing) {
         @keyframes rdPinBounce {
             0%, 100% { transform: translateY(0); }
             50%      { transform: translateY(-7px); }
+        }
+
+        /* =====================================================
+           NEW: MAP PIN — LEAFLET EXACT-LOCATION MAP
+           Shown when the host dropped a pin on host-step2.php.
+           Free Leaflet + OpenStreetMap — no API key needed.
+        ====================================================== */
+
+        .rd-map-embed {
+            position: relative;
+            z-index: 1;
+
+            height: 220px;
+
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--rd-line);
+
+            margin-bottom: 14px;
+
+            box-shadow: 0 8px 20px -12px rgba(28, 42, 56, 0.3);
+        }
+
+        .rd-pin-icon {
+            background: transparent;
+            border: none;
+        }
+
+        .rd-pin {
+            font-size: 30px;
+            line-height: 1;
+            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+        }
+
+        .rd-map-exact-note {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            margin: 0 0 14px;
+
+            font-size: 12px;
+            font-weight: 600;
+
+            color: var(--rd-moss);
         }
 
         /* =====================================================
@@ -862,7 +842,7 @@ if ($isLoggedIn && !$isOwnListing) {
         }
 
         /* =====================================================
-           RESPONSIVE — nothing structural, motion only
+           RESPONSIVE
         ====================================================== */
 
         @media (prefers-reduced-motion: reduce) {
@@ -954,11 +934,6 @@ if ($isLoggedIn && !$isOwnListing) {
 .account-dropdown-menu a:hover {
     background: #f5f5f5;
 }
-
-/* CHANGED: notice + status pill base styles moved to the main
-   polish layer above so they apply to guests too (the "own
-   listing" notice can render for logged-out owners-in-spirit
-   paths and the pills benefit from consistent styling). */
 </style>
 
 <?php endif; ?>
@@ -971,7 +946,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
     <!-- TOP BAR -->
 
-    <!-- CHANGED: entrance reveal classes -->
     <div class="rd-topbar rd-reveal" style="--d: .05s;">
 
         <a href="/webprogg/Listings/listing.php" class="rd-back-link" id="rd-back-link">
@@ -1012,7 +986,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- GALLERY -->
 
-            <!-- CHANGED: entrance reveal -->
             <div class="rd-gallery rd-reveal" style="--d: .1s;">
 
                 <div class="rd-gallery-main">
@@ -1076,7 +1049,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- TITLE / RATING -->
 
-            <!-- CHANGED: entrance reveal -->
             <h1 class="rd-title rd-reveal" style="--d: .15s;">
                 <?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?>
             </h1>
@@ -1117,7 +1089,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- AMENITIES ROW -->
 
-            <!-- CHANGED: entrance reveal -->
             <div class="rd-amenities rd-reveal" style="--d: .22s;">
 
                 <?php foreach ($listing['amenities'] as $amenityKey): ?>
@@ -1143,7 +1114,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- ABOUT THIS SPACE -->
 
-            <!-- CHANGED: entrance reveal -->
             <section class="rd-about rd-reveal" style="--d: .26s;">
 
                 <h2>About this space</h2>
@@ -1170,7 +1140,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- MEET YOUR HOST -->
 
-            <!-- CHANGED: entrance reveal -->
             <section class="rd-host rd-reveal" style="--d: .34s;">
 
                 <h2>Meet your host</h2>
@@ -1210,11 +1179,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
                     </div>
 
-                    <!-- FIX: was href="#" (dead link). Point at the
-                         public host-profile route, keyed by host id.
-                         Rename the target file/path below to match
-                         whatever this project's actual public host
-                         profile page is called. -->
                     <a href="/webprogg/host/hostpublicprofile.php?id=<?= (int) $listing['host']['id'] ?>" class="rd-host-profile-btn">
                         View Host Profile
                     </a>
@@ -1233,7 +1197,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- BOOKING CARD -->
 
-            <!-- CHANGED: entrance reveal -->
             <div class="rd-card rd-booking-card rd-reveal" style="--d: .2s;">
 
                 <div class="rd-price">
@@ -1283,17 +1246,7 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 </div>
 
-                <!-- =============================================
-                     GUESTS
-                     Was previously a free <select> the guest could
-                     pick any number from — that let a renter choose
-                     more guests than the space's actual capacity.
-                     Now it's a fixed, read-only display driven by
-                     the `capacity` value the host set on
-                     host-step2.php, with a hidden field so the
-                     value still posts to listingpayment.php exactly
-                     like before.
-                ============================================== -->
+                <!-- GUESTS (fixed to the host-set capacity) -->
 
                 <div class="rd-guests">
 
@@ -1361,7 +1314,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             <!-- PROPERTY DETAILS CARD -->
 
-            <!-- CHANGED: entrance reveal -->
             <div class="rd-card rd-details-card rd-reveal" style="--d: .28s;">
 
                 <div class="rd-detail-row">
@@ -1402,22 +1354,49 @@ if ($isLoggedIn && !$isOwnListing) {
 
             </div>
 
-            <!-- LOCATION CARD -->
+            <!-- =============================================
+                 LOCATION CARD
+                 ===== NEW: MAP PIN =====
+                 If the host dropped a pin on host-step2.php,
+                 show the REAL free Leaflet map centered on
+                 those exact coordinates. Old listings without
+                 a pin keep the placeholder image.
+            ============================================== -->
 
-            <!-- CHANGED: entrance reveal -->
             <div class="rd-card rd-location-card rd-reveal" style="--d: .34s;">
 
                 <h3>Location</h3>
 
                 <p><?= htmlspecialchars($listing['location_full'], ENT_QUOTES, 'UTF-8') ?></p>
 
-                <div class="rd-map-placeholder">
-                    <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview">
-                    <span class="rd-map-pin">&#128205;</span>
-                </div>
+                <?php if (!is_null($listing['latitude']) && !is_null($listing['longitude'])): ?>
+
+                    <div
+                        class="rd-map-embed"
+                        id="rdMapEmbed"
+                        data-lat="<?= htmlspecialchars($listing['latitude'], ENT_QUOTES, 'UTF-8') ?>"
+                        data-lng="<?= htmlspecialchars($listing['longitude'], ENT_QUOTES, 'UTF-8') ?>"
+                    ></div>
+
+                    <p class="rd-map-exact-note">
+                        &#128205; Exact pin dropped by the host
+                    </p>
+
+                <?php else: ?>
+
+                    <div class="rd-map-placeholder">
+                        <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview">
+                        <span class="rd-map-pin">&#128205;</span>
+                    </div>
+
+                <?php endif; ?>
+
+                <?php $mapsQuery = !is_null($listing['latitude']) && !is_null($listing['longitude'])
+                    ? $listing['latitude'] . ',' . $listing['longitude']
+                    : $listing['location_full']; ?>
 
                 <a
-                    href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($listing['location_full']) ?>"
+                    href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($mapsQuery) ?>"
                     target="_blank"
                     rel="noopener"
                     class="rd-btn rd-btn-outline rd-map-btn"
@@ -1435,7 +1414,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
 <!-- =========================
      FOOTER
-     (identical to listing.php)
 ========================== -->
 
 <footer class="site-footer">
@@ -1552,11 +1530,6 @@ if ($isLoggedIn && !$isOwnListing) {
                     alt="Get it on Google Play"
                 >
 
-                <img
-                    src="/webprogg/images/AppStore.jpg"
-                    alt="Download on the App Store"
-                >
-
             </div>
 
         </div>
@@ -1566,8 +1539,7 @@ if ($isLoggedIn && !$isOwnListing) {
     <div class="footer-bottom">
 
         <p>
-            &copy; <?= date('Y') ?>
-            RoomHive. All rights reserved.
+            &copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.
         </p>
 
     </div>
@@ -1575,554 +1547,274 @@ if ($isLoggedIn && !$isOwnListing) {
 </footer>
 
 <!-- =========================
-     PAGE JAVASCRIPT
+     SCRIPTS
 ========================== -->
 
-<!-- Flatpickr must load BEFORE the inline script below, since
-     that script calls flatpickr() as soon as it runs. -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <script>
-/* =========================================================
-   ROOMHIVE — UNAVAILABLE BOOKING DATES
-   Includes both confirmed bookings and pending holds.
-========================================================= */
-
-const roomHiveUnavailableRanges = <?= json_encode(
-    $unavailableRanges,
-    JSON_HEX_TAG |
-    JSON_HEX_APOS |
-    JSON_HEX_AMP |
-    JSON_HEX_QUOT
-) ?>;
-
-/* =========================
-   BACK BUTTON
-========================== */
-
 (function () {
 
-    const backLink = document.getElementById('rd-back-link');
-
-    if (!backLink) {
-        return;
-    }
-
-    backLink.addEventListener('click', function (event) {
-
-        const cameFromListings = document.referrer &&
-            document.referrer.indexOf('/webprogg/Listings/listing.php') !== -1;
-
-        if (cameFromListings && window.history.length > 1) {
-            event.preventDefault();
+    /* -----------------------------------------------
+       BACK LINK
+    ------------------------------------------------ */
+    var backLink = document.getElementById("rd-back-link");
+    if (backLink && document.referrer && document.referrer.indexOf("listing.php?") !== -1) {
+        backLink.addEventListener("click", function (e) {
+            e.preventDefault();
             window.history.back();
-        }
-
-        // otherwise let it fall through to href="/webprogg/Listings/listing.php"
-
-    });
-
-})();
-
-/* =========================
-   GALLERY
-========================== */
-
-(function () {
-
-    const images = <?= json_encode(array_values($galleryImages)) ?>;
-
-    const mainImage = document.getElementById('rd-gallery-image');
-    const counter = document.getElementById('rd-gallery-count');
-    const prevBtn = document.getElementById('rd-gallery-prev');
-    const nextBtn = document.getElementById('rd-gallery-next');
-    const thumbs = document.querySelectorAll('.rd-thumb');
-    const thumbsTrack = document.getElementById('rd-gallery-thumbs');
-    const thumbsPrevBtn = document.getElementById('rd-thumbs-prev');
-    const thumbsNextBtn = document.getElementById('rd-thumbs-next');
-    const galleryMain = document.querySelector('.rd-gallery-main');
-
-    let currentIndex = 0;
-
-    function scrollActiveThumbIntoView() {
-
-        const activeThumb = document.querySelector('.rd-thumb.active');
-
-        if (activeThumb && thumbsTrack) {
-            activeThumb.scrollIntoView({
-                behavior: 'smooth',
-                inline: 'center',
-                block: 'nearest'
-            });
-        }
-
+        });
     }
+
+    /* -----------------------------------------------
+       GALLERY
+    ------------------------------------------------ */
+    var galleryImage = document.getElementById("rd-gallery-image");
+    var galleryCount = document.getElementById("rd-gallery-count");
+    var thumbs = Array.prototype.slice.call(document.querySelectorAll(".rd-thumb"));
+    var currentImage = 0;
 
     function showImage(index) {
+        if (!galleryImage || thumbs.length === 0) return;
 
-        if (!images.length) {
-            return;
-        }
+        currentImage = (index + thumbs.length) % thumbs.length;
 
-        currentIndex = (index + images.length) % images.length;
+        galleryImage.src = thumbs[currentImage].src;
+        galleryCount.textContent = (currentImage + 1) + " / " + thumbs.length;
 
-        mainImage.src = images[currentIndex];
-
-        if (counter) {
-            counter.textContent = (currentIndex + 1) + ' / ' + images.length;
-        }
-
-        thumbs.forEach(function (thumb) {
-            thumb.classList.toggle(
-                'active',
-                Number(thumb.dataset.index) === currentIndex
-            );
-        });
-
-        scrollActiveThumbIntoView();
-
-    }
-
-    /* MAIN IMAGE SLIDE BUTTONS */
-
-    if (prevBtn) {
-        prevBtn.addEventListener('click', function () {
-            showImage(currentIndex - 1);
+        thumbs.forEach(function (t, i) {
+            t.classList.toggle("active", i === currentImage);
         });
     }
 
-    if (nextBtn) {
-        nextBtn.addEventListener('click', function () {
-            showImage(currentIndex + 1);
-        });
-    }
+    var prevBtn = document.getElementById("rd-gallery-prev");
+    var nextBtn = document.getElementById("rd-gallery-next");
 
-    /* KEYBOARD ARROWS (when the gallery has focus) */
-
-    if (galleryMain) {
-
-        galleryMain.setAttribute('tabindex', '0');
-
-        galleryMain.addEventListener('keydown', function (event) {
-
-            if (event.key === 'ArrowLeft') {
-                showImage(currentIndex - 1);
-            } else if (event.key === 'ArrowRight') {
-                showImage(currentIndex + 1);
-            }
-
-        });
-
-    }
-
-    /* SWIPE ON MAIN IMAGE (touch devices) */
-
-    if (galleryMain) {
-
-        let touchStartX = 0;
-
-        galleryMain.addEventListener('touchstart', function (event) {
-            touchStartX = event.changedTouches[0].screenX;
-        }, { passive: true });
-
-        galleryMain.addEventListener('touchend', function (event) {
-
-            const touchEndX = event.changedTouches[0].screenX;
-            const delta = touchEndX - touchStartX;
-
-            if (Math.abs(delta) > 40) {
-                showImage(delta < 0 ? currentIndex + 1 : currentIndex - 1);
-            }
-
-        }, { passive: true });
-
-    }
-
-    /* THUMBNAIL CLICKS */
+    if (prevBtn) prevBtn.addEventListener("click", function () { showImage(currentImage - 1); });
+    if (nextBtn) nextBtn.addEventListener("click", function () { showImage(currentImage + 1); });
 
     thumbs.forEach(function (thumb) {
-        thumb.addEventListener('click', function () {
-            showImage(Number(thumb.dataset.index));
+        thumb.addEventListener("click", function () {
+            showImage(parseInt(thumb.dataset.index, 10) || 0);
         });
     });
 
-    /* THUMBNAIL STRIP SLIDE BUTTONS
-       (scrolls the strip itself, independent from
-       which image is currently shown) */
+    /* -----------------------------------------------
+       SAVE BUTTON (visual toggle)
+    ------------------------------------------------ */
+    var saveBtn = document.getElementById("rd-save-btn");
+    if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+            saveBtn.classList.toggle("active");
 
-    function scrollThumbsBy(amount) {
+            var heart = saveBtn.querySelector(".rd-heart-icon");
+            var active = saveBtn.classList.contains("active");
 
-        if (thumbsTrack) {
-            thumbsTrack.scrollBy({
-                left: amount,
-                behavior: 'smooth'
-            });
-        }
-
-    }
-
-    if (thumbsPrevBtn) {
-        thumbsPrevBtn.addEventListener('click', function () {
-            scrollThumbsBy(-220);
+            heart.innerHTML = active ? "&#9829;" : "&#9825;";
+            saveBtn.innerHTML = '<span class="rd-heart-icon">' + heart.innerHTML + "</span> " +
+                (active ? "Saved" : "Save");
         });
     }
 
-    if (thumbsNextBtn) {
-        thumbsNextBtn.addEventListener('click', function () {
-            scrollThumbsBy(220);
-        });
-    }
+    /* -----------------------------------------------
+       SHARE BUTTON
+    ------------------------------------------------ */
+    var shareBtn = document.getElementById("rd-share-btn");
+    if (shareBtn) {
+        shareBtn.addEventListener("click", function () {
+            var url = window.location.href;
+            var title = document.title;
 
-})();
-
-/* =========================================================
-   ROOMHIVE — FLATPICKR RANGE CALENDAR
-   A single inline calendar. Guests click a start date and an
-   end date to select a range (or one date, in Long Term mode).
-   Disables dates already occupied by confirmed bookings or
-   pending holds. The final availability check still happens
-   server-side in book.php — this is display/UX only.
-========================================================= */
-
-(function () {
-
-    const calendarEl = document.getElementById('rd-calendar');
-    const checkinInput = document.getElementById('rd-checkin');
-    const checkoutInput = document.getElementById('rd-checkout');
-    const longTermInput = document.getElementById('rd-long-term');
-    const checkinDisplay = document.getElementById('rd-checkin-display');
-    const checkoutDisplay = document.getElementById('rd-checkout-display');
-    const checkoutSummaryField = document.getElementById('rd-checkout-summary-field');
-
-    if (!calendarEl || !checkinInput || !checkoutInput || !longTermInput) {
-        return;
-    }
-
-    const unavailableRanges = Array.isArray(roomHiveUnavailableRanges)
-        ? roomHiveUnavailableRanges
-        : [];
-
-    /* flatpickr's {from, to} disable range is INCLUSIVE of both
-       ends. A guest only actually occupies the nights from
-       check-in up to (but not including) checkout — they leave
-       on the checkout day, so that day should stay bookable for
-       someone else. Subtracting one day from checkout_date here
-       keeps the checkout date itself selectable instead of
-       blocking it along with the nights that were really taken. */
-    function roomHiveSubtractOneDay(dateStr) {
-
-        const d = new Date(dateStr + 'T00:00:00');
-        d.setDate(d.getDate() - 1);
-
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-
-        return year + '-' + month + '-' + day;
-
-    }
-
-    const disabledRanges = unavailableRanges
-        .filter(function (range) {
-            return range.checkin_date;
-        })
-        .map(function (range) {
-
-            let to = range.checkin_date;
-
-            if (range.checkout_date) {
-
-                const adjusted = roomHiveSubtractOneDay(range.checkout_date);
-
-                // Guard against a same-day or invalid checkout_date
-                // collapsing the range below check-in.
-                to = adjusted >= range.checkin_date
-                    ? adjusted
-                    : range.checkin_date;
-
+            if (navigator.share) {
+                navigator.share({ title: title, url: url }).catch(function () {});
+            } else if (navigator.clipboard) {
+                navigator.clipboard.writeText(url).then(function () {
+                    var original = shareBtn.innerHTML;
+                    shareBtn.innerHTML = "&#10003; Link Copied";
+                    setTimeout(function () { shareBtn.innerHTML = original; }, 2000);
+                });
             }
-
-            return {
-                from: range.checkin_date,
-                to: to
-            };
-
         });
-
-    function formatDisplay(dateStr) {
-
-        if (!dateStr) {
-            return 'Select date';
-        }
-
-        const d = new Date(dateStr + 'T00:00:00');
-
-        return d.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        });
-
     }
 
-    function resetSelection() {
+    /* -----------------------------------------------
+       SHOW MORE / SHOW LESS (about text)
+    ------------------------------------------------ */
+    var aboutText = document.getElementById("rd-about-text");
+    var showMoreBtn = document.getElementById("rd-show-more");
 
-        checkinInput.value = '';
-        checkoutInput.value = '';
-        checkinDisplay.textContent = 'Select date';
-        checkoutDisplay.textContent = 'Select date';
+    if (aboutText && showMoreBtn) {
+        var isClamped = aboutText.scrollHeight > aboutText.clientHeight + 8;
 
-    }
-
-    let calendar = null;
-
-    function buildCalendar(isLongTerm) {
-
-        if (calendar) {
-            calendar.destroy();
-        }
-
-        resetSelection();
-
-        calendar = flatpickr(calendarEl, {
-
-            inline: true,
-            mode: isLongTerm ? 'single' : 'range',
-            minDate: 'today',
-            dateFormat: 'Y-m-d',
-            disable: disabledRanges,
-            showMonths: 1,
-
-            onChange: function (selectedDates) {
-
-                if (isLongTerm) {
-
-                    if (selectedDates.length) {
-                        checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
-                        checkinDisplay.textContent = formatDisplay(checkinInput.value);
-                    }
-
-                    return;
-
-                }
-
-                if (selectedDates.length === 2) {
-
-                    checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
-                    checkoutInput.value = flatpickr.formatDate(selectedDates[1], 'Y-m-d');
-                    checkinDisplay.textContent = formatDisplay(checkinInput.value);
-                    checkoutDisplay.textContent = formatDisplay(checkoutInput.value);
-
-                } else if (selectedDates.length === 1) {
-
-                    checkinInput.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
-                    checkoutInput.value = '';
-                    checkinDisplay.textContent = formatDisplay(checkinInput.value);
-                    checkoutDisplay.textContent = 'Select date';
-
-                } else {
-
-                    resetSelection();
-
-                }
-
-            }
-
-        });
-
-    }
-
-    buildCalendar(false);
-
-    longTermInput.addEventListener('change', function () {
-
-        const isLongTerm = longTermInput.checked;
-
-        if (checkoutSummaryField) {
-            checkoutSummaryField.style.display = isLongTerm ? 'none' : '';
-        }
-
-        buildCalendar(isLongTerm);
-
-    });
-
-    /* =====================================================
-       FORM VALIDATION
-    ===================================================== */
-
-    const inquiryForm = document.getElementById('rd-inquiry-form');
-
-    if (inquiryForm) {
-
-        inquiryForm.addEventListener('submit', function (event) {
-
-            /*
-             * Check-in is always required.
-             */
-            if (!checkinInput.value) {
-
-                event.preventDefault();
-
-                alert('Please select a check-in date.');
-
-                return;
-
-            }
-
-            /*
-             * Long Term does not need checkout.
-             */
-            if (longTermInput.checked) {
-                checkoutInput.value = '';
-                return;
-            }
-
-            /*
-             * Normal booking requires checkout.
-             */
-            if (!checkoutInput.value) {
-
-                event.preventDefault();
-
-                alert('Please select a check-out date, or choose Long Term.');
-
-                return;
-
-            }
-
-        });
-
-    }
-
-})();
-
-/* =========================
-   SAVE BUTTON
-========================== */
-
-const rdSaveBtn = document.getElementById('rd-save-btn');
-
-if (rdSaveBtn) {
-
-    rdSaveBtn.addEventListener('click', function () {
-
-        rdSaveBtn.classList.toggle('active');
-
-        const heart = rdSaveBtn.querySelector('.rd-heart-icon');
-
-        if (heart) {
-            heart.innerHTML = rdSaveBtn.classList.contains('active')
-                ? '&#9829;'
-                : '&#9825;';
-        }
-
-    });
-
-}
-
-/* =========================
-   SHARE BUTTON
-========================== */
-
-const rdShareBtn = document.getElementById('rd-share-btn');
-
-if (rdShareBtn) {
-
-    rdShareBtn.addEventListener('click', function () {
-
-        if (navigator.share) {
-
-            navigator.share({
-                title: document.title,
-                url: window.location.href
-            });
-
+        if (!isClamped) {
+            showMoreBtn.style.display = "none";
         } else {
+            showMoreBtn.addEventListener("click", function () {
+                if (aboutText.style.maxHeight && aboutText.style.maxHeight !== "none") {
+                    aboutText.style.maxHeight = "";
+                    showMoreBtn.innerHTML = "Show more &#9662;";
+                } else {
+                    aboutText.style.maxHeight = "none";
+                    showMoreBtn.innerHTML = "Show less &#9652;";
+                }
+            });
+        }
+    }
 
-            navigator.clipboard.writeText(window.location.href);
-            alert('Link copied to clipboard!');
+    /* -----------------------------------------------
+       ACCOUNT DROPDOWN (navbar)
+    ------------------------------------------------ */
+    document.querySelectorAll(".account-dropdown").forEach(function (dd) {
+        var btn = dd.querySelector(".my-account");
+        if (!btn) return;
 
+        btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            dd.classList.toggle("open");
+        });
+    });
+
+    document.addEventListener("click", function () {
+        document.querySelectorAll(".account-dropdown.open").forEach(function (dd) {
+            dd.classList.remove("open");
+        });
+    });
+
+    /* -----------------------------------------------
+       CALENDAR — flatpickr with unavailable dates
+    ------------------------------------------------ */
+    var calendarEl       = document.getElementById("rd-calendar");
+    var checkinInput     = document.getElementById("rd-checkin");
+    var checkoutInput    = document.getElementById("rd-checkout");
+    var checkinDisplay   = document.getElementById("rd-checkin-display");
+    var checkoutDisplay  = document.getElementById("rd-checkout-display");
+    var longTermCheckbox = document.getElementById("rd-long-term");
+
+    if (calendarEl && typeof flatpickr !== "undefined") {
+
+        var bookedRanges = <?php
+            echo json_encode(array_map(function ($r) {
+                return [
+                    'from' => $r['checkin_date'],
+                    'to'   => $r['checkout_date'],
+                ];
+            }, $unavailableRanges));
+        ?>;
+
+        var booked = bookedRanges.map(function (r) {
+            return {
+                from: new Date(r.from + "T00:00:00"),
+                to:   new Date(r.to + "T00:00:00")
+            };
+        });
+
+        function fmtYMD(d) {
+            var m = String(d.getMonth() + 1).padStart(2, "0");
+            var day = String(d.getDate()).padStart(2, "0");
+            return d.getFullYear() + "-" + m + "-" + day;
         }
 
-    });
+        function fmtDisplay(d) {
+            return d.toLocaleDateString("en-US", {
+                month: "short", day: "numeric", year: "numeric"
+            });
+        }
 
-}
+        var fp = flatpickr(calendarEl, {
+            inline: true,
+            mode: "range",
+            minDate: "today",
+            dateFormat: "Y-m-d",
+            disable: [
+                function (date) {
+                    var d = new Date(date);
+                    d.setHours(0, 0, 0, 0);
 
-/* =========================
-   ABOUT — SHOW MORE
-========================== */
+                    return booked.some(function (r) {
+                        return d >= r.from && d <= r.to;
+                    });
+                }
+            ],
+            onChange: function (selectedDates) {
+                if (selectedDates.length === 2) {
+                    checkinInput.value  = fmtYMD(selectedDates[0]);
+                    checkoutInput.value = fmtYMD(selectedDates[1]);
+                    checkinDisplay.textContent  = fmtDisplay(selectedDates[0]);
+                    checkoutDisplay.textContent = fmtDisplay(selectedDates[1]);
+                } else if (selectedDates.length === 1) {
+                    checkinInput.value  = fmtYMD(selectedDates[0]);
+                    checkoutInput.value = "";
+                    checkinDisplay.textContent  = fmtDisplay(selectedDates[0]);
+                    checkoutDisplay.textContent = "Select date";
+                } else {
+                    checkinInput.value  = "";
+                    checkoutInput.value = "";
+                    checkinDisplay.textContent  = "Select date";
+                    checkoutDisplay.textContent = "Select date";
+                }
+            }
+        });
 
-const rdAboutText = document.getElementById('rd-about-text');
-const rdShowMoreBtn = document.getElementById('rd-show-more');
+        if (longTermCheckbox) {
+            longTermCheckbox.addEventListener("change", function () {
+                if (this.checked) {
+                    fp.clear();
+                }
+            });
+        }
 
-if (rdAboutText && rdShowMoreBtn) {
+    }
 
-    rdShowMoreBtn.addEventListener('click', function () {
-
-        rdAboutText.classList.toggle('rd-expanded');
-
-        rdShowMoreBtn.innerHTML = rdAboutText.classList.contains('rd-expanded')
-            ? 'Show less &#9652;'
-            : 'Show more &#9662;';
-
-    });
-
-}
+})();
 </script>
 
-<!-- NEW — ENTRANCE REVEALS (self-contained) -->
+<!-- =========================================================
+     NEW: MAP PIN — render the host's exact pin
+     (Free Leaflet + OpenStreetMap, no API key)
+========================================================== -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
 (function () {
-    "use strict";
 
-    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var embed = document.getElementById("rdMapEmbed");
+    if (!embed || typeof L === "undefined") return;
 
-    var revealEls = Array.prototype.slice.call(
-        document.querySelectorAll(".rd-reveal")
-    );
+    var lat = parseFloat(embed.dataset.lat);
+    var lng = parseFloat(embed.dataset.lng);
 
-    if (reduced || !("IntersectionObserver" in window)) {
+    var map = L.map(embed, {
+        center: [lat, lng],
+        zoom: 16,
+        scrollWheelZoom: false
+    });
 
-        revealEls.forEach(function (el) {
-            el.style.opacity = "1";
-        });
+    var standard = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
 
-    } else {
+    var satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri"
+    });
 
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
+    standard.addTo(map);
+    L.control.layers({ "Map": standard, "Satellite": satellite }).addTo(map);
 
-                    io.unobserve(entry.target);
+    var pinIcon = L.divIcon({
+        className: "rd-pin-icon",
+        html: '<div class="rd-pin">📍</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 34]
+    });
 
-                    /* The animation is driven by the CSS class
-                       gate (.js .rd-reveal); for elements already
-                       in view on load the animation plays via
-                       their --d delay automatically. For elements
-                       revealed on scroll, re-trigger by toggling
-                       the animation through a class swap. */
-                    var el = entry.target;
+    L.marker([lat, lng], { icon: pinIcon }).addTo(map);
 
-                    el.style.animation = "none";
-                    void el.offsetWidth; /* restart */
-                    el.style.animation = "";
-
-                    io.unobserve(el);
-                });
-            },
-            { threshold: 0.1, rootMargin: "0px 0px -30px 0px" }
-        );
-
-        revealEls.forEach(function (el) {
-            io.observe(el);
-        });
-    }
 })();
 </script>
 
-<!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
-<script src="/webprogg/assets/javaScript.js"></script>
-
 </body>
+
 </html>

@@ -9,6 +9,9 @@
      admin_page_end();
    Existing pages (admin.php etc.) are NOT converted — they
    keep their own copies to avoid function redeclare errors.
+
+   SIDEBAR CHANGE: RoomHive brand block and the
+   "Need Help / Contact Support" card have been removed.
 ========================================================= */
 
 session_start();
@@ -138,6 +141,9 @@ function icon($name, $class = '') {
         'tag' => '<path d="M11.5 3h6.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-.3.7l-9 9a1 1 0 0 1-1.4 0l-6.5-6.5a1 1 0 0 1 0-1.4l9-9a1 1 0 0 1 .7-.3Z"/><circle cx="15.5" cy="7.5" r="1.3"/>',
         'more-vertical' => '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
         'arrow-up' => '<path d="M12 19V5M6 11l6-6 6 6"/>',
+        'arrow-left' => '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+        'calendar-small' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+        'expand' => '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
     ];
     $path = $icons[$name] ?? '';
     return '<svg class="icon ' . $class . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';
@@ -156,6 +162,7 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
 <style>
+    .sidebar .nav { padding-top: 10px; }
     .admin-chip { position: relative; cursor: pointer; }
     .admin-menu { display: none; position: absolute; top: calc(100% + 10px); right: 0; min-width: 200px;
         background: #fff; border: 1px solid #EEF1F6; border-radius: 10px;
@@ -181,13 +188,6 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
 <body>
 <div class="layout">
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark"><?= icon('home', 'brand-icon') ?></div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= h($item['href']) ?>" class="nav-item <?= $item['label'] === $activeLabel ? 'active' : '' ?>">
@@ -195,12 +195,6 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
                 </a>
             <?php endforeach; ?>
         </nav>
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
     <div class="main">
         <header class="topbar">

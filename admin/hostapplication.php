@@ -7,6 +7,13 @@
  * for member-since) and actually updates `host_applications.status`
  * when you click Approve / Reject. Also supports deleting an
  * application outright from the 3-dot row menu.
+ *
+ * NAV FIX: sidebar now points every menu item at its real page
+ * (was 7 dead '#' links) and the top-right admin chip is the
+ * working dropdown (real name/email + Log Out) matching admin.php.
+ *
+ * SIDEBAR CHANGE: RoomHive brand block and the
+ * "Need Help / Contact Support" card removed.
  */
 
 session_start();
@@ -20,22 +27,25 @@ if (
     exit();
 }
 
-/* ---------- Sidebar navigation ---------- */
-$navItems = [
+ $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+ $adminEmail = $_SESSION['admin_email'] ?? '';
+
+/* ---------- Sidebar navigation (FIXED: every link resolves) ---------- */
+ $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
-    ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '#'],
-    ['label' => 'Listings',             'icon' => 'listing',    'href' => '#'],
+    ['label' => 'Bookings',             'icon' => 'calendar',   'href' => '/webprogg/admin/adminbookings.php'],
+    ['label' => 'Listings',             'icon' => 'listing',    'href' => '/webprogg/admin/adminlistings.php'],
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php', 'active' => true],
-    ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '#'],
-    ['label' => 'Reviews',              'icon' => 'star',       'href' => '#'],
-    ['label' => 'Messages',             'icon' => 'message',    'href' => '#'],
-    ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '#'],
-    ['label' => 'Settings',             'icon' => 'settings',   'href' => '#'],
+    ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
+    ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
+    ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
+    ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
-$notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
+ $notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
 
 /* =========================================================
    HANDLE APPROVE / REJECT / DELETE
@@ -117,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 /* =========================================================
    LOAD HOST APPLICATIONS FROM THE DATABASE
    ========================================================= */
-$rows = $pdo->query(
+ $rows = $pdo->query(
     "SELECT ha.id, ha.full_name, ha.email, ha.phone, ha.location,
             ha.id_type, ha.id_number, ha.id_file, ha.status,
             ha.created_at, u.created_at AS user_created_at
@@ -126,7 +136,7 @@ $rows = $pdo->query(
      ORDER BY ha.created_at DESC"
 )->fetchAll();
 
-$hostApps = array_map(function ($r) {
+ $hostApps = array_map(function ($r) {
     return [
         'id'           => (int) $r['id'],
         'name'         => $r['full_name'],
@@ -149,32 +159,32 @@ foreach ($hostApps as &$a) {
 unset($a);
 
 /* ---------- Filter ---------- */
-$filter = $_GET['filter'] ?? 'all';
-$validFilters = ['all', 'pending', 'approved', 'rejected'];
+ $filter = $_GET['filter'] ?? 'all';
+ $validFilters = ['all', 'pending', 'approved', 'rejected'];
 if (!in_array($filter, $validFilters, true)) { $filter = 'all'; }
 
-$counts = [
+ $counts = [
     'all'      => count($hostApps),
     'pending'  => count(array_filter($hostApps, fn($a) => $a['status'] === 'Pending')),
     'approved' => count(array_filter($hostApps, fn($a) => $a['status'] === 'Approved')),
     'rejected' => count(array_filter($hostApps, fn($a) => $a['status'] === 'Rejected')),
 ];
 
-$filtered = $filter === 'all'
+ $filtered = $filter === 'all'
     ? $hostApps
     : array_values(array_filter($hostApps, fn($a) => strtolower($a['status']) === $filter));
 
 /* ---------- Pagination ---------- */
-$perPage = 8;
-$totalItems = count($filtered);
-$totalPages = max(1, (int)ceil($totalItems / $perPage));
-$page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
-$offset = ($page - 1) * $perPage;
-$pageItems = array_slice($filtered, $offset, $perPage);
+ $perPage = 8;
+ $totalItems = count($filtered);
+ $totalPages = max(1, (int)ceil($totalItems / $perPage));
+ $page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
+ $offset = ($page - 1) * $perPage;
+ $pageItems = array_slice($filtered, $offset, $perPage);
 
 /* ---------- Selected application (for the right-hand detail panel) ---------- */
-$selectedId = isset($_GET['id']) ? (int)$_GET['id'] : ($pageItems[0]['id'] ?? null);
-$selected = null;
+ $selectedId = isset($_GET['id']) ? (int)$_GET['id'] : ($pageItems[0]['id'] ?? null);
+ $selected = null;
 foreach ($hostApps as $a) {
     if ($a['id'] === $selectedId) { $selected = $a; break; }
 }
@@ -245,6 +255,47 @@ function emptyState($text) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
+<style>
+    .sidebar .nav { padding-top: 10px; }
+    /* Working admin dropdown menu (same as admin.php) */
+    .admin-chip { position: relative; cursor: pointer; }
+    .admin-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(20, 20, 43, 0.12);
+        padding: 8px;
+        z-index: 50;
+    }
+    .admin-chip.open .admin-menu { display: block; }
+    .admin-menu-header {
+        display: flex;
+        flex-direction: column;
+        padding: 8px 10px 10px;
+        border-bottom: 1px solid #EEF1F6;
+        margin-bottom: 6px;
+    }
+    .admin-menu-name { font-weight: 600; font-size: 13px; color: #14142B; }
+    .admin-menu-email { font-size: 12px; color: #8B93A6; margin-top: 2px; }
+    .admin-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #14142B;
+        text-decoration: none;
+    }
+    .admin-menu-item:hover { background: #F6F7FB; }
+    .admin-menu-item .icon { width: 16px; height: 16px; }
+    .admin-logout { color: #E14B4B; }
+</style>
 </head>
 <body>
 
@@ -252,14 +303,6 @@ function emptyState($text) {
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark"><?= icon('home', 'brand-icon') ?></div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
-
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href']) ?>" class="nav-item <?= !empty($item['active']) ? 'active' : '' ?>">
@@ -268,13 +311,6 @@ function emptyState($text) {
                 </a>
             <?php endforeach; ?>
         </nav>
-
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
 
     <!-- ============ MAIN ============ -->
@@ -290,13 +326,26 @@ function emptyState($text) {
                     <?= icon('bell') ?>
                     <?php if ($notificationCount > 0): ?><span class="bell-badge"><?= $notificationCount ?></span><?php endif; ?>
                 </button>
-                <div class="admin-chip">
-                    <div class="admin-avatar admin-avatar-fallback">A</div>
+                <div class="admin-chip" id="adminChip">
+                    <div class="admin-avatar admin-avatar-fallback"><?= htmlspecialchars(strtoupper(substr($adminName, 0, 1))) ?></div>
                     <div class="admin-info">
-                        <span class="admin-name">Admin User</span>
+                        <span class="admin-name"><?= htmlspecialchars($adminName) ?></span>
                         <span class="admin-role">Administrator</span>
                     </div>
                     <?= icon('chevron-down', 'chevron') ?>
+
+                    <div class="admin-menu" id="adminMenu">
+                        <div class="admin-menu-header">
+                            <span class="admin-menu-name"><?= htmlspecialchars($adminName) ?></span>
+                            <?php if ($adminEmail): ?>
+                                <span class="admin-menu-email"><?= htmlspecialchars($adminEmail) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <a href="/webprogg/auth/logout.php" class="admin-menu-item admin-logout">
+                            <?= icon('lock') ?>
+                            <span>Log Out</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </header>
@@ -627,6 +676,19 @@ window.addEventListener('scroll', function () {
 window.addEventListener('resize', function () {
     closeAllActionMenus();
 });
+
+/* Admin chip dropdown (same behavior as admin.php) */
+(function () {
+    const chip = document.getElementById('adminChip');
+    if (!chip) return;
+    chip.addEventListener('click', function (e) {
+        chip.classList.toggle('open');
+        e.stopPropagation();
+    });
+    document.addEventListener('click', function () {
+        chip.classList.remove('open');
+    });
+})();
 </script>
 
 </body>
