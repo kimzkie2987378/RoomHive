@@ -1,45 +1,50 @@
 <?php
 /* =========================================================
-   ROOMHIVE — SHARED HOST NAVBAR (partial include)
-   host_navbar.php
+   ROOMHIVE — SHARED USER NAVBAR (partial include)
+   includes/usernav.php
 
-   ANIMATED VERSION — matches includes/usernav.php:
+   One navbar for every tenant / "My Account" page.
+
+   ANIMATED VERSION:
      - Navbar drops in from the top on page load
      - Gold underline grows on link hover
      - Dropdown menu items cascade in with a stagger
      - Bell swings on hover, badge pulses when unread
-     - Avatar lifts + gets a gold ring on hover
+     - Avatar lifts slightly on hover
      - Navbar gains a soft shadow once the page scrolls
 
    All motion is disabled automatically for users with
    "prefers-reduced-motion" enabled.
 
    The page MUST set these BEFORE requiring this file:
+     $dbUser             — row from users (needs is_host)
      $navAvatar          — resolved avatar URL
      $notification_count — integer (0 is fine)
+
+   Safe defaults are applied so this include can never
+   white-screen a page.
 ========================================================= */
 
-if (!function_exists('h')) {
-    function h($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
+if (!isset($navAvatar) || !is_string($navAvatar) || $navAvatar === '') {
+    $navAvatar = '/webprogg/images/default-avatar.png';
 }
 
-if (!isset($navAvatar) || !is_string($navAvatar) || $navAvatar === '') {
-    $navAvatar = isset($host['avatar']) ? $host['avatar'] : '/webprogg/images/default-avatar.png';
-}
 if (!isset($notification_count) || !is_numeric($notification_count)) {
     $notification_count = 0;
 }
+
+ $userIsHost = !empty($dbUser['is_host']);
 ?>
 
 <style>
     /* =====================================================
-       ANIMATIONS — same set as includes/usernav.php,
-       scoped to .host-dd. Theme gold: #b07708 / hover
-       wash: #fdf1dc
+       ANIMATIONS — all scoped to this navbar include.
+       Theme gold: #b07708 / hover wash: #fdf1dc
     ====================================================== */
 
     /* -----------------------------------------------
        1. NAVBAR DROP-IN (page load)
+       Slides the whole fixed navbar down from the top.
     ------------------------------------------------ */
     @keyframes navbarDropIn {
         from { opacity: 0; transform: translateY(-100%); }
@@ -59,6 +64,8 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     /* -----------------------------------------------
        2. LINK HOVER — gold underline grows from center
+       Applies to the plain text links only (HOME,
+       LISTINGS, ...). Bell + dropdown are excluded.
     ------------------------------------------------ */
     .navbar .nav-links > a:not(.nav-bell) {
         position: relative;
@@ -118,12 +125,14 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     /* -----------------------------------------------
        4. DROPDOWN — items cascade in with a stagger
+       Menu opens (slide + fade) as before, then each
+       link follows 40ms apart, sliding in from the right.
     ------------------------------------------------ */
-    .host-dd {
+    .user-dd {
         position: relative;
     }
 
-    .host-dd .my-account {
+    .user-dd .my-account {
         display: flex;
         align-items: center;
 
@@ -138,13 +147,13 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         color: inherit;
     }
 
-    .host-dd .account-circle {
+    .user-dd .account-circle {
         display: inline-flex;
 
         transition: transform 0.2s ease;
     }
 
-    .host-dd .account-circle img {
+    .user-dd .account-circle img {
         width: 42px;
         height: 42px;
 
@@ -162,15 +171,15 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
     }
 
     /* Avatar lifts + gets a gold ring on hover */
-    .host-dd .my-account:hover .account-circle {
+    .user-dd .my-account:hover .account-circle {
         transform: translateY(-1px);
     }
 
-    .host-dd .my-account:hover .account-circle img {
+    .user-dd .my-account:hover .account-circle img {
         box-shadow: 0 0 0 3px rgba(176, 119, 8, 0.30);
     }
 
-    .host-dd .my-account span:not(.account-circle) {
+    .user-dd .my-account span:not(.account-circle) {
         font-size: 12px;
         font-weight: 700;
         white-space: nowrap;
@@ -178,17 +187,17 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         color: #1c2a38;
     }
 
-    .host-dd .dropdown-caret {
+    .user-dd .dropdown-caret {
         font-size: 0.75em;
 
         transition: transform 0.25s ease;
     }
 
-    .host-dd.open .dropdown-caret {
+    .user-dd.open .dropdown-caret {
         transform: rotate(180deg);
     }
 
-    .host-dd-menu {
+    .user-dd-menu {
         display: none;
 
         position: absolute;
@@ -214,24 +223,24 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         transform-origin: top right;
     }
 
-    @keyframes hostDDIn {
+    @keyframes userDDIn {
         from { opacity: 0; transform: translateY(-6px) scale(0.98); }
         to   { opacity: 1; transform: translateY(0) scale(1); }
     }
 
-    .host-dd.open .host-dd-menu {
+    .user-dd.open .user-dd-menu {
         display: flex;
 
-        animation: hostDDIn 0.2s ease;
+        animation: userDDIn 0.2s ease;
     }
 
-    @keyframes hostDDItem {
+    @keyframes userDDItem {
         from { opacity: 0; transform: translateX(10px); }
         to   { opacity: 1; transform: translateX(0); }
     }
 
     /* Items start hidden, then cascade in only while open */
-    .host-dd .host-dd-menu a {
+    .user-dd .user-dd-menu a {
         display: block;
 
         padding: 10px 12px;
@@ -251,20 +260,20 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         transition: background 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
     }
 
-    .host-dd.open .host-dd-menu a {
-        animation: hostDDItem 0.28s ease forwards;
+    .user-dd.open .user-dd-menu a {
+        animation: userDDItem 0.28s ease forwards;
     }
 
     /* Stagger: each item trails the previous by 40ms */
-    .host-dd.open .host-dd-menu a:nth-child(1) { animation-delay: 0.04s; }
-    .host-dd.open .host-dd-menu a:nth-child(2) { animation-delay: 0.08s; }
-    .host-dd.open .host-dd-menu a:nth-child(3) { animation-delay: 0.12s; }
-    .host-dd.open .host-dd-menu a:nth-child(4) { animation-delay: 0.16s; }
-    .host-dd.open .host-dd-menu a:nth-child(5) { animation-delay: 0.20s; }
-    .host-dd.open .host-dd-menu a:nth-child(6) { animation-delay: 0.24s; }
+    .user-dd.open .user-dd-menu a:nth-child(1) { animation-delay: 0.04s; }
+    .user-dd.open .user-dd-menu a:nth-child(2) { animation-delay: 0.08s; }
+    .user-dd.open .user-dd-menu a:nth-child(3) { animation-delay: 0.12s; }
+    .user-dd.open .user-dd-menu a:nth-child(4) { animation-delay: 0.16s; }
+    .user-dd.open .user-dd-menu a:nth-child(5) { animation-delay: 0.20s; }
+    .user-dd.open .user-dd-menu a:nth-child(6) { animation-delay: 0.24s; }
 
     /* Hover: gold wash + slight indent nudge */
-    .host-dd-menu a:hover {
+    .user-dd-menu a:hover {
         background: #fdf1dc;
         color: #b07708;
         padding-left: 16px;
@@ -277,25 +286,26 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         .navbar,
         .navbar .nav-bell-badge,
         .navbar .nav-bell:hover img,
-        .host-dd-menu,
-        .host-dd .host-dd-menu a {
+        .user-dd-menu,
+        .user-dd .user-dd-menu a {
             animation: none !important;
         }
 
-        .host-dd .host-dd-menu a {
+        .user-dd .user-dd-menu a {
             opacity: 1 !important;
         }
 
         .navbar .nav-links > a:not(.nav-bell)::after,
-        .host-dd .account-circle,
-        .host-dd .account-circle img,
-        .host-dd .dropdown-caret,
-        .host-dd-menu a {
+        .user-dd .account-circle,
+        .user-dd .account-circle img,
+        .user-dd .dropdown-caret,
+        .user-dd-menu a {
             transition: none !important;
         }
     }
 </style>
 
+<!-- NAVBAR -->
 <header class="navbar">
 
     <!-- LOGO -->
@@ -303,6 +313,7 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
+    <!-- NAVIGATION -->
     <nav class="nav-links">
 
         <a href="/webprogg/user/usershome.php">HOME</a>
@@ -313,19 +324,19 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
         <!-- NOTIFICATIONS BELL -->
-        <a href="/webprogg/host/notifications.php" class="nav-bell">
+        <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
             <?php endif; ?>
         </a>
 
-        <!-- MY ACCOUNT DROPDOWN — self-contained, animated -->
-        <div class="host-dd">
+        <!-- MY ACCOUNT DROPDOWN — self-contained, same pattern as host navbar -->
+        <div class="user-dd">
 
             <button
                 type="button"
-                class="my-account host-dd-toggle"
+                class="my-account user-dd-toggle"
                 aria-haspopup="true"
                 aria-expanded="false"
             >
@@ -336,17 +347,23 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
                 <span class="dropdown-caret">&#9662;</span>
             </button>
 
-            <div class="host-dd-menu">
+            <div class="user-dd-menu">
 
-                <a href="/webprogg/host/hostprofile.php">
-                    Host Dashboard
+                <?php if ($userIsHost): ?>
+                    <a href="/webprogg/host/hostprofile.php">
+                        Host Profile
+                    </a>
+                <?php endif; ?>
+
+                <a href="/webprogg/user/userprofile.php">
+                    My Profile
                 </a>
 
-                <a href="/webprogg/host/hosteditprofile.php">
+                <a href="/webprogg/user/editprofile.php">
                     Profile Settings
                 </a>
 
-                <a href="/webprogg/host/hostmessages.php">
+                <a href="/webprogg/user/usermessages.php">
                     Messages
                 </a>
 
@@ -362,23 +379,31 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
 </header>
 
-<!-- Host dropdown script + scroll shadow — self-contained, guarded -->
+<!-- NOTIFICATION DROPDOWN PANEL (shared with the bell) -->
+<?php
+ $__notifDropdown = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php';
+if (is_file($__notifDropdown)) {
+    include $__notifDropdown;
+}
+?>
+
+<!-- Dropdown toggle + scroll shadow — self-contained, guarded -->
 <script>
 (function () {
     "use strict";
 
-    if (window.__hostNavDD) { return; }
-    window.__hostNavDD = true;
+    if (window.__userNavDD) { return; }
+    window.__userNavDD = true;
 
     /* ---- Dropdown open/close (unchanged behavior) ---- */
     document.addEventListener("click", function (event) {
 
         var toggle = event.target.closest
-            ? event.target.closest(".host-dd-toggle")
+            ? event.target.closest(".user-dd-toggle")
             : null;
 
         if (toggle) {
-            var dd = toggle.closest(".host-dd");
+            var dd = toggle.closest(".user-dd");
 
             if (dd) {
                 var isOpen = dd.classList.toggle("open");
@@ -388,18 +413,18 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
             return;
         }
 
-        document.querySelectorAll(".host-dd.open").forEach(function (dd) {
+        document.querySelectorAll(".user-dd.open").forEach(function (dd) {
             dd.classList.remove("open");
-            var btn = dd.querySelector(".host-dd-toggle");
+            var btn = dd.querySelector(".user-dd-toggle");
             if (btn) { btn.setAttribute("aria-expanded", "false"); }
         });
     });
 
     document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
-            document.querySelectorAll(".host-dd.open").forEach(function (dd) {
+            document.querySelectorAll(".user-dd.open").forEach(function (dd) {
                 dd.classList.remove("open");
-                var btn = dd.querySelector(".host-dd-toggle");
+                var btn = dd.querySelector(".user-dd-toggle");
                 if (btn) { btn.setAttribute("aria-expanded", "false"); }
             });
         }

@@ -2,7 +2,7 @@
 /* Shared host sidebar. Set $activePage before including:
    overview | listings | pending | bookings | earnings | payouts |
    reviews | messages | editprofile | verification | payoutmethods |
-   notificationsettings | security | helpcenter
+   notificationsettings | security | quithosting | helpcenter
    Requires host_init.php ($host, $pending_tenants_count). */
  $activePage = $activePage ?? '';
 
@@ -28,6 +28,23 @@ function hp_side_active($activePage, $key) {
     .hp-sidebar-card .hp-sidebar-avatar {
         width: 64px;
         height: 64px;
+    }
+
+    /* NEW — section label + quit hosting styling */
+    .hp-side-heading {
+        margin: 20px 10px 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #9aa5b1;
+    }
+    .hp-side-quit {
+        color: #b3261e;
+    }
+    .hp-side-quit:hover {
+        background: #fdecea;
+        color: #b3261e;
     }
 </style>
 
@@ -61,11 +78,15 @@ function hp_side_active($activePage, $key) {
     <a href="/webprogg/host/payouts.php" class="hp-side-link<?php echo hp_side_active($activePage, 'payouts'); ?>">Payouts</a>
     <a href="/webprogg/host/hostreviews.php" class="hp-side-link<?php echo hp_side_active($activePage, 'reviews'); ?>">Reviews</a>
     <a href="/webprogg/host/hostmessages.php" class="hp-side-link<?php echo hp_side_active($activePage, 'messages'); ?>">Messages</a>
+
+    <!-- SETTINGS GROUP -->
+    <span class="hp-side-heading">Settings</span>
     <a href="/webprogg/host/hosteditprofile.php" class="hp-side-link<?php echo hp_side_active($activePage, 'editprofile'); ?>">Profile &amp; Account</a>
-    <a href="/webprogg/host/verification.php" class="hp-side-link<?php echo hp_side_active($activePage, 'verification'); ?>">Verification</a>
     <a href="/webprogg/host/payoutmethods.php" class="hp-side-link<?php echo hp_side_active($activePage, 'payoutmethods'); ?>">Payout Methods</a>
     <a href="/webprogg/host/hostnotificationsettings.php" class="hp-side-link<?php echo hp_side_active($activePage, 'notificationsettings'); ?>">Notification Settings</a>
     <a href="/webprogg/host/hostsecurity.php" class="hp-side-link<?php echo hp_side_active($activePage, 'security'); ?>">Security</a>
+    <a href="/webprogg/host/quithosting.php" class="hp-side-link hp-side-quit<?php echo hp_side_active($activePage, 'quithosting'); ?>">Quit Hosting</a>
+
     <a href="/webprogg/host/helpcenter.php" class="hp-side-link<?php echo hp_side_active($activePage, 'helpcenter'); ?>">Help Center</a>
 
     <a href="/webprogg/auth/logout.php" class="hp-side-link hp-side-logout">Log Out</a>

@@ -29,7 +29,7 @@ require_once __DIR__ . '/host_init.php';
 <main class="hp-dashboard hp-dashboard--flush-top">
 
     <?php include __DIR__ . '/host_sidebar.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
     <div class="hp-content">
 
         <div class="hp-page-header">

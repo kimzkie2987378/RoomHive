@@ -2,9 +2,8 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    security.php
-   (Schema notes from the original file header still apply:
-    users.password, two_factor_enabled, language, currency,
-    status columns — see the ALTER TABLE in your version.)
+   Schema: users.password, two_factor_enabled, language,
+   currency, status (see your original header notes).
 ========================================================= */
 
 session_start();
@@ -132,96 +131,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings — RoomHive</title>
 
+<!-- ANTI-FLASH BOOTSTRAP: apply saved theme before first paint -->
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
+
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
-
 <script>document.documentElement.classList.add("js");</script>
 </head>
-<body>
+<body data-theme-base="light">
 
 <header class="navbar">
     <a href="/webprogg/user/usershome.php" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
+   <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
 
-    <nav class="nav-links">
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <!-- FIX: was relative "notifications.php" -->
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-        </div>
-    </nav>
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Settings</span>
+    <h1>Security &amp; account preferences</h1>
+    <p class="ub-lead">Manage your password, appearance, two-factor login, and account defaults.</p>
 </header>
-
-<!-- HERO -->
-<section class="up-hero up-hero-sub">
-
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Security
-            </span>
-
-            <h1 class="up-anim" style="--d: .15s;">
-                Security &amp; <span class="up-shimmer">settings</span>
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-                Manage your password, two-factor login, and
-                account defaults.
-            </p>
-
-        </div>
-
-        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/lockicon-userprofile.png" alt="">
-        </div>
-
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-
-</section>
 
 <main class="up-dashboard">
 
@@ -300,7 +230,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
                 <span style="font-size:12.5px; color:var(--up-text-muted);">Require a one-time code in addition to your password when signing in.</span>
               </div>
 
-              <!-- CHANGED: pure-CSS toggle, no JS needed -->
               <label class="up-switch">
                 <input type="checkbox" name="two_factor_enabled" <?php echo $two_factor_enabled ? 'checked' : ''; ?>>
                 <span class="up-switch-track"></span>
@@ -334,11 +263,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
       <div class="up-right-col">
 
+        <!-- ================================================
+             NEW — APPEARANCE / DARK MODE CARD
+             Pure client-side: localStorage persistence, no
+             DB change. Applies to every account page via the
+             shared bootstrap + dark CSS block.
+        ================================================= -->
+        <div class="up-card up-reveal" style="--i: 0;">
+          <div class="up-card-header">
+            <h3>Appearance</h3>
+          </div>
+
+          <div class="up-darkmode-row">
+            <div class="up-darkmode-copy">
+              <strong>Dark Mode</strong>
+              <span>Apply a dark theme across your entire account.</span>
+            </div>
+
+            <label class="up-switch">
+              <input type="checkbox" id="darkModeToggle" aria-label="Toggle dark mode">
+              <span class="up-switch-track"></span>
+            </label>
+          </div>
+
+          <p class="up-field-hint" style="margin-top:0;">
+            Your choice is remembered on this device.
+          </p>
+        </div>
+
         <div class="up-need-help up-reveal" style="--i: 1;">
           <div class="up-need-help-text">
             <h3>Need Help?</h3>
             <p>Questions about your account or security? We're here 24/7.</p>
-            <!-- FIX: was relative "helpcenter.php" -->
             <a href="/webprogg/user/helpcenter.php" class="up-btn-solid">CONTACT SUPPORT</a>
           </div>
           <img src="/webprogg/images/needhelpicon-userprofile.png" alt="" class="up-need-help-image">
@@ -378,7 +334,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
             </div>
 
             <button type="submit"
-                    style="background:#e0524d; color:#ffffff; border:none; border-radius:10px; padding:11px; font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:background .2s ease, transform .2s ease;"
+                    style="background:#e0524d; color:#ffffff; border:none; border-radius:10px; padding:11px; font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; cursor:pointer; transition:background .2s ease;"
                     onmouseover="this.style.background='#c84642'"
                     onmouseout="this.style.background='#e0524d'">
               DEACTIVATE MY ACCOUNT
@@ -393,21 +349,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 </main>
 
 <footer class="site-footer">
-    <!-- (same compact footer as editprofile.php above) -->
     <div class="footer-top">
         <div class="footer-brand">
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
             <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
             <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
             <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -415,7 +366,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -423,7 +373,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
-
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -432,7 +381,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
             </div>
         </div>
     </div>
-
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
@@ -440,32 +388,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
-<!-- Reveal + password strength meter (NEW) -->
+<!-- Theme + reveal + password strength meter -->
 <script>
 (function () {
     "use strict";
 
+    /* =====================================================
+       DARK MODE — apply persisted theme + wire the toggle
+       Runs on every load: sets body[data-theme] from
+       localStorage (the head bootstrap already darkened the
+       html early), then syncs the switch state.
+    ====================================================== */
+
+    var body = document.body;
+    var KEY  = "rhTheme";
+    var darkToggle = document.getElementById("darkModeToggle");
+
+    function applyTheme(dark) {
+        if (dark) {
+            body.setAttribute("data-theme", "dark");
+            document.documentElement.removeAttribute("data-theme-preview");
+        } else {
+            body.removeAttribute("data-theme");
+            document.documentElement.removeAttribute("data-theme-preview");
+        }
+    }
+
+    /* Apply persisted theme immediately on this page too */
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    applyTheme(stored === "dark");
+
+    if (darkToggle) {
+        darkToggle.checked = (stored === "dark");
+
+        darkToggle.addEventListener("change", function () {
+            var dark = darkToggle.checked;
+
+            applyTheme(dark);
+
+            try {
+                localStorage.setItem(KEY, dark ? "dark" : "light");
+            } catch (e) {}
+        });
+    }
+
+    /* =====================================================
+       SCROLL REVEAL
+    ====================================================== */
+
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
         revealEls.forEach(function (el) { el.classList.add("in-view"); });
     } else {
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-                    var el = entry.target;
-                    io.unobserve(el);
-                    el.classList.add("in-view");
-                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
-                });
-            },
-            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-        );
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
 
-    /* Password strength meter */
+    /* =====================================================
+       PASSWORD STRENGTH METER
+    ====================================================== */
+
     var pw = document.getElementById("newPw");
     var fill = document.getElementById("pwStrengthFill");
     var label = document.getElementById("pwStrengthLabel");

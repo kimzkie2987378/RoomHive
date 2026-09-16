@@ -31,12 +31,6 @@ if ($dbUser['is_host']) {
 }
 
  $navAvatar = sync_user_session($dbUser);
-
- $user = [
-    'name'   => $dbUser['name'],
-    'avatar' => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : '/webprogg/images/default-avatar.png',
-];
-
  $notification_count = 0;
 
 /* WISHLIST — FULL LIST */
@@ -68,7 +62,6 @@ if ($dbUser['is_host']) {
 }, $wishlistStmt->fetchAll());
 
  $wishlist_total = count($wishlist);
-
  $activeSidebar = 'wishlist';
 ?>
 <!DOCTYPE html>
@@ -77,107 +70,25 @@ if ($dbUser['is_host']) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Wishlist — RoomHive</title>
-
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
-
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
-
-<!-- NAVBAR (identical to userbookings.php) -->
-<header class="navbar">
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-        </div>
-    </nav>
+<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Your Saved Stays</span>
+    <h1>Wishlist</h1>
+    <p class="ub-lead">Everything you've saved while browsing listings, all in one place.</p>
 </header>
 
-<!-- HERO -->
-<section class="up-hero up-hero-sub">
-
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Your Saved Stays
-            </span>
-
-            <h1 class="up-anim" style="--d: .15s;">
-                Wish<span class="up-shimmer">list</span>
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-                Everything you've saved while browsing listings,
-                all in one place.
-            </p>
-
-        </div>
-
-        <div class="up-hero-art up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
-        </div>
-
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-
-</section>
-
-<!-- DASHBOARD -->
 <main class="up-dashboard">
-
   <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
-
+ 
   <div class="up-content">
-
     <section class="up-card up-wishlist up-reveal">
-
       <div class="up-card-header">
         <h3>My Wishlist (<span class="up-wishlist-count"><?php echo h($wishlist_total); ?></span>)</h3>
         <a href="/webprogg/Listings/listing.php" class="up-link-view-all">Browse Listings</a>
@@ -188,12 +99,7 @@ if ($dbUser['is_host']) {
           <a href="/webprogg/Listings/listing.php?id=<?php echo h($item['id']); ?>" class="listing-box" data-listing-id="<?php echo h($item['id']); ?>">
             <div class="up-wishlist-thumb">
               <img src="<?php echo h($item['thumb']); ?>" alt="<?php echo h($item['title']); ?>">
-              <button type="button"
-                      class="rh-save-btn saved"
-                      data-listing-id="<?php echo h($item['id']); ?>"
-                      aria-label="Remove from wishlist">
-                &#9829;
-              </button>
+              <button type="button" class="rh-save-btn saved" data-listing-id="<?php echo h($item['id']); ?>" aria-label="Remove from wishlist">&#9829;</button>
             </div>
             <h4><?php echo h($item['title']); ?></h4>
             <p class="up-wishlist-location"><?php echo h($item['location']); ?></p>
@@ -210,41 +116,25 @@ if ($dbUser['is_host']) {
       </div>
 
       <div class="up-wishlist-empty" id="up-wishlist-empty" style="<?php echo empty($wishlist) ? '' : 'display:none;'; ?> text-align:center; padding:56px 12px; color:#777777;">
-        <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy, #1c2a38); font-size:15px;">Your wishlist is empty</p>
+        <p style="margin:0 0 4px; font-weight:700; color:var(--up-navy); font-size:15px;">Your wishlist is empty</p>
         <p style="margin:0 0 18px; font-size:13px;">Save listings you like while browsing and they'll show up here.</p>
         <a href="/webprogg/Listings/listing.php" class="up-btn-outline">BROWSE LISTINGS</a>
       </div>
-
     </section>
-
   </div>
 </main>
 
 <footer class="site-footer">
-    <!-- (footer identical to userbookings.php above — kept as yours) -->
     <div class="footer-top">
         <div class="footer-brand">
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -252,7 +142,6 @@ if ($dbUser['is_host']) {
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -260,7 +149,6 @@ if ($dbUser['is_host']) {
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
-
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -269,7 +157,6 @@ if ($dbUser['is_host']) {
             </div>
         </div>
     </div>
-
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
@@ -286,36 +173,30 @@ if ($dbUser['is_host']) {
     if (reduced || !("IntersectionObserver" in window)) {
         revealEls.forEach(function (el) { el.classList.add("in-view"); });
     } else {
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-                    var el = entry.target;
-                    io.unobserve(el);
-                    el.classList.add("in-view");
-                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
-                });
-            },
-            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-        );
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
 })();
 </script>
 
-<!-- WISHLIST — REMOVE LISTING (unchanged from your original) -->
+<!-- WISHLIST — REMOVE LISTING -->
 <script>
 (function () {
-
     const grid = document.getElementById('up-wishlist-grid');
     const emptyState = document.getElementById('up-wishlist-empty');
     const countEl = document.querySelector('.up-wishlist-count');
 
     function syncWishlistUI() {
         const remaining = grid ? grid.querySelectorAll('.listing-box').length : 0;
-
         if (countEl) countEl.textContent = remaining;
-
         if (grid && emptyState) {
             grid.style.display = remaining === 0 ? 'none' : '';
             emptyState.style.display = remaining === 0 ? '' : 'none';
@@ -325,7 +206,6 @@ if ($dbUser['is_host']) {
     if (!grid) return;
 
     grid.querySelectorAll('.rh-save-btn').forEach(function (btn) {
-
         btn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -356,9 +236,7 @@ if ($dbUser['is_host']) {
                 alert('Something went wrong. Please try again.');
             });
         });
-
     });
-
 })();
 </script>
 

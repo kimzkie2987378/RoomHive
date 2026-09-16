@@ -959,8 +959,8 @@
         NAVIGATION BAR
     ========================== -->
 
-    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
+     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
     <!-- =========================
         LISTINGS PAGE
     ========================== -->

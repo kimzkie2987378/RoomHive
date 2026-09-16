@@ -72,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
          * entirely.
          */
         $isAdminEmail = hash_equals(strtolower(ADMIN_EMAIL), strtolower($email));
-
+                                    
         if ($isAdminEmail && password_verify($password, ADMIN_PASSWORD_HASH)) {
 
             session_regenerate_id(true);

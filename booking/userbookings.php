@@ -113,9 +113,98 @@ foreach ($countsStmt->fetchAll() as $row) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Bookings — RoomHive</title>
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<!-- =====================================================
+     PLAIN PAGE HEADER (this page only)
+     Replaces the decorative hero entirely: no photo, no
+     honeycomb, no blobs, no wave, no chips. Just the
+     heading block on white, aligned with the dashboard
+     below it.
+===================================================== -->
+<style>
+    .ub-page-head {
+        /* Clear the 90px fixed navbar + breathing room */
+        margin: 130px auto 0;
+
+        max-width: 1400px;
+
+        /* Matches .up-dashboard's side gutters so the
+           heading lines up with the cards below */
+        width: calc(100% - 120px);
+
+        padding: 0 24px 6px;
+    }
+
+    .ub-page-head .ub-eyebrow {
+        display: block;
+
+        margin-bottom: 8px;
+
+        color: #b07708;
+
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+
+    .ub-page-head h1 {
+        margin: 0 0 10px;
+
+        color: #1c2a38;
+
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        line-height: 1.15;
+    }
+
+    .ub-page-head .ub-lead {
+        margin: 0;
+
+        max-width: 520px;
+
+        color: #5d6875;
+
+        font-size: 14.5px;
+        line-height: 1.65;
+    }
+
+    /* Dashboard sits closer now that the tall hero is gone */
+    .up-dashboard {
+        margin-top: 26px;
+    }
+
+    @media (max-width: 1200px) {
+        .ub-page-head {
+            width: calc(100% - 80px);
+        }
+    }
+
+    @media (max-width: 900px) {
+        .ub-page-head {
+            width: calc(100% - 50px);
+
+            margin-top: 115px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .ub-page-head {
+            width: calc(100% - 30px);
+
+            margin-top: 110px;
+        }
+
+        .ub-page-head h1 {
+            font-size: 26px;
+        }
+    }
+</style>
 
 <script>document.documentElement.classList.add("js");</script>
 </head>
@@ -161,49 +250,29 @@ foreach ($countsStmt->fetchAll() as $row) {
         </div>
     </nav>
 </header>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+<!-- =====================================================
+     PAGE HEADER — PLAIN
+     CHANGED: the entire decorative hero is gone (photo,
+     scrim, chips, wave, honeycomb, blobs, shimmer). Just
+     the heading block on white, aligned with the
+     dashboard's gutters.
+===================================================== -->
+<header class="ub-page-head">
 
-<!-- HERO (CHANGED: new .up-hero design system) -->
-<section class="up-hero up-hero-sub">
+    <span class="ub-eyebrow">
+        Every Stay
+    </span>
 
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
+    <h1>
+        My Bookings
+    </h1>
 
-    <div class="up-hero-inner">
+    <p class="ub-lead">
+        Track every inquiry and stay you've booked through RoomHive.
+    </p>
 
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Every Stay
-            </span>
-
-            <h1 class="up-anim" style="--d: .15s;">
-                My <span class="up-shimmer">Bookings</span>
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-                Track every inquiry and stay you've booked
-                through RoomHive.
-            </p>
-
-        </div>
-
-        <div class="up-hero-art up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
-        </div>
-
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-
-</section>
+</header>
 
 <!-- DASHBOARD -->
 <main class="up-dashboard">
@@ -219,7 +288,7 @@ foreach ($countsStmt->fetchAll() as $row) {
         <a href="/webprogg/Listings/listing.php" class="up-link-view-all">Browse Listings</a>
       </div>
 
-      <!-- STATUS TABS (restyled segmented pills) -->
+      <!-- STATUS TABS (segmented pills) -->
       <div class="ub-tabs">
         <?php foreach ($tabs as $key => $label): ?>
           <a

@@ -168,7 +168,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
-
+ 
     <!-- =====================================================
          CSS
     ====================================================== -->
@@ -609,9 +609,9 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 <!-- =========================================================
      NAVIGATION BAR
 ========================================================= -->
-
+ 
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
 <!-- =========================================================
      HERO

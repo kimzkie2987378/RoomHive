@@ -1433,7 +1433,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
  $guestCtaHref = '/webprogg/host/becomeahost.php';
 include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 ?>
-
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
 <!-- =========================================================
      MAIN HOST PAGE

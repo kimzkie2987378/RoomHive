@@ -130,7 +130,7 @@ if ($q !== '') {
 <body>
 
 <?php include __DIR__ . '/host_navbar.php'; ?>
-
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 <!-- =========================================================
      MAIN DASHBOARD LAYOUT
 ========================================================= -->

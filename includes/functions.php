@@ -153,10 +153,7 @@ if (!function_exists('require_user')) {
      *   5. sync_user_session() so the navbar avatar + is_host
      *      flag can never go stale
      *
-     * Returns the fetched user row. Because steps 3–5 are now
-     * inseparable from step 1, the whole class of "forgot to
-     * set is_host / avatar" bugs your older pages had can't
-     * come back on new pages.
+     * Returns the fetched user row.
      *
      * Usage (after session_start() + db_connect.php +
      * functions.php):
@@ -225,5 +222,41 @@ if (!function_exists('require_user')) {
         sync_user_session($user);
 
         return $user;
+    }
+}
+
+if (!function_exists('notify_user')) {
+    /**
+     * =====================================================
+     * NEW — Create a notification row for a user. Call this
+     * from any activity: new message, booking accepted or
+     * rejected, new review, host application approved,
+     * payment received, etc.
+     *
+     * $userId  — the RECIPIENT's users.id (who should see it)
+     * $link    — where clicking the notification lands, e.g.
+     *            '/webprogg/booking/booking-details.php?id=12'
+     *            or '/webprogg/host/hostmessages.php'
+     *
+     * notification_dropdown.php labels the item based on the
+     * link, so pick a link that points at the relevant page.
+     *
+     * Never throws — a notification failure must not break
+     * the activity that triggered it.
+     * =====================================================
+     */
+    function notify_user($pdo, $userId, $link) {
+        try {
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, link, is_read, created_at)
+                 VALUES (:u, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'l' => (string) $link,
+            ]);
+        } catch (PDOException $e) {
+            error_log('notify_user failed: ' . $e->getMessage());
+        }
     }
 }

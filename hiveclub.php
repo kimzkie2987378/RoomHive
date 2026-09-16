@@ -1975,7 +1975,7 @@ if ($memberTier === "Gold Member") {
 ===================================================== -->
 
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
 <?php if (isset($_GET["cancelled"])): ?>
 

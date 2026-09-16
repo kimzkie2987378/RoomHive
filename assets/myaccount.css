@@ -2336,3 +2336,238 @@
     max-width: 180px;
   }
 }
+/* =========================================================
+   DARK MODE — token overrides
+   Applied when <body data-theme="dark"> is set (or early via
+   html[data-theme-preview="1"] before the body attribute
+   lands). All account surfaces re-derive from the --up-*
+   tokens, so overriding them flips everything at once.
+   Hardcoded whites get explicit overrides below.
+========================================================= */
+
+html[data-theme-preview="1"] {
+  background: #10161d;
+}
+
+html[data-theme-preview="1"] body {
+  background-color: #10161d;
+  color: #d5dbe2;
+}
+
+body[data-theme="dark"] {
+  --up-orange: #eda423;
+  --up-orange-deep: #f6c04e;
+  --up-orange-light: #2e2619;
+  --up-navy: #e8ecf1;
+  --up-ink-soft: #a8b2bd;
+  --up-text-muted: #8d99a5;
+  --up-border: rgba(232, 236, 241, 0.1);
+  --up-green: #4cd98a;
+  --up-green-bg: rgba(47, 158, 91, 0.15);
+  --up-red: #ff7a75;
+  --up-red-bg: rgba(224, 82, 77, 0.14);
+  --up-sidebar-active: #eda423;
+  --up-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --up-shadow-lift: 0 18px 34px rgba(237, 164, 35, 0.1);
+
+  background-color: #10161d;
+
+  color: #d5dbe2;
+
+  transition:
+    background-color 0.35s ease,
+    color 0.35s ease;
+}
+
+/* ---- Surfaces ---- */
+
+body[data-theme="dark"] .up-card,
+body[data-theme="dark"] .up-sidebar,
+body[data-theme="dark"] .up-stat-card,
+body[data-theme="dark"] .up-summary-tab.active,
+body[data-theme="dark"] .up-btn-outline,
+body[data-theme="dark"] .up-switch-track::before,
+body[data-theme="dark"] .account-dropdown-menu {
+  background: #1a222b;
+}
+
+body[data-theme="dark"] .up-btn-outline {
+  color: var(--up-orange);
+  border-color: rgba(237, 164, 35, 0.5);
+}
+
+body[data-theme="dark"] .up-summary-toggle,
+body[data-theme="dark"] .ub-tabs {
+  background: #0d1218;
+}
+
+body[data-theme="dark"] .up-booking-row:hover,
+body[data-theme="dark"] .up-side-link:hover {
+  background: #212b36;
+}
+
+body[data-theme="dark"] .up-side-link.active {
+  background: rgba(237, 164, 35, 0.1);
+}
+
+/* ---- Hero (userprofile.php full hero) ---- */
+
+body[data-theme="dark"] .up-hero {
+  background:
+    radial-gradient(
+      900px 420px at 85% -10%,
+      rgba(237, 164, 35, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(
+      700px 380px at -10% 110%,
+      rgba(237, 164, 35, 0.08),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #10161d 0%, #141b23 100%);
+}
+
+body[data-theme="dark"] .up-hero-badge,
+body[data-theme="dark"] .up-chip {
+  background: rgba(26, 34, 43, 0.95);
+  color: var(--up-navy);
+}
+
+body[data-theme="dark"] .up-hero::before {
+  opacity: 0.5;
+}
+
+/* Full-bleed photo hero pages (if any still use the photo
+   variant) — darken the scrim so text stays readable */
+body[data-theme="dark"] .up-hero-photo-overlay {
+  background: linear-gradient(
+    100deg,
+    rgba(16, 22, 29, 0.97) 0%,
+    rgba(16, 22, 29, 0.9) 38%,
+    rgba(16, 22, 29, 0.45) 68%,
+    rgba(16, 22, 29, 0.15) 100%
+  );
+}
+
+/* ---- Cards / rows ---- */
+
+body[data-theme="dark"] .up-wishlist-grid .listing-box {
+  background: #1a222b;
+}
+
+body[data-theme="dark"] .up-booking-row.up-row-static:hover {
+  background: transparent;
+}
+
+/* ---- Alerts ---- */
+
+body[data-theme="dark"] .up-alert-success,
+body[data-theme="dark"] .up-msg-success {
+  background: rgba(47, 158, 91, 0.14);
+  border-color: rgba(76, 217, 138, 0.3);
+  color: #7fe0a8;
+}
+
+body[data-theme="dark"] .up-alert-error,
+body[data-theme="dark"] .up-msg-error {
+  background: rgba(224, 82, 77, 0.14);
+  border-color: rgba(255, 122, 117, 0.3);
+  color: #ffa39f;
+}
+
+/* ---- Forms ---- */
+
+body[data-theme="dark"] .up-field input,
+body[data-theme="dark"] .up-field select,
+body[data-theme="dark"] .up-field textarea {
+  background: #0d1218;
+  border-color: rgba(232, 236, 241, 0.14);
+  color: #e8ecf1;
+}
+
+body[data-theme="dark"] .up-field input:focus,
+body[data-theme="dark"] .up-field select:focus,
+body[data-theme="dark"] .up-field textarea:focus {
+  background: #141b23;
+}
+
+body[data-theme="dark"] .up-field input:disabled {
+  background: #0a0e13;
+}
+
+body[data-theme="dark"] .up-strength {
+  background: #0d1218;
+}
+
+body[data-theme="dark"] .up-field select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%23e8ecf1' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+/* ---- FAQ / misc ---- */
+
+body[data-theme="dark"] .up-faq-answer {
+  color: var(--up-ink-soft);
+}
+
+body[data-theme="dark"] .up-payment-methods-empty p:first-child {
+  color: var(--up-navy);
+}
+
+/* ---- Need Help card: slightly deeper in dark mode ---- */
+
+body[data-theme="dark"] .up-need-help {
+  background: linear-gradient(120deg, #0d1218 0%, #16202b 60%, #0d1218 100%);
+}
+
+/* ---- Dark-mode toggle row (Settings card) ---- */
+
+.up-darkmode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  padding: 6px 0 14px;
+}
+
+.up-darkmode-copy strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--up-navy);
+}
+
+.up-darkmode-copy span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--up-text-muted);
+}
+
+/* ---- Reduced motion: no transition on theme flip ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-theme] {
+    transition: none;
+  }
+}
+/* ---- RESTORE: bigger avatar + readable MY PROFILE (user side) ---- */
+
+.account-dd .account-circle img,
+.js-account-dropdown .account-circle img {
+  width: 42px !important;
+  height: 42px !important;
+  padding: 5px !important;
+}
+
+.account-dd .my-account span:not(.account-circle):not(.dropdown-caret),
+.js-account-dropdown
+  .my-account
+  span:not(.account-circle):not(.dropdown-caret) {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #1c2a38 !important;
+  opacity: 1 !important;
+}

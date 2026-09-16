@@ -30,10 +30,7 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-/* FIX: was setting $_SESSION by hand — sync_user_session()
-   does avatar + is_host consistently with every other page. */
  $navAvatar = sync_user_session($dbUser);
-
  $notification_count = 0;
 
 /* BOOKING CHARGES */
@@ -83,7 +80,6 @@ usort($paymentHistory, function ($a, $b) {
 
 /* TOTALS */
  $oneWeekAgo = strtotime('-7 days');
-
  $spent_this_week = 0;
  $spent_all_time  = 0;
  $pending_to_pay  = 0;
@@ -99,9 +95,7 @@ foreach ($paymentHistory as $p) {
     }
 }
 
-/* PAYMENT METHODS */
  $payment_methods = [];
-
  $activeSidebar = 'payments';
 ?>
 <!DOCTYPE html>
@@ -110,106 +104,24 @@ foreach ($paymentHistory as $p) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Payments — RoomHive</title>
-
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
-
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
+<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
 
-<header class="navbar">
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <!-- FIX: was relative "notifications.php" -->
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-        </div>
-    </nav>
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Payments</span>
+    <h1>Your payment history</h1>
+    <p class="ub-lead">Every booking charge and Hive Club payment, all in one place.</p>
 </header>
-
-<!-- HERO -->
-<section class="up-hero up-hero-sub">
-
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Payments
-            </span>
-
-            <h1 class="up-anim" style="--d: .15s;">
-                Your payment <span class="up-shimmer">history</span>
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-                Every booking charge and Hive Club payment,
-                all in one place.
-            </p>
-
-        </div>
-
-        <div class="up-hero-art up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/totalspenticon-userprofile.png" alt="" style="object-fit:contain; background:transparent; box-shadow:none;">
-        </div>
-
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-
-</section>
 
 <main class="up-dashboard">
 
-  <?php
-  /* FIX: the hand-rolled sidebar here pointed at several files
-     that don't exist (savedsearches.php, helpcenter.php, etc).
-     The shared partial is the single source of truth. */
-  require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
-  ?>
+  <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
 
   <div class="up-content">
 
@@ -325,24 +237,11 @@ foreach ($paymentHistory as $p) {
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -350,7 +249,6 @@ foreach ($paymentHistory as $p) {
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -358,7 +256,6 @@ foreach ($paymentHistory as $p) {
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
-
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -367,7 +264,6 @@ foreach ($paymentHistory as $p) {
             </div>
         </div>
     </div>
-
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
@@ -382,57 +278,49 @@ foreach ($paymentHistory as $p) {
 
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    /* Scroll reveal */
     var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
         revealEls.forEach(function (el) { el.classList.add("in-view"); });
     } else {
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-                    var el = entry.target;
-                    io.unobserve(el);
-                    el.classList.add("in-view");
-                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
-                });
-            },
-            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-        );
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
 
-    /* Money count-up */
     var counters = document.querySelectorAll("[data-count]");
     if (counters.length && !reduced && "IntersectionObserver" in window) {
-        var countIo = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-                    var el = entry.target;
-                    countIo.unobserve(el);
+        var countIo = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                countIo.unobserve(el);
 
-                    var target = parseFloat(el.getAttribute("data-count")) || 0;
-                    var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
-                    var t0 = null;
-                    var DURATION = 1300;
+                var target = parseFloat(el.getAttribute("data-count")) || 0;
+                var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
+                var t0 = null;
+                var DURATION = 1300;
 
-                    var stepFn = function (ts) {
-                        if (!t0) t0 = ts;
-                        var k = Math.min((ts - t0) / DURATION, 1);
-                        var eased = 1 - Math.pow(1 - k, 3);
-                        el.textContent = (target * eased).toLocaleString(
-                            undefined,
-                            { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
-                        );
-                        if (k < 1) window.requestAnimationFrame(stepFn);
-                    };
+                var stepFn = function (ts) {
+                    if (!t0) t0 = ts;
+                    var k = Math.min((ts - t0) / DURATION, 1);
+                    var eased = 1 - Math.pow(1 - k, 3);
+                    el.textContent = (target * eased).toLocaleString(
+                        undefined,
+                        { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+                    );
+                    if (k < 1) window.requestAnimationFrame(stepFn);
+                };
 
-                    window.requestAnimationFrame(stepFn);
-                });
-            },
-            { threshold: 0.6 }
-        );
+                window.requestAnimationFrame(stepFn);
+            });
+        }, { threshold: 0.6 });
         Array.prototype.forEach.call(counters, function (el) { countIo.observe(el); });
     }
 })();

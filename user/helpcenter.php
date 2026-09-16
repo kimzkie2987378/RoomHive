@@ -31,7 +31,6 @@ if ((int) $dbUser['is_host'] === 1) {
 }
 
  $navAvatar = sync_user_session($dbUser);
-
  $notification_count = 0;
 
 /* FAQ CONTENT */
@@ -85,96 +84,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Help Center — RoomHive</title>
-
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
-
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
-
-<header class="navbar">
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-        </div>
-    </nav>
+<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Help Center</span>
+    <h1>How can we help?</h1>
+    <p class="ub-lead">Answers to common questions, or send our team a message directly.</p>
 </header>
-
-<!-- HERO -->
-<section class="up-hero up-hero-sub">
-
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Help Center
-            </span>
-
-            <h1 class="up-anim" style="--d: .15s;">
-                How can we <span class="up-shimmer">help</span>?
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-                Answers to common questions, or send our team
-                a message directly.
-            </p>
-
-        </div>
-
-        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
-        </div>
-
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-
-</section>
 
 <main class="up-dashboard">
 
@@ -255,8 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <div class="up-card-header">
             <h3>Other Ways to Reach Us</h3>
           </div>
-          <p style="font-size:13px; color:var(--up-ink-soft, #5d6875); margin:0 0 8px;">&#128222; 0927 569 3574</p>
-          <p style="font-size:13px; color:var(--up-ink-soft, #5d6875); margin:0;">&#9993; kimdivino55@gmail.com</p>
+          <p style="font-size:13px; color:var(--up-ink-soft); margin:0 0 8px;">&#128222; 0927 569 3574</p>
+          <p style="font-size:13px; color:var(--up-ink-soft); margin:0;">&#9993; kimdivino55@gmail.com</p>
         </div>
 
       </div>
@@ -271,15 +193,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
             <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
             <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
             <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -287,7 +205,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -295,7 +212,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
-
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -304,7 +220,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
     </div>
-
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
@@ -318,26 +233,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     "use strict";
 
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
         revealEls.forEach(function (el) { el.classList.add("in-view"); });
     } else {
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-                    var el = entry.target;
-                    io.unobserve(el);
-                    el.classList.add("in-view");
-                    window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
-                });
-            },
-            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-        );
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
 
-    /* FAQ accordion — toggles a class; CSS handles the rest */
     document.querySelectorAll(".js-faq-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
             var item = btn.closest(".up-faq-item");

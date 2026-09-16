@@ -2,51 +2,22 @@
 /* =========================================================
    ROOMHIVE — MY MESSAGES (TENANT INBOX)
    usermessages.php
-
-   Chat-app layout: conversation list + open thread, search,
-   All/Unread tabs, day dividers, unread badges, mark-as-read.
-
-   FIXED vs previous version:
-   - Send failures (bad CSRF, empty body, DB error, not your
-     conversation) now show a visible flash banner instead of
-     silently redirecting as if nothing happened. This is the
-     #1 reason a message can "look sent" but never appear
-     anywhere — including for the host.
-   - Insert explicitly checks rowCount() before touching
-     conversations.last_message_at, and sets created_at itself
-     instead of relying on a DB default that may not exist.
-   - DB errors are caught and logged instead of being silently
-     swallowed by PDO's default error mode.
-
-   SCHEMA AUTO-DETECT: the messages table's timestamp column
-   is `sent_at` OR `created_at`, and the read-flag is `is_read`
-   OR `read_at` depending on schema version. Detected once via
-   SHOW COLUMNS and aliased so the rest of the page never cares.
-
-   DESIGN (CHANGED): banner migrated from the old .up-welcome
-   to the shared .up-hero design system used across every
-   /my-account page, plus scroll-reveal on the chat cards.
-   All messaging logic below is unchanged.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
-/* functions.php is OPTIONAL — every helper it might provide is
-   re-implemented below under guarded names, so this page works
-   whether or not that file exists. */
  $functionsFile = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 if (is_file($functionsFile)) {
     require_once $functionsFile;
 }
 
-/* ---------- Auth ---------- */
+/* Auth */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* ---------- Guarded helpers ---------- */
 if (!function_exists('h')) {
     function h($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
 }
@@ -71,8 +42,6 @@ if (!function_exists('um_csrf_token')) {
         return is_string($token) && isset($_SESSION['um_csrf']) && hash_equals($_SESSION['um_csrf'], $token);
     }
 }
-
-/* ---------- Flash: so send failures are visible ---------- */
 if (!function_exists('um_flash_set')) {
     function um_flash_set($type, $message) {
         $_SESSION['um_flash'] = ['type' => $type, 'message' => $message];
@@ -85,7 +54,7 @@ if (!function_exists('um_flash_set')) {
     }
 }
 
-/* ---------- User ---------- */
+/* User */
  $stmt = $pdo->prepare("SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1");
  $stmt->execute(['id' => $_SESSION['user_id']]);
  $dbUser = $stmt->fetch();
@@ -96,7 +65,6 @@ if (!$dbUser) {
     exit;
 }
 
-/* Hosts have their own inbox */
 if ((int) $dbUser['is_host'] === 1) {
     header("Location: /webprogg/host/hostmessages.php");
     exit;
@@ -107,12 +75,7 @@ if ((int) $dbUser['is_host'] === 1) {
  $activeSidebar = 'messages';
  $me = (int) $_SESSION['user_id'];
 
-/* -----------------------------------------------------
-   MESSAGES SCHEMA AUTO-DETECT
-   Whitelist built off SHOW COLUMNS, so interpolating these
-   values into SQL is safe — they can only ever be one of
-   the known column names, never user input.
------------------------------------------------------ */
+/* Schema auto-detect */
  $_msgCols      = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
  $MSG_TIME      = in_array('sent_at', $_msgCols, true) ? 'sent_at' : 'created_at';
  $HAS_IS_READ   = in_array('is_read', $_msgCols, true);
@@ -137,35 +100,22 @@ if ($HAS_IS_READ) {
     $markReadStmt = null;
 }
 
-/* -----------------------------------------------------
-   SEND — self-posting with PRG redirect
-   Every failure path sets a flash message instead of
-   failing silently, and the insert is verified.
------------------------------------------------------ */
+/* SEND — self-posting with PRG redirect */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conversation_id'])) {
     $convId = (int) $_POST['conversation_id'];
     $body   = trim($_POST['body']);
 
     if (!um_csrf_ok($_POST['um_csrf'] ?? '')) {
-
         um_flash_set('error', 'Your session expired — please try sending that again.');
-
     } elseif ($body === '') {
-
         um_flash_set('error', 'Message cannot be empty.');
-
     } else {
-
-        /* Ownership: this conversation must belong to THIS tenant */
         $own = $pdo->prepare("SELECT id FROM conversations WHERE id = :id AND user_id = :u LIMIT 1");
         $own->execute(['id' => $convId, 'u' => $me]);
 
         if (!$own->fetch()) {
-
             um_flash_set('error', 'That conversation could not be found.');
-
         } else {
-
             try {
                 $ins = $pdo->prepare(
                     "INSERT INTO messages (conversation_id, sender_id, body, $MSG_TIME)
@@ -173,9 +123,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
                 );
                 $ins->execute(['c' => $convId, 's' => $me, 'b' => $body]);
 
-                if ($ins->rowCount() === 1) {
+                                if ($ins->rowCount() === 1) {
                     $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = :id")
                         ->execute(['id' => $convId]);
+
+                    /* NEW — notify the other party */
+                    $whoStmt = $pdo->prepare(
+                        "SELECT user_id, host_id FROM conversations WHERE id = :id LIMIT 1"
+                    );
+                    $whoStmt->execute(['id' => $convId]);
+                    $conv = $whoStmt->fetch();
+
+                    if ($conv) {
+                        $recipient = ((int) $conv['user_id'] === $me)
+                            ? (int) $conv['host_id']
+                            : (int) $conv['user_id'];
+
+                        $recipientLink = ((int) $conv['user_id'] === $me)
+                            ? '/webprogg/host/hostmessages.php?conversation=' . $convId
+                            : '/webprogg/user/usermessages.php?conversation=' . $convId;
+
+                        notify_user($pdo, $recipient, $recipientLink);
+                    }
                 } else {
                     um_flash_set('error', 'Your message could not be saved. Please try again.');
                     error_log('usermessages.php: insert reported rowCount=0 for conversation ' . $convId);
@@ -193,9 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
 
  $flash = um_flash_take();
 
-/* -----------------------------------------------------
-   CONVERSATION LIST
------------------------------------------------------ */
+/* Conversation list */
  $conversationsStmt = $pdo->prepare(
     "SELECT c.id, c.listing_id, c.last_message_at,
             h.id AS host_id, h.name AS host_name, h.avatar_path AS host_avatar,
@@ -228,9 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
     ];
 }, $conversationsStmt->fetchAll());
 
-/* -----------------------------------------------------
-   OPEN THREAD
------------------------------------------------------ */
+/* Open thread */
  $isExplicitThread = isset($_GET['conversation']);
  $activeConversationId = $isExplicitThread
     ? (int) $_GET['conversation']
@@ -260,7 +225,7 @@ if ($activeConversationId !== null) {
     }
 }
 
-/* Navbar bell = real unread total (computed AFTER mark-read) */
+/* Bell = real unread total */
  $bellStmt = $pdo->prepare(
     "SELECT COUNT(*)
      FROM messages m
@@ -285,14 +250,11 @@ if (!function_exists('message_day_label')) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Messages — RoomHive</title>
-
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 <link rel="stylesheet" href="/webprogg/assets/usermessages.css">
-
-<!-- CHANGED: enables scroll-reveal only when JS is available -->
 <script>document.documentElement.classList.add("js");</script>
-
 <style>
 .um-flash { padding: 10px 14px; margin: 0 0 12px; border-radius: 8px; font-size: 14px; }
 .um-flash-error { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
@@ -305,7 +267,6 @@ if (!function_exists('message_day_label')) {
     <a href="/webprogg/user/usershome.php" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
-
     <nav class="nav-links">
         <a href="/webprogg/user/usershome.php">HOME</a>
         <a href="/webprogg/Listings/listing.php">LISTINGS</a>
@@ -313,23 +274,18 @@ if (!function_exists('message_day_label')) {
         <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
         <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
             <?php endif; ?>
         </a>
-
         <div class="account-dropdown js-account-dropdown">
             <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
+                <span class="account-circle"><img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg"></span>
                 <span>MY PROFILE</span>
                 <span class="dropdown-caret">&#9662;</span>
             </button>
-
             <div class="account-dropdown-menu" id="accountDropdownMenu">
                 <a href="/webprogg/user/userprofile.php">My Profile</a>
                 <a href="/webprogg/auth/logout.php">Logout</a>
@@ -338,92 +294,13 @@ if (!function_exists('message_day_label')) {
     </nav>
 </header>
 
-<!-- =========================================================
-     CHANGED: HERO — replaces the old .up-welcome banner with
-     the shared .up-hero design system (honeycomb texture,
-     pulse badge, shimmer title, glow blobs, wave divider).
-========================================================= -->
-<section class="up-hero up-hero-sub">
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Tenant Inbox</span>
+    <h1>Your conversations</h1>
+    <p class="ub-lead">Talk with hosts about your bookings and questions.</p>
+</header>
 
-    <!-- Decorative background: glow blobs (honeycomb is the
-         ::before pseudo-element on .up-hero itself) -->
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-
-        <!-- HERO TEXT -->
-        <div class="up-hero-text">
-
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-
-                <span class="up-pulse-dot"></span>
-
-                Tenant Inbox
-
-            </span>
-
-
-            <h1 class="up-anim" style="--d: .15s;">
-
-                Your
-
-                <span class="up-shimmer">conversations</span>
-
-            </h1>
-
-
-            <span class="up-welcome-underline up-anim" style="--d: .22s;"></span>
-
-
-            <p class="up-hero-sub up-anim" style="--d: .28s;">
-
-                Talk with hosts about your bookings and questions.
-
-            </p>
-
-        </div>
-
-
-        <!-- HERO ART (icon PNG — contained, no photo shadow) -->
-        <div class="up-hero-art up-hero-art-contain up-anim" style="--d: .3s;">
-
-            <span class="up-art-glow" aria-hidden="true"></span>
-
-            <img
-                src="/webprogg/images/messagesicon-userprofile.png"
-                alt=""
-            >
-
-        </div>
-
-    </div>
-
-
-    <!-- Wave divider into the dashboard -->
-    <svg
-        class="up-hero-wave"
-        viewBox="0 0 1440 90"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-    >
-
-        <path
-            d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z"
-            fill="#ffffff"
-        >
-
-        </path>
-
-    </svg>
-
-</section>
-
-<!-- =========================================================
-     MAIN DASHBOARD LAYOUT
-========================================================= -->
 <main class="up-dashboard">
 
   <?php
@@ -441,8 +318,6 @@ if (!function_exists('message_day_label')) {
 
     <?php if (empty($conversations)): ?>
 
-      <!-- EMPTY STATE: no conversations at all yet -->
-      <!-- CHANGED: added up-reveal -->
       <section class="up-card up-msg-card-empty up-reveal">
         <div class="up-msg-list-header"><h2>Chats</h2></div>
         <div class="up-msg-welcome">
@@ -459,12 +334,10 @@ if (!function_exists('message_day_label')) {
 
     <?php else: ?>
 
-      <!-- CHANGED: added up-reveal -->
       <section class="up-card up-msg-card up-reveal<?php echo $isExplicitThread ? ' up-msg-mobile-open' : ''; ?>">
 
         <!-- LIST PANE -->
         <div class="up-msg-list-pane">
-
           <div class="up-msg-list-header">
             <h2>Chats</h2>
             <a href="/webprogg/Listings/listing.php" class="up-msg-compose" title="Start a new conversation" aria-label="Start a new conversation">
@@ -508,7 +381,6 @@ if (!function_exists('message_day_label')) {
               </a>
             <?php endforeach; ?>
           </div>
-
         </div>
 
         <!-- THREAD PANE -->
@@ -517,7 +389,6 @@ if (!function_exists('message_day_label')) {
 
             <div class="up-msg-thread-header">
               <a href="/webprogg/user/usermessages.php" class="up-msg-back" aria-label="Back to messages">&#8249;</a>
-
               <a href="/webprogg/host/hostpublicprofile.php?id=<?php echo h($activeConversation['host_id']); ?>"
                  class="up-msg-thread-identity" title="View <?php echo h($activeConversation['host_name']); ?>'s profile">
                 <img class="up-msg-thread-avatar" src="<?php echo h($activeConversation['host_avatar']); ?>" alt="">
@@ -528,7 +399,6 @@ if (!function_exists('message_day_label')) {
                   <?php endif; ?>
                 </div>
               </a>
-
               <div class="up-msg-thread-actions">
                 <?php if ($activeConversation['listing_id']): ?>
                   <a href="/webprogg/Listings/listingdetails.php?id=<?php echo h($activeConversation['listing_id']); ?>"
@@ -667,52 +537,25 @@ if (!function_exists('message_day_label')) {
   })();
 </script>
 
-<!-- =========================================================
-     NEW — SCROLL REVEAL (self-contained)
-     Fades the chat card up on first view. Honors
-     prefers-reduced-motion; no-ops without JS (the .js flag
-     on <html> keeps everything visible by default).
-========================================================= -->
+<!-- Reveal (self-contained) -->
 <script>
 (function () {
     "use strict";
-
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    var revealEls = Array.prototype.slice.call(
-        document.querySelectorAll(".up-reveal")
-    );
-
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
-
-        revealEls.forEach(function (el) {
-            el.classList.add("in-view");
-        });
-
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
     } else {
-
-        var io = new IntersectionObserver(
-            function (entries) {
-                entries.forEach(function (entry) {
-                    if (!entry.isIntersecting) return;
-
-                    var el = entry.target;
-                    io.unobserve(el);
-                    el.classList.add("in-view");
-
-                    /* Zero the stagger delay after the reveal so
-                       hover transitions respond instantly. */
-                    window.setTimeout(function () {
-                        el.style.setProperty("--i", "0");
-                    }, 1200);
-                });
-            },
-            { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
-        );
-
-        revealEls.forEach(function (el) {
-            io.observe(el);
-        });
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+        revealEls.forEach(function (el) { io.observe(el); });
     }
 })();
 </script>

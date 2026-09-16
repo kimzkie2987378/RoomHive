@@ -87,7 +87,7 @@ try {
 <body>
 
 <?php include __DIR__ . '/host_navbar.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 <main class="hp-dashboard hp-dashboard--flush-top">
 
     <?php include __DIR__ . '/host_sidebar.php'; ?>

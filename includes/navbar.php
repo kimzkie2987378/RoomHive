@@ -1,31 +1,29 @@
 <?php
 /* =========================================================
-   ROOMHIVE — SHARED NAVIGATION HEADER (SELF-CONTAINED)
+   ROOMHIVE — SHARED NAVIGATION HEADER
    /webprogg/includes/navbar.php
 
-   HOW TO USE
-   ----------
-   Before including this file, set:
+   Same design as host_navbar.php: 42px avatar, 12px bold
+   MY PROFILE label, white rounded dropdown with honey hover.
 
-     $isLoggedIn      (bool)  required
-     $navigation      array   ["LABEL" => "/url", ...]  required
-     $currentPage     string  the URL that should be marked active
+   Dropdown links are ROLE-AWARE:
+     - Host     → Host Dashboard (hostprofile.php)
+     - Non-host → User Profile (userprofile.php)
+     - Both     → Profile Settings + Messages (each side's
+                  own inbox) + Logout
 
-   Optional — safe defaults are applied below, so the navbar
-   can never crash a page that forgot one:
+   Before including, set:
+     $isLoggedIn (bool), $navigation (array),
+     $currentPage (string)
+   Optional (safe defaults):
+     $navAvatar, $notification_count, $isHost,
+     $logoHref, $guestCtaHref, $guestCtaLabel
+========================================================= */
 
-     $navAvatar            string  avatar URL (logged in)
-     $notification_count   int     unread notification count
-     $isHost               bool    adds "Host Profile" link
-     $logoHref             string
-     $guestCtaHref         string
-     $guestCtaLabel        string
-
-   Then:
-     include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
-   ========================================================= */
-
- $isLoggedIn = $isLoggedIn ?? false;
+/* Fallback: derive login state from the session if the page
+   forgot to set it (fixes the "guest navbar on auth-gated
+   pages" bug). */
+ $isLoggedIn = $isLoggedIn ?? (($_SESSION['logged_in'] ?? false) === true);
 
  $navigation  = $navigation  ?? [];
  $currentPage = $currentPage ?? '';
@@ -35,127 +33,185 @@
  $guestCtaHref  = $guestCtaHref  ?? '/webprogg/auth/loginform.php';
  $guestCtaLabel = $guestCtaLabel ?? 'LIST YOUR SPACE';
 
-/* These two caused the "Undefined variable" warnings before —
-   they are now ALWAYS defined, even for guests. */
  $navAvatar          = $navAvatar          ?? '/webprogg/images/default-avatar.png';
  $notification_count = $notification_count ?? 0;
-?>
 
-<link rel="stylesheet" href="/webprogg/assets/style.css">
-<link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+/* ---- Role-aware dropdown links ---- */
+ $messagesHref = $isHost
+    ? '/webprogg/host/hostmessages.php'
+    : '/webprogg/user/usermessages.php';
+
+ $profileHref     = $isHost
+    ? '/webprogg/host/hostprofile.php'
+    : '/webprogg/user/userprofile.php';
+
+ $profileLabel    = $isHost ? 'Host Dashboard' : 'User Profile';
+
+ $settingsHref    = $isHost
+    ? '/webprogg/host/hosteditprofile.php'
+    : '/webprogg/user/editprofile.php';
+?>
 
 <style>
     /* =====================================================
-       ACCOUNT DROPDOWN CSS
-       Lives INSIDE navbar.php so EVERY page gets it for
-       free. Scoped under header.navbar so it wins over
-       style.css / myaccount.css.
+       SHARED NAVBAR — matches host_navbar.php's design.
+       Scoped under header.navbar.
     ====================================================== */
 
-    header.navbar .account-dropdown {
+    header.navbar .account-dd {
         position: relative;
     }
 
-    header.navbar .account-dropdown .my-account {
+    header.navbar .account-dd .my-account {
         display: flex;
         align-items: center;
-        gap: 6px;
+
+        gap: 8px;
+
         background: none;
         border: none;
+
         cursor: pointer;
+
         font: inherit;
         color: inherit;
     }
 
-    header.navbar .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
+    header.navbar .account-dd .account-circle img {
+        width: 42px;
+        height: 42px;
+
+        padding: 5px;
+
+        background: #1c2a38;
+
+        border-radius: 50%;
+
+        object-fit: contain;
+
+        display: block;
+    }
+
+    header.navbar .account-dd .my-account span:not(.account-circle) {
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+
+        color: #1c2a38;
+    }
+
+    header.navbar .account-dd .dropdown-caret {
+        font-size: 0.75em;
+
         transition: transform 0.15s ease;
     }
 
-    header.navbar .account-dropdown.open .dropdown-caret {
+    header.navbar .account-dd.open .dropdown-caret {
         transform: rotate(180deg);
     }
 
-    header.navbar .account-dropdown-menu {
+    header.navbar .account-dd-menu {
         display: none;
+
         position: absolute;
-        top: 100%;
+
+        top: calc(100% + 10px);
         right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
+
+        min-width: 190px;
+
+        padding: 6px;
+
+        background: #ffffff;
+
+        border: 1px solid rgba(28, 42, 56, 0.08);
+        border-radius: 12px;
+
+        box-shadow: 0 14px 30px rgba(28, 42, 56, 0.14);
+
+        flex-direction: column;
+
+        z-index: 1100;
+    }
+
+    header.navbar .account-dd.open .account-dd-menu {
+        display: flex;
+
+        animation: sharedDDIn 0.2s ease;
+    }
+
+    @keyframes sharedDDIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    header.navbar .account-dd-menu a {
+        display: block;
+
+        padding: 10px 12px;
+
         border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 9999;
-        margin-top: 8px;
-    }
 
-    header.navbar .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
+        color: #1c2a38;
 
-    header.navbar .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 600;
+
         text-decoration: none;
-        color: #333;
         white-space: nowrap;
+
+        transition: 0.15s ease;
     }
 
-    header.navbar .account-dropdown-menu a:hover {
-        background: #f5f5f5;
+    header.navbar .account-dd-menu a:hover {
+        background: #fdf1dc;
+        color: #b07708;
     }
 
-    /* Insurance: if style.css ever sets overflow:hidden on the
-       navbar or .nav-links, the open menu would be clipped and
-       look "broken" even though the JS works. Force visible. */
+    /* Never clip the open menu */
     header.navbar,
     header.navbar .nav-links {
         overflow: visible;
     }
+
     /* =====================================================
-   NAV LINK — SLIDING UNDERLINE
-   Sweeps in from the left on hover, and stays visible
-   for whichever link matches the current page.
-====================================================== */
+       NAV LINK — sliding underline
+    ====================================================== */
 
-header.navbar .nav-links a {
-    position: relative;
-    padding-bottom: 6px;
-    color: #1c1c1c;
-    transition: color 0.2s ease;
-}
+    header.navbar .nav-links a {
+        position: relative;
+        padding-bottom: 6px;
+        color: #1c1c1c;
+        transition: color 0.2s ease;
+    }
 
-header.navbar .nav-links a::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 2px;
-    width: 100%;
-    background: #dd930f;
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
+    header.navbar .nav-links a::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 2px;
+        width: 100%;
+        background: #dd930f;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
 
-header.navbar .nav-links a:hover,
-header.navbar .nav-links a.active {
-    color: #dd930f;
-}
+    header.navbar .nav-links a:hover,
+    header.navbar .nav-links a.active {
+        color: #dd930f;
+    }
 
-header.navbar .nav-links a:hover::after,
-header.navbar .nav-links a.active::after {
-    transform: scaleX(1);
-}
+    header.navbar .nav-links a:hover::after,
+    header.navbar .nav-links a.active::after {
+        transform: scaleX(1);
+    }
 
-/* Guest CTA and the account button aren't part of this —
-   they already look like buttons, not text links */
-header.navbar .nav-links a.list-space::after,
-header.navbar .account-dropdown .my-account::after {
-    display: none;
-}
+    header.navbar .nav-links a.list-space::after,
+    header.navbar .account-dd .my-account::after {
+        display: none;
+    }
 </style>
 
 <header class="navbar">
@@ -187,13 +243,12 @@ header.navbar .account-dropdown .my-account::after {
                 <?php endif; ?>
             </a>
 
-            <!-- MY ACCOUNT -->
-            <div class="account-dropdown" id="accountDropdown">
+            <!-- MY ACCOUNT — role-aware dropdown -->
+            <div class="account-dd">
 
                 <button
                     type="button"
-                    class="my-account"
-                    id="accountDropdownToggle"
+                    class="my-account account-dd-toggle"
                     aria-haspopup="true"
                     aria-expanded="false"
                 >
@@ -204,12 +259,30 @@ header.navbar .account-dropdown .my-account::after {
                     <span class="dropdown-caret">&#9662;</span>
                 </button>
 
-                <div class="account-dropdown-menu" id="accountDropdownMenu">
+                <div class="account-dd-menu">
+
                     <?php if ($isHost): ?>
-                        <a href="/webprogg/host/hostprofile.php">Host Profile</a>
+                        <a href="/webprogg/host/hostprofile.php">
+                            Host Dashboard
+                        </a>
+                    <?php else: ?>
+                        <a href="/webprogg/user/userprofile.php">
+                            User Profile
+                        </a>
                     <?php endif; ?>
-                    <a href="/webprogg/user/userprofile.php">My Profile</a>
-                    <a href="/webprogg/auth/logout.php">Logout</a>
+
+                    <a href="<?php echo htmlspecialchars($settingsHref); ?>">
+                        Profile Settings
+                    </a>
+
+                    <a href="<?php echo htmlspecialchars($messagesHref); ?>">
+                        Messages
+                    </a>
+
+                    <a href="/webprogg/auth/logout.php">
+                        Logout
+                    </a>
+
                 </div>
 
             </div>
@@ -227,41 +300,46 @@ header.navbar .account-dropdown .my-account::after {
 
 </header>
 
-<?php if ($isLoggedIn): ?>
-
+<!-- Shared dropdown script — self-contained, guarded -->
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+(function () {
+    "use strict";
 
-    var toggle = document.getElementById('accountDropdownToggle');
+    if (window.__sharedNavDD) { return; }
+    window.__sharedNavDD = true;
 
-    /* Guard: element missing, or already bound by a leftover
-       script on the page (double-binding makes ONE click
-       toggle the menu open AND closed, so it looks dead). */
-    if (!toggle || toggle.dataset.dropdownBound) {
-        return;
-    }
+    document.addEventListener("click", function (event) {
 
-    toggle.dataset.dropdownBound = '1';
+        var toggle = event.target.closest
+            ? event.target.closest(".account-dd-toggle")
+            : null;
 
-    var dropdown = toggle.closest('.account-dropdown');
-    if (!dropdown) {
-        return;
-    }
+        if (toggle) {
+            var dd = toggle.closest(".account-dd");
 
-    toggle.addEventListener('click', function (event) {
-        event.stopPropagation();
+            if (dd) {
+                var isOpen = dd.classList.toggle("open");
+                toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            }
 
-        var isOpen = dropdown.classList.toggle('open');
-        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            return;
+        }
+
+        document.querySelectorAll(".account-dd.open").forEach(function (dd) {
+            dd.classList.remove("open");
+            var btn = dd.querySelector(".account-dd-toggle");
+            if (btn) { btn.setAttribute("aria-expanded", "false"); }
+        });
     });
 
-    document.addEventListener('click', function (event) {
-        if (!dropdown.contains(event.target)) {
-            dropdown.classList.remove('open');
-            toggle.setAttribute('aria-expanded', 'false');
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            document.querySelectorAll(".account-dd.open").forEach(function (dd) {
+                dd.classList.remove("open");
+                var btn = dd.querySelector(".account-dd-toggle");
+                if (btn) { btn.setAttribute("aria-expanded", "false"); }
+            });
         }
     });
-});
+})();
 </script>
-
-<?php endif; ?>

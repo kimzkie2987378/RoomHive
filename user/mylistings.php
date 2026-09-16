@@ -195,7 +195,7 @@ function hp_status_label($status) {
 </main>
 
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/host/host_footer.php'; ?>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 <!-- =========================================================
      LISTING 3-DOT MENU + DELETE
 ========================================================= -->

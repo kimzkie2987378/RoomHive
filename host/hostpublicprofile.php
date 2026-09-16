@@ -3,6 +3,15 @@
    hostpublicprofile.php
    Public "meet the host" page, linked from listing-detail.php's
    "View Host Profile" button (?id= is the host's users.id).
+
+   FIXES:
+   - Navbar was MISSING (only its orphaned <style> block
+     remained) — now uses the shared includes/navbar.php,
+     which carries the fixed dropdown design (42px avatar,
+     12px MY PROFILE, role-aware links incl. Messages).
+   - Stray "<" character after </main> removed.
+   - Old inline .account-dropdown <style> block removed
+     (navbar.php provides the dropdown styles now).
 ========================== */
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
@@ -19,15 +28,41 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
 /* Same nav-avatar staleness handling as listing.php / listing-detail.php,
    so a freshly-uploaded profile photo shows immediately in the navbar
-   without a re-login. */
+   without a re-login. Also pulls the VIEWER's is_host so navbar.php's
+   dropdown can show the Host Dashboard link when appropriate. */
  $navAvatar = '/webprogg/images/default-avatar.png';
+ $isHost    = false;
 
 if ($isLoggedIn && isset($_SESSION['user_id'])) {
-    $navAvatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
+    $navAvatarStmt = $pdo->prepare("SELECT avatar_path, is_host FROM users WHERE id = :id LIMIT 1");
     $navAvatarStmt->execute(['id' => $_SESSION['user_id']]);
     $navAvatarRow = $navAvatarStmt->fetch();
-    $navAvatar = !empty($navAvatarRow['avatar_path']) ? $navAvatarRow['avatar_path'] : $navAvatar;
+
+    if ($navAvatarRow) {
+        $navAvatar = !empty($navAvatarRow['avatar_path']) ? $navAvatarRow['avatar_path'] : $navAvatar;
+        $isHost    = !empty($navAvatarRow['is_host']);
+    }
 }
+
+ $notification_count = 0;
+
+/* =========================================================
+   CHANGED — SHARED NAVBAR CONTRACT
+   navbar.php expects: $navigation ("LABEL" => "/url"),
+   $currentPage, $isLoggedIn, $navAvatar, $notification_count,
+   $isHost (the VIEWER's host status, for the dropdown).
+========================================================= */
+ $navigation = [
+    "HOME"          => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
+    "LISTINGS"      => "/webprogg/Listings/listing.php",
+    "HOW IT WORKS"  => "/webprogg/host/howitworks.php",
+    "BECOME A HOST" => "/webprogg/host/becomeahost.php",
+    "HIVE CLUB"     => "/webprogg/hiveclub.php",
+    "CONTACTS"      => "/webprogg/misc/contacts.php",
+];
+
+/* Detail page — no nav item is "current" */
+ $currentPage = '';
 
 /* =========================
    RESOLVE HOST FROM ?id=
@@ -169,7 +204,7 @@ function roomhive_detail_url($listing)
     <script>document.documentElement.classList.add("js");</script>
 
     <!-- =====================================================
-         HOST PUBLIC PROFILE — HIVE POLISH LAYER (NEW)
+         HOST PUBLIC PROFILE — HIVE POLISH LAYER
          Loads AFTER host-profile.css so it wins the cascade at
          equal specificity. Upgrades colors, buttons, badges,
          cards and the listing grid to the site-wide hive design
@@ -606,19 +641,15 @@ function roomhive_detail_url($listing)
 
 <!-- =========================
      NAVIGATION BAR
-     (identical markup to listing.php / listing-detail.php)
+     FIX: the header markup was missing from this page
+     entirely (only its orphaned <style> block remained).
+     Now uses the shared navbar.php — same fixed dropdown
+     design as host_navbar.php, role-aware links (Host
+     Dashboard for hosts, User Profile for renters),
+     Messages entry, and self-contained dropdown JS.
 ========================== -->
 
-<style>
-.account-dropdown { position: relative; }
-.account-dropdown .my-account { display: flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; font: inherit; color: inherit; }
-.account-dropdown .dropdown-caret { font-size: 0.7em; transition: transform 0.15s ease; }
-.account-dropdown.open .dropdown-caret { transform: rotate(180deg); }
-.account-dropdown-menu { display: none; position: absolute; top: 100%; right: 0; min-width: 160px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); overflow: hidden; z-index: 1000; margin-top: 8px; }
-.account-dropdown.open .account-dropdown-menu { display: block; }
-.account-dropdown-menu a { display: block; padding: 10px 16px; text-decoration: none; color: #333; white-space: nowrap; }
-.account-dropdown-menu a:hover { background: #fff5e6; color: #b07708; }
-</style>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
 
 <!-- =========================
      HOST PROFILE PAGE
@@ -626,7 +657,7 @@ function roomhive_detail_url($listing)
 
 <main class="hp-page">
 
-    <!-- NEW: decoration layer — honeycomb texture + glow
+    <!-- Decoration layer — honeycomb texture + glow
          blobs, in brand-new class names so they can't
          collide with host-profile.css -->
     <div class="hp-deco" aria-hidden="true">
@@ -640,7 +671,6 @@ function roomhive_detail_url($listing)
          HERO
     ========================== -->
 
-    <!-- CHANGED: entrance reveal -->
     <section class="hp-hero hp-reveal" style="--d: .1s;">
 
         <div class="hp-hero-inner">
@@ -698,7 +728,6 @@ function roomhive_detail_url($listing)
 
         <div class="hp-main">
 
-            <!-- CHANGED: entrance reveal -->
             <section class="hp-about hp-reveal" style="--d: .18s;">
 
                 <h2>About <?= htmlspecialchars($host['name'], ENT_QUOTES, 'UTF-8') ?></h2>
@@ -713,7 +742,6 @@ function roomhive_detail_url($listing)
 
             </section>
 
-            <!-- CHANGED: entrance reveal -->
             <section class="hp-listings hp-reveal" style="--d: .24s;">
 
                 <h2>
@@ -786,7 +814,6 @@ function roomhive_detail_url($listing)
              SIDEBAR
         ========================== -->
 
-        <!-- CHANGED: entrance reveal -->
         <aside class="hp-sidebar hp-reveal" style="--d: .2s;">
 
             <div class="hp-card">
@@ -842,7 +869,8 @@ function roomhive_detail_url($listing)
 
 </main>
 
-<
+<!-- FIX: stray "<" character after </main> removed — it was
+     rendering as visible text on the page. -->
 
 <!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
 <script src="/webprogg/assets/javaScript.js"></script>

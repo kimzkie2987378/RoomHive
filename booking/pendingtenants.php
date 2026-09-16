@@ -3,12 +3,10 @@
    ROOMHIVE — PENDING TENANTS
    pendingtenants.php
 
-   Same navbar / sidebar / dashboard shell as mylistings.php
-   and hostprofile.php. Shows every tenant application (a row
-   in `bookings` with status = 'pending') across ALL of this
-   host's listings in one place, with Accept / Reject actions
-   that call the same accept-booking.php / reject-booking.php
-   endpoints used by the 3-dot menus on those two pages.
+   DESIGN FIX: the host-dd dropdown styles are now embedded
+   directly in this page's <style> block (they weren't
+   applying from hostprofile.css, leaving the menu stuck
+   open as plain text). All PHP logic unchanged.
 ========================================================= */
 
 session_start();
@@ -22,11 +20,11 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$stmt = $pdo->prepare(
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host, created_at FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -36,61 +34,30 @@ if (!$dbUser) {
 
 /* -----------------------------------------------------
    HOST GUARD
-   Same reasoning as mylistings.php / hostprofile.php.
 ----------------------------------------------------- */
 if (!$dbUser['is_host']) {
-    header("Location: /webprogg/host/hostprofile.php"); // TODO: change back to becomeahost.php once that file exists
+    header("Location: /webprogg/host/hostprofile.php");
     exit;
 }
 
-/* Keep the navbar's account icon in sync too — same reasoning
-   as hostprofile.php / mylistings.php. */
-$_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
-$navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $_SESSION['avatar_path'] = $dbUser['avatar_path'] ?? null;
+ $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
 /* -----------------------------------------------------
    HOST DATA (sidebar card)
 ----------------------------------------------------- */
-$host = [
+ $host = [
     'name'         => $dbUser['name'],
     'avatar'       => !empty($dbUser['avatar_path']) ? $dbUser['avatar_path'] : '/webprogg/images/default-avatar.png',
     'member_since' => date('F Y', strtotime($dbUser['created_at'])),
 ];
 
-$notification_count = 0; // TODO: wire up once a notifications table exists
+ $notification_count = 0;
 
 /* -----------------------------------------------------
    PENDING TENANT APPLICATIONS
-   Every booking sitting at status = 'pending' on any listing
-   this host owns — the same rows the 3-dot menus on
-   mylistings.php / hostprofile.php can accept or reject,
-   just gathered into one dedicated queue here.
-
-   b.amount_paid + b.paid_at are pulled here too (same columns
-   process-payment.php / listingpayment.php / booking-details.php
-   already use for the "Amount Paid" / "Balance Due" figures):
-     - amount_paid vs total is what actually determines whether
-       a booking is fully paid — NOT whether paid_at is set.
-       paid_at only marks the moment the reservation fee cleared
-       (see process-payment.php's EXPIRY NOTE), so a booking can
-       have paid_at set and STILL owe a balance, e.g. the ₱1,000
-       reservation fee paid against a ₱3,000 total.
-     - paid_at is still useful as "the exact time a payment was
-       sent" for display, since a balance payment doesn't update
-       it (also per process-payment.php) — it's the timestamp of
-       the tenant's first/only payment either way.
-
-   ALIGNMENT FIX: amount_paid is now pulled through
-   COALESCE(b.amount_paid, 0) so a NULL in that column (e.g. an
-   older row inserted before amount_paid existed, or any write
-   path that leaves it unset) reads as 0 here — the same
-   "unpaid until proven otherwise" assumption booking-details.php
-   makes via `(float) ($booking['amount_paid'] ?? 0)`. Without
-   this, a NULL amount_paid could silently produce a different
-   payment badge here than on booking-details.php for the exact
-   same row.
 ----------------------------------------------------- */
-$pendingStmt = $pdo->prepare(
+ $pendingStmt = $pdo->prepare(
     "SELECT b.id AS booking_id, b.total, COALESCE(b.amount_paid, 0) AS amount_paid,
             b.booked_at, b.paid_at,
             b.checkin_date, b.checkout_date, b.guests,
@@ -105,67 +72,44 @@ $pendingStmt = $pdo->prepare(
      WHERE l.user_id = :id AND b.status = 'pending'
      ORDER BY b.booked_at DESC"
 );
-$pendingStmt->execute(['id' => $_SESSION['user_id']]);
-$pendingApplications = $pendingStmt->fetchAll();
+ $pendingStmt->execute(['id' => $_SESSION['user_id']]);
+ $pendingApplications = $pendingStmt->fetchAll();
 
-$pending_tenants_count = count($pendingApplications);
+ $pending_tenants_count = count($pendingApplications);
 
 /* Small helper so we're not repeating htmlspecialchars() everywhere */
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
 }
 
 /* -----------------------------------------------------
    PHOTO PATH FIX
-   Uploaded photo_path / avatar_path values for OTHER users'
-   photos (listing cover + tenant avatar here) are saved
-   relative to /webprogg — e.g. "uploads/listings/abc.jpg".
-   Printed as-is, the browser resolves that against the
-   CURRENT page's folder instead of the site root, which is
-   why these break on a nested page like /booking/, even
-   though the logged-in host's OWN avatar (already stored as
-   a full "/webprogg/..." path by uploadavatar.php) works
-   fine. This forces every photo path back to an absolute,
-   site-root path so it loads correctly from any page.
-
-   ALIGNMENT FIX: also strips a leading "webprogg/" if the
-   stored value already includes it (matches the same guard
-   booking-details.php added), so a path like
-   "webprogg/uploads/listings/abc.jpg" doesn't turn into
-   "/webprogg/webprogg/uploads/listings/abc.jpg" here while
-   rendering correctly there.
 ----------------------------------------------------- */
-function resolve_photo($path, $fallback) {
-    if (empty($path)) {
-        return $fallback;
+if (!function_exists('resolve_photo')) {
+    function resolve_photo($path, $fallback) {
+        if (empty($path)) {
+            return $fallback;
+        }
+        if (preg_match('#^(https?://|/)#i', $path)) {
+            return $path;
+        }
+        $normalized = ltrim($path, '/');
+        if (stripos($normalized, 'webprogg/') === 0) {
+            $normalized = substr($normalized, strlen('webprogg/'));
+        }
+        return '/webprogg/' . $normalized;
     }
-    if (preg_match('#^(https?://|/)#i', $path)) {
-        return $path; // already absolute — leave it alone
-    }
-    $normalized = ltrim($path, '/');
-    if (stripos($normalized, 'webprogg/') === 0) {
-        $normalized = substr($normalized, strlen('webprogg/'));
-    }
-    return '/webprogg/' . $normalized;
 }
 
 /* -----------------------------------------------------
    DATE LABELS
-   `checkout_date` is NULL for a Long Term inquiry (book.php
-   clears it when the "Long Term" checkbox was checked), so a
-   missing checkout here doesn't mean "no data" — it means the
-   tenant asked for an open-ended stay starting on check-in.
-   That's a real, meaningful state, so it gets its own label
-   instead of being lumped in with "Not specified".
 ----------------------------------------------------- */
-
-/* Single check-in date, e.g. "September 11, 2026". */
 function pt_checkin_label($checkin) {
     return !empty($checkin) ? date('F j, Y', strtotime($checkin)) : 'Not specified';
 }
 
-/* Single check-out date — "Long Term" when there's a check-in
-   but no check-out, "Not specified" when there's neither. */
 function pt_checkout_label($checkin, $checkout) {
     if (!empty($checkout)) {
         return date('F j, Y', strtotime($checkout));
@@ -173,11 +117,6 @@ function pt_checkout_label($checkin, $checkout) {
     return !empty($checkin) ? 'Long Term' : 'Not specified';
 }
 
-/* Combined "Check-in - Check-out" range for the card's date
-   line, e.g.:
-     "September 11, 2026 - September 13, 2026"   (normal stay)
-     "September 11, 2026 - Long Term"             (long term)
-     "Not specified"                              (neither set) */
 function pt_date_range_label($checkin, $checkout) {
     if (empty($checkin)) {
         return 'Not specified';
@@ -187,27 +126,6 @@ function pt_date_range_label($checkin, $checkout) {
 
 /* -----------------------------------------------------
    PAYMENT FIGURES + LABELS
-   ALIGNMENT FIX: this used to be three separate small
-   functions (pt_payment_remaining / pt_payment_status_label /
-   pt_payment_status_class) that each independently recomputed
-   `total - amount_paid`. They agreed with booking-details.php
-   mathematically, but keeping three separate call sites for
-   the same subtraction is exactly how these two pages could
-   drift apart the next time only one of them gets edited.
-
-   This is now ONE function, pt_payment_breakdown(), that
-   mirrors booking-details.php's own variable names and
-   rounding line-for-line:
-
-       $totalAmount = (float) $booking['total'];
-       $amountPaid  = (float) ($booking['amount_paid'] ?? 0);
-       $balanceDue  = max(0, round($totalAmount - $amountPaid, 2));
-
-   and returns everything the card/modal need (remaining
-   amount, status label, badge class, "is it actually fully
-   paid" flag) computed from that single balance figure — so
-   there's exactly one place doing this math for this page, and
-   it's the same math booking-details.php does.
 ----------------------------------------------------- */
 function pt_payment_breakdown($total, $amountPaid) {
     $totalAmount = (float) $total;
@@ -223,15 +141,11 @@ function pt_payment_breakdown($total, $amountPaid) {
     ];
 }
 
-/* Exact date + time the tenant's payment was sent (their first
-   payment — a later balance payment doesn't move paid_at, see
-   process-payment.php), e.g. "Sep 11, 2026, 2:59 PM". */
 function pt_payment_time_label($paidAt) {
     return !empty($paidAt) ? date('M j, Y, g:i A', strtotime($paidAt)) : 'Not paid yet';
 }
 
-/* Cache-buster for the stylesheet, same pattern as mylistings.php. */
-$hp_css_version = '3';
+ $hp_css_version = '4';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -246,11 +160,11 @@ $hp_css_version = '3';
 <body>
 
 <!-- =========================================================
-     NAVBAR (identical markup/classes to mylistings.php / hostprofile.php)
+     NAVBAR — canonical host design
 ========================================================= -->
 <header class="navbar">
 
-    <a href="/webprogg/user/usershome.php" class="logo">
+    <a href="/webprogg/host/hostprofile.php" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
@@ -263,32 +177,33 @@ $hp_css_version = '3';
         <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
-        <a href="notifications.php" class="nav-bell">
+        <a href="/webprogg/user/notifications.php" class="nav-bell">
             <img src="/webprogg/images/bellicon.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
             <?php endif; ?>
         </a>
 
-        <div class="account-dropdown js-account-dropdown">
+        <!-- MY ACCOUNT DROPDOWN (host-dd) -->
+        <div class="host-dd">
 
             <button
                 type="button"
-                class="my-account js-account-toggle"
-                id="accountDropdownToggle"
+                class="my-account host-dd-toggle"
                 aria-haspopup="true"
                 aria-expanded="false"
             >
                 <span class="account-circle">
                     <img src="<?php echo h($navAvatar); ?>" alt="My Account">
                 </span>
-                <span>MY ACCOUNT</span>
+                <span>MY PROFILE</span>
                 <span class="dropdown-caret">&#9662;</span>
             </button>
 
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <a href="/webprogg/user/myaccount.php">My Account</a>
-                <a href="/webprogg/host/hostprofile.php">Host Profile</a>
+            <div class="host-dd-menu">
+                <a href="/webprogg/host/hostprofile.php">Host Dashboard</a>
+                <a href="/webprogg/host/hosteditprofile.php">Profile Settings</a>
+                <a href="/webprogg/host/hostmessages.php">Messages</a>
                 <a href="/webprogg/auth/logout.php">Logout</a>
             </div>
 
@@ -297,13 +212,13 @@ $hp_css_version = '3';
     </nav>
 
 </header>
-
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 <!-- =========================================================
      MAIN DASHBOARD LAYOUT
 ========================================================= -->
 <main class="hp-dashboard hp-dashboard--flush-top">
 
-  <!-- SIDEBAR (identical to mylistings.php / hostprofile.php, "Pending Tenants" active) -->
+  <!-- SIDEBAR -->
   <aside class="hp-sidebar">
 
     <div class="hp-sidebar-card">
@@ -332,43 +247,43 @@ $hp_css_version = '3';
       <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
       Bookings
     </a>
-    <a href="earnings.php" class="hp-side-link">
+    <a href="/webprogg/host/hostearnings.php" class="hp-side-link">
       <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
       Earnings
     </a>
-    <a href="payouts.php" class="hp-side-link">
+    <a href="/webprogg/host/hostpayouts.php" class="hp-side-link">
       <img src="/webprogg/images/paymentsicon-userprofile.png" alt="">
       Payouts
     </a>
-    <a href="hostreviews.php" class="hp-side-link">
+    <a href="/webprogg/host/hostreviews.php" class="hp-side-link">
       <img src="/webprogg/images/averageratinsicon-userprofile.png" alt="">
       Reviews
     </a>
-    <a href="hostmessages.php" class="hp-side-link">
+    <a href="/webprogg/host/hostmessages.php" class="hp-side-link">
       <img src="/webprogg/images/messagesicon-userprofile.png" alt="">
       Messages
     </a>
-    <a href="hosteditprofile.php" class="hp-side-link">
+    <a href="/webprogg/host/hosteditprofile.php" class="hp-side-link">
       <img src="/webprogg/images/profile&accounticon-userprofile.png" alt="">
       Profile &amp; Account
     </a>
-    <a href="verification.php" class="hp-side-link">
+    <a href="/webprogg/host/hostverification.php" class="hp-side-link">
       <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
       Verification
     </a>
-    <a href="payoutmethods.php" class="hp-side-link">
+    <a href="/webprogg/host/hostpayoutmethods.php" class="hp-side-link">
       <img src="/webprogg/images/payoutmethodsicon-hostprofile.png" alt="">
       Payout Methods
     </a>
-    <a href="hostnotificationsettings.php" class="hp-side-link">
+    <a href="/webprogg/host/hostnotificationsettings.php" class="hp-side-link">
       <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
       Notification Settings
     </a>
-    <a href="hostsecurity.php" class="hp-side-link">
+    <a href="/webprogg/host/hostsecurity.php" class="hp-side-link">
       <img src="/webprogg/images/lockicon-userprofile.png" alt="">
       Security
     </a>
-    <a href="helpcenter.php" class="hp-side-link">
+    <a href="/webprogg/host/helpcenter.php" class="hp-side-link">
       <img src="/webprogg/images/needhelpicon-userprofile.png" alt="">
       Help Center
     </a>
@@ -410,7 +325,7 @@ $hp_css_version = '3';
             data-booking-id="<?php echo h($app['booking_id']); ?>"
             data-listing-title="<?php echo h($app['listing_title']); ?>"
             data-listing-location="<?php echo h($app['listing_location']); ?>"
-            data-listing-photo="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/listing-placeholder.jpg')); ?>"
+            data-listing-photo="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>"
             data-tenant-name="<?php echo h($app['tenant_name']); ?>"
             data-tenant-email="<?php echo h($app['tenant_email']); ?>"
             data-tenant-avatar="<?php echo h(resolve_photo($app['tenant_avatar'], '/webprogg/images/default-avatar.png')); ?>"
@@ -430,7 +345,7 @@ $hp_css_version = '3';
 
           <img
             class="pt-listing-photo"
-            src="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/listing-placeholder.jpg')); ?>"
+            src="<?php echo h(resolve_photo($app['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>"
             alt="<?php echo h($app['listing_title']); ?>"
           >
 
@@ -458,18 +373,7 @@ $hp_css_version = '3';
             </p>
           </div>
 
-          <!-- =========================================
-               PAYMENT — sits to the LEFT of the stay dates.
-               Top: status badge — "Fully Paid" once
-               amount_paid covers total, otherwise the exact
-               amount still owed (e.g. "\u{20B1}2,000.00 Pending"),
-               same figures booking-details.php's Balance Due
-               already uses (same pt_payment_breakdown() /
-               $balanceDue math on both pages now).
-               Bottom: the exact date + time the tenant's
-               payment was sent (or "Not paid yet" if nothing's
-               been paid at all).
-          ========================================== -->
+          <!-- PAYMENT — sits to the LEFT of the stay dates -->
           <div class="pt-payment">
             <span class="pt-payment-status <?php echo h($paymentStatusCls); ?>">
               <?php echo h($paymentStatus); ?>
@@ -477,13 +381,7 @@ $hp_css_version = '3';
             <span class="pt-payment-time"><?php echo h($paymentTime); ?></span>
           </div>
 
-          <!-- =========================================
-               STAY DATES — sits between the payment column
-               and the price/actions. Shows
-               "Check-in - Check-out", or "Check-in - Long Term"
-               when the tenant applied without a checkout date
-               (book.php's Long Term option).
-          ========================================== -->
+          <!-- STAY DATES — between payment and price/actions -->
           <div class="pt-dates">
             <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
             <span><?php echo h($dateRangeLabel); ?></span>
@@ -518,7 +416,6 @@ $hp_css_version = '3';
 
     <!-- =========================================================
          APPLICATION DETAILS MODAL
-         Filled in by JS from the clicked .pt-card's data-* attrs.
     ========================================================= -->
     <div class="pt-modal-overlay" id="ptModalOverlay">
       <div class="pt-modal" role="dialog" aria-modal="true" aria-labelledby="ptModalTitle">
@@ -546,13 +443,11 @@ $hp_css_version = '3';
 
         <h3 class="pt-modal-heading" id="ptModalTitle">Application Details</h3>
 
-        <!-- Payment status + exact time, same info as the card. -->
         <div class="pt-modal-payment">
           <span class="pt-modal-payment-status" id="ptModalPaymentStatus"></span>
           <span class="pt-modal-payment-time" id="ptModalPaymentTime"></span>
         </div>
 
-        <!-- Combined stay-dates line, same format as the card. -->
         <div class="pt-modal-daterange">
           <span class="pt-modal-muted">Dates</span>
           <strong id="ptModalDateRange"></strong>
@@ -598,7 +493,7 @@ $hp_css_version = '3';
 </main>
 
 <!-- =========================================================
-     FOOTER (identical to mylistings.php / hostprofile.php)
+     FOOTER
 ========================================================= -->
 <footer class="site-footer">
 
@@ -667,10 +562,113 @@ $hp_css_version = '3';
 <script src="/webprogg/assets/javaScript.js"></script>
 
 <!-- =========================================================
-     PENDING TENANTS — STYLES + ACCEPT/REJECT
+     PENDING TENANTS — STYLES (hive-polished)
+     NOW INCLUDES the .host-dd dropdown styles inline so the
+     dropdown is styled correctly on this page no matter what
+     state hostprofile.css is in. Inline <style> loads after
+     stylesheets, so these rules always win.
 ========================================================= -->
 <style>
+    /* =====================================================
+       HOST DROPDOWN — embedded so it always applies here
+    ====================================================== */
+
+    .host-dd {
+        position: relative;
+    }
+
+    .host-dd .my-account {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font: inherit;
+        color: inherit;
+    }
+
+    .host-dd .account-circle img {
+        width: 42px;
+        height: 42px;
+        padding: 5px;
+        background: #1c2a38;
+        border-radius: 50%;
+        object-fit: contain;
+        display: block;
+    }
+
+    .host-dd .my-account span:not(.account-circle) {
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        color: #1c2a38;
+    }
+
+    .host-dd .dropdown-caret {
+        font-size: 0.75em;
+        transition: transform 0.15s ease;
+    }
+
+    .host-dd.open .dropdown-caret { transform: rotate(180deg); }
+
+    /* CRITICAL: menu hidden until .open is toggled */
+    .host-dd-menu {
+        display: none !important;
+
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+
+        min-width: 190px;
+        padding: 6px;
+
+        background: #ffffff;
+
+        border: 1px solid rgba(28, 42, 56, 0.08);
+        border-radius: 12px;
+
+        box-shadow: 0 14px 30px rgba(28, 42, 56, 0.14);
+
+        flex-direction: column;
+
+        z-index: 1100;
+    }
+
+    .host-dd.open .host-dd-menu {
+        display: flex !important;
+
+        animation: hostDDIn 0.2s ease;
+    }
+
+    @keyframes hostDDIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .host-dd-menu a {
+        display: block;
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: #1c2a38;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: 0.15s ease;
+    }
+
+    .host-dd-menu a:hover {
+        background: #fdf1dc;
+        color: #b07708;
+    }
+
+    /* =====================================================
+       SIDEBAR BADGE
+    ====================================================== */
+
     .hp-side-link-badged { position: relative; display: flex; align-items: center; gap: 10px; }
+
     .hp-side-badge {
         margin-left: auto;
         background: #E14B4B;
@@ -682,6 +680,10 @@ $hp_css_version = '3';
         border-radius: 999px;
     }
 
+    /* =====================================================
+       APPLICATION CARDS
+    ====================================================== */
+
     .pt-list { display: flex; flex-direction: column; gap: 14px; }
 
     .pt-card {
@@ -689,26 +691,37 @@ $hp_css_version = '3';
         align-items: center;
         gap: 16px;
         background: #fff;
-        border: 1px solid #EEF1F6;
-        border-radius: 14px;
-        padding: 14px;
+        border: 1px solid rgba(28, 42, 56, 0.08);
+        border-radius: 16px;
+        padding: 16px;
         flex-wrap: wrap;
         cursor: pointer;
+        box-shadow: 0 6px 20px rgba(28, 42, 56, 0.06);
+        transition:
+            transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+            box-shadow 0.25s ease,
+            border-color 0.25s ease;
     }
-    .pt-card:hover { border-color: #E0A020; }
-    .pt-card:focus-visible { outline: 2px solid #E0A020; outline-offset: 2px; }
+    .pt-card:hover {
+        transform: translateY(-3px);
+        border-color: rgba(237, 164, 35, 0.45);
+        box-shadow: 0 18px 34px rgba(237, 164, 35, 0.16);
+    }
+    .pt-card:focus-visible { outline: 2px solid #eda423; outline-offset: 2px; }
 
     .pt-listing-photo {
         width: 88px;
         height: 88px;
         object-fit: cover;
-        border-radius: 10px;
+        border-radius: 12px;
         flex-shrink: 0;
+        transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     }
+    .pt-card:hover .pt-listing-photo { transform: scale(1.04); }
 
     .pt-info { flex: 1; min-width: 200px; }
 
-    .pt-listing-title { margin: 0; font-weight: 700; color: #14142B; }
+    .pt-listing-title { margin: 0; font-weight: 700; color: #1c2a38; }
 
     .pt-listing-location {
         display: flex;
@@ -716,7 +729,7 @@ $hp_css_version = '3';
         gap: 4px;
         margin: 2px 0 8px;
         font-size: 12px;
-        color: #777777;
+        color: #6b7684;
     }
 
     .pt-listing-location img { width: 12px; height: 12px; }
@@ -724,18 +737,20 @@ $hp_css_version = '3';
     .pt-tenant-row { display: flex; align-items: center; gap: 8px; }
 
     .pt-tenant-avatar {
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         border-radius: 50%;
         object-fit: cover;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.5);
     }
 
-    .pt-tenant-name { margin: 0; font-size: 13px; font-weight: 600; color: #14142B; }
-    .pt-tenant-email { margin: 0; font-size: 12px; color: #777777; }
+    .pt-tenant-name { margin: 0; font-size: 13px; font-weight: 600; color: #1c2a38; }
+    .pt-tenant-email { margin: 0; font-size: 12px; color: #6b7684; }
 
     .pt-applied-date { margin: 8px 0 0; font-size: 11px; color: #999999; }
 
-    /* PAYMENT — sits to the left of the stay dates on the card */
+    /* PAYMENT column */
     .pt-payment {
         display: flex;
         flex-direction: column;
@@ -749,33 +764,30 @@ $hp_css_version = '3';
 
     .pt-payment-status {
         display: inline-block;
-        padding: 3px 10px;
+        padding: 4px 11px;
         border-radius: 999px;
         font-size: 11px;
         font-weight: 700;
         white-space: nowrap;
     }
     .pt-payment-paid {
-        background: #E6F6EC;
-        color: #1E7A3D;
-        border: 1px solid #2ECC71;
+        background: #E8F8F1;
+        color: #1FA971;
+        border: 1px solid #B9E3C5;
     }
     .pt-payment-pending {
-        background: #FFF4E0;
-        color: #8A5A10;
-        border: 1px solid #F7941D;
+        background: #FDF1DC;
+        color: #B07708;
+        border: 1px solid rgba(237, 164, 35, 0.5);
     }
 
-    .pt-payment-time {
-        font-size: 11px;
-        color: #777777;
-    }
+    .pt-payment-time { font-size: 11px; color: #6b7684; }
 
     @media (min-width: 720px) {
         .pt-payment { flex-basis: auto; }
     }
 
-    /* STAY DATES — sits between pt-payment and pt-actions */
+    /* STAY DATES column */
     .pt-dates {
         display: flex;
         align-items: center;
@@ -783,11 +795,11 @@ $hp_css_version = '3';
         flex-basis: 100%;
         max-width: 220px;
         padding: 8px 12px;
-        border-left: 1px solid #EEF1F6;
-        border-right: 1px solid #EEF1F6;
+        border-left: 1px solid rgba(28, 42, 56, 0.08);
+        border-right: 1px solid rgba(28, 42, 56, 0.08);
         font-size: 12px;
         font-weight: 600;
-        color: #14142B;
+        color: #1c2a38;
         text-align: center;
         justify-content: center;
     }
@@ -804,23 +816,34 @@ $hp_css_version = '3';
         gap: 10px;
     }
 
-    .pt-total { color: #14142B; }
+    .pt-total { color: #1c2a38; font-size: 15px; }
 
     .pt-buttons { display: flex; gap: 8px; }
 
-    .pt-btn-accept { background: #1E7A3D; border-color: #1E7A3D; color: #fff; }
-    .pt-btn-accept:hover { background: #17612F; }
+    /* Accept = gradient honey; Reject = red outline */
+    .pt-btn-accept {
+        background: linear-gradient(135deg, #f6b93b, #eda423) !important;
+        border: none !important;
+        color: #1c2a38 !important;
+        box-shadow: 0 8px 18px rgba(237, 164, 35, 0.35);
+    }
+    .pt-btn-accept:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 24px rgba(237, 164, 35, 0.45);
+    }
 
     .pt-btn-reject { color: #E14B4B; border-color: #E14B4B; }
     .pt-btn-reject:hover { background: #FCEAEA; }
 
-    /* APPLICATION DETAILS MODAL */
+    /* ---- APPLICATION DETAILS MODAL ---- */
 
     .pt-modal-overlay {
         display: none;
         position: fixed;
         inset: 0;
         background: rgba(20, 20, 43, 0.45);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         align-items: center;
         justify-content: center;
         padding: 20px;
@@ -831,39 +854,64 @@ $hp_css_version = '3';
     .pt-modal {
         position: relative;
         background: #fff;
-        border-radius: 14px;
+        border-radius: 18px;
         padding: 24px;
         width: 100%;
-        max-width: 420px;
+        max-width: 440px;
         max-height: 90vh;
         overflow-y: auto;
+        animation: ptModalIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes ptModalIn {
+        from { opacity: 0; transform: translateY(16px) scale(0.98); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Honey accent bar across the top */
+    .pt-modal::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        border-radius: 18px 18px 0 0;
+        background: linear-gradient(90deg, #eda423, #f6c04e, #eda423);
     }
 
     .pt-modal-close {
         position: absolute;
         top: 12px;
         right: 14px;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         background: none;
         border: none;
+        border-radius: 50%;
         font-size: 22px;
         line-height: 1;
-        color: #777777;
+        color: #6b7684;
         cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
     }
-    .pt-modal-close:hover { color: #14142B; }
+    .pt-modal-close:hover { background: #FDF1DC; color: #1c2a38; }
 
     .pt-modal-listing {
         display: flex;
         gap: 12px;
         padding-bottom: 14px;
         margin-bottom: 14px;
-        border-bottom: 1px solid #EEF1F6;
+        border-bottom: 1px solid rgba(28, 42, 56, 0.08);
     }
     .pt-modal-listing-photo { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex-shrink: 0; }
-    .pt-modal-listing-title { margin: 0; font-weight: 700; color: #14142B; }
+    .pt-modal-listing-title { margin: 0; font-weight: 700; color: #1c2a38; }
     .pt-modal-listing-location {
         display: flex; align-items: center; gap: 4px;
-        margin: 4px 0 0; font-size: 12px; color: #777777;
+        margin: 4px 0 0; font-size: 12px; color: #6b7684;
     }
     .pt-modal-listing-location img { width: 12px; height: 12px; }
 
@@ -873,13 +921,20 @@ $hp_css_version = '3';
         gap: 10px;
         padding-bottom: 14px;
         margin-bottom: 14px;
-        border-bottom: 1px solid #EEF1F6;
+        border-bottom: 1px solid rgba(28, 42, 56, 0.08);
     }
-    .pt-modal-tenant-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
-    .pt-modal-tenant-name { margin: 0; font-size: 14px; font-weight: 600; color: #14142B; }
-    .pt-modal-tenant-email { margin: 0; font-size: 12px; color: #777777; }
+    .pt-modal-tenant-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px rgba(237, 164, 35, 0.5);
+    }
+    .pt-modal-tenant-name { margin: 0; font-size: 14px; font-weight: 600; color: #1c2a38; }
+    .pt-modal-tenant-email { margin: 0; font-size: 12px; color: #6b7684; }
 
-    .pt-modal-heading { margin: 0 0 12px; font-size: 15px; color: #14142B; }
+    .pt-modal-heading { margin: 0 0 12px; font-size: 15px; color: #1c2a38; }
 
     .pt-modal-payment {
         display: flex;
@@ -888,20 +943,17 @@ $hp_css_version = '3';
         padding: 10px 12px;
         margin-bottom: 10px;
         background: #FAFAFD;
-        border: 1px solid #EEF1F6;
+        border: 1px solid rgba(28, 42, 56, 0.08);
         border-radius: 10px;
     }
     .pt-modal-payment-status {
         display: inline-block;
-        padding: 3px 10px;
+        padding: 4px 11px;
         border-radius: 999px;
         font-size: 11px;
         font-weight: 700;
     }
-    .pt-modal-payment-time {
-        font-size: 12px;
-        color: #777777;
-    }
+    .pt-modal-payment-time { font-size: 12px; color: #6b7684; }
 
     .pt-modal-daterange {
         display: flex;
@@ -910,7 +962,7 @@ $hp_css_version = '3';
         padding: 10px 12px;
         margin-bottom: 14px;
         background: #FAFAFD;
-        border: 1px solid #EEF1F6;
+        border: 1px solid rgba(28, 42, 56, 0.08);
         border-radius: 10px;
     }
 
@@ -921,19 +973,75 @@ $hp_css_version = '3';
         margin-bottom: 14px;
     }
     .pt-modal-detail { display: flex; flex-direction: column; gap: 2px; }
-    .pt-modal-muted { font-size: 12px; color: #777777; }
+    .pt-modal-muted { font-size: 12px; color: #6b7684; }
 
     .pt-modal-total-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding-top: 14px;
-        border-top: 1px solid #EEF1F6;
+        border-top: 1px solid rgba(28, 42, 56, 0.08);
         margin-bottom: 16px;
     }
 
+    .pt-modal-total-row strong { color: #1c2a38; font-size: 17px; }
+
     .pt-modal-buttons { justify-content: flex-end; }
+
+    @media (max-width: 720px) {
+        .pt-actions {
+            width: 100%;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+        }
+    }
 </style>
+
+<!-- =========================================================
+     DROPDOWN SCRIPT — self-contained, per-element listeners
+========================================================= -->
+<script>
+(function () {
+    "use strict";
+
+    var dd  = document.querySelector(".host-dd");
+    var btn = dd ? dd.querySelector(".host-dd-toggle") : null;
+
+    if (!dd || !btn) { return; }
+
+    /* Start clean — never restore a stale open state */
+    dd.classList.remove("open");
+    btn.setAttribute("aria-expanded", "false");
+
+    btn.addEventListener("click", function (event) {
+        event.stopPropagation();
+
+        var isOpen = dd.classList.toggle("open");
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    });
+
+    /* Close on outside click */
+    document.addEventListener("click", function (event) {
+        if (!dd.contains(event.target)) {
+            dd.classList.remove("open");
+            btn.setAttribute("aria-expanded", "false");
+        }
+    });
+
+    /* Close on Esc */
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            dd.classList.remove("open");
+            btn.setAttribute("aria-expanded", "false");
+        }
+    });
+})();
+</script>
+
+<!-- =========================================================
+     ACCEPT/REJECT + MODAL SCRIPT (unchanged logic)
+========================================================= -->
 <script>
 (function () {
 
@@ -970,9 +1078,7 @@ $hp_css_version = '3';
             });
     }
 
-    /* ACCEPT / REJECT BUTTONS ON EACH CARD
-       stopPropagation so clicking these doesn't also trigger the
-       card's own click handler and pop the modal open underneath. */
+    /* ACCEPT / REJECT BUTTONS ON EACH CARD */
 
     document.querySelectorAll('.pt-card').forEach(function (card) {
         var acceptBtn = card.querySelector('.pt-btn-accept');
@@ -998,10 +1104,7 @@ $hp_css_version = '3';
         }
     });
 
-    /* APPLICATION DETAILS MODAL
-       Click anywhere on a card (but not its buttons) to see what
-       the tenant entered on listing-detail.php — check-in,
-       check-out, and guests. */
+    /* APPLICATION DETAILS MODAL */
 
     var overlay = document.getElementById('ptModalOverlay');
     var closeBtn = document.getElementById('ptModalClose');

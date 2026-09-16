@@ -3,34 +3,53 @@
    ROOMHIVE — MY ACCOUNT
    usernotificationsettings.php
 
-   Email/push toggles for the logged-in user. Assumes a
-   `notification_preferences` table keyed by user_id with one
-   boolean column per toggle below — adjust the column list
-   if the real schema names these differently. If no row
-   exists yet for this user, everything defaults to ON (the
-   common "opted in until you turn it off" pattern).
+   Notification preferences — lets the user choose which
+   events trigger an email, an in-app bell notification, or
+   both. Persisted to the `notification_settings` table
+   (one row per user, created lazily on first save).
+
+   ASSUMED SCHEMA (adjust the SELECT/INSERT/UPDATE below if
+   your real table differs):
+       notification_settings (
+           user_id            INT PRIMARY KEY,
+           email_bookings     TINYINT(1) DEFAULT 1,
+           email_messages     TINYINT(1) DEFAULT 1,
+           email_promotions   TINYINT(1) DEFAULT 0,
+           push_bookings      TINYINT(1) DEFAULT 1,
+           push_messages      TINYINT(1) DEFAULT 1,
+           push_promotions    TINYINT(1) DEFAULT 0,
+           updated_at         TIMESTAMP NULL
+       )
+
+   If the table doesn't exist yet, run:
+       CREATE TABLE notification_settings (
+           user_id INT NOT NULL PRIMARY KEY,
+           email_bookings TINYINT(1) NOT NULL DEFAULT 1,
+           email_messages TINYINT(1) NOT NULL DEFAULT 1,
+           email_promotions TINYINT(1) NOT NULL DEFAULT 0,
+           push_bookings TINYINT(1) NOT NULL DEFAULT 1,
+           push_messages TINYINT(1) NOT NULL DEFAULT 1,
+           push_promotions TINYINT(1) NOT NULL DEFAULT 0,
+           updated_at TIMESTAMP NULL DEFAULT NULL
+       );
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
-/* -----------------------------------------------------
-   AUTH GUARD
------------------------------------------------------ */
+/* AUTH GUARD */
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-/* -----------------------------------------------------
-   USER DATA
------------------------------------------------------ */
-$stmt = $pdo->prepare(
+/* USER DATA */
+ $stmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1"
 );
-$stmt->execute(['id' => $_SESSION['user_id']]);
-$dbUser = $stmt->fetch();
+ $stmt->execute(['id' => $_SESSION['user_id']]);
+ $dbUser = $stmt->fetch();
 
 if (!$dbUser) {
     session_destroy();
@@ -43,80 +62,124 @@ if ((int) $dbUser['is_host'] === 1) {
     exit;
 }
 
-$navAvatar = sync_user_session($dbUser);
+ $navAvatar = sync_user_session($dbUser);
 
-$notification_count = 0;
+ $notification_count = 0;
+ $activeSidebar = 'notificationsettings';
 
-/* -----------------------------------------------------
-   TOGGLE DEFINITIONS
-   key => [label, help text]. Same key list is used to read
-   the saved row, build the form, and write the update.
------------------------------------------------------ */
-$toggleGroups = [
-    'Email' => [
-        'email_booking_updates' => ['Booking updates', 'Confirmations, host replies, and status changes on your bookings.'],
-        'email_messages'        => ['New messages', 'When a host sends you a message.'],
-        'email_promotions'      => ['Promotions and offers', 'Deals, seasonal offers, and Hive Club perks.'],
-        'email_reviews'         => ['Review reminders', 'Nudges to review a stay after checkout.'],
-    ],
-    'Push' => [
-        'push_booking_updates' => ['Booking updates', 'Confirmations, host replies, and status changes on your bookings.'],
-        'push_messages'        => ['New messages', 'When a host sends you a message.'],
-    ],
+/* =========================================================
+   PREFERENCE KEYS
+   key => [column, default]
+========================================================= */
+ $prefKeys = [
+    'email_bookings'     => ['email_bookings', 1],
+    'email_messages'     => ['email_messages', 1],
+    'email_promotions'   => ['email_promotions', 0],
+    'push_bookings'      => ['push_bookings', 1],
+    'push_messages'      => ['push_messages', 1],
+    'push_promotions'    => ['push_promotions', 0],
 ];
 
-$allKeys = array_merge(array_keys($toggleGroups['Email']), array_keys($toggleGroups['Push']));
+/* -----------------------------------------------------
+   LOAD CURRENT PREFERENCES
+   Missing row = first visit — every group falls back to
+   its defaults. A missing TABLE is caught too, so the
+   page renders (with defaults) instead of fataling before
+   the CREATE TABLE above has been run.
+----------------------------------------------------- */
+ $prefs = [];
+ $prefsTableReady = true;
+
+foreach ($prefKeys as $key => [$column, $default]) {
+    $prefs[$key] = $default;
+}
+
+try {
+
+    $prefsStmt = $pdo->prepare(
+        "SELECT * FROM notification_settings WHERE user_id = :id LIMIT 1"
+    );
+    $prefsStmt->execute(['id' => $_SESSION['user_id']]);
+    $prefsRow = $prefsStmt->fetch();
+
+    if ($prefsRow) {
+        foreach ($prefKeys as $key => [$column, $default]) {
+            $prefs[$key] = isset($prefsRow[$column]) ? (bool) $prefsRow[$column] : $default;
+        }
+    }
+
+} catch (PDOException $e) {
+    /* Table missing — render with defaults; the save below
+       will also fail until the CREATE TABLE is run, and its
+       error banner will say so. */
+    $prefsTableReady = false;
+    error_log('usernotificationsettings: notification_settings table missing? ' . $e->getMessage());
+}
 
 /* -----------------------------------------------------
    SAVE
+   One UPSERT: INSERT ... ON DUPLICATE KEY UPDATE handles
+   both first-save and every save after, keyed on the
+   user_id primary key.
 ----------------------------------------------------- */
-$saved = false;
-$errors = [];
+ $saved = false;
+ $saveError = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     if (!csrf_verify()) {
-        $errors[] = 'Your session expired. Please try again.';
+
+        $saveError = 'Your session expired. Please try again.';
+
+    } elseif (!$prefsTableReady) {
+
+        $saveError = 'The notification_settings table is missing. Run the CREATE TABLE statement noted at the top of this file.';
+
     } else {
+
+        /* Checkboxes: absent from POST = unchecked = 0 */
         $values = [];
-        foreach ($allKeys as $key) {
-            $values[$key] = isset($_POST[$key]) ? 1 : 0;
+        foreach ($prefKeys as $key => [$column, $default]) {
+            $values[$column] = isset($_POST[$key]) ? 1 : 0;
         }
 
-        $existsStmt = $pdo->prepare("SELECT user_id FROM notification_preferences WHERE user_id = :id LIMIT 1");
-        $existsStmt->execute(['id' => $_SESSION['user_id']]);
+        try {
 
-        if ($existsStmt->fetch()) {
-            $setSql = implode(', ', array_map(function ($k) { return "$k = :$k"; }, $allKeys));
-            $updateStmt = $pdo->prepare("UPDATE notification_preferences SET $setSql WHERE user_id = :id");
-            $updateStmt->execute($values + ['id' => $_SESSION['user_id']]);
-        } else {
-            $cols = array_merge(['user_id'], $allKeys);
-            $placeholders = array_map(function ($k) { return ":$k"; }, $cols);
-            $insertStmt = $pdo->prepare(
-                "INSERT INTO notification_preferences (" . implode(', ', $cols) . ")
-                 VALUES (" . implode(', ', $placeholders) . ")"
+            $saveStmt = $pdo->prepare(
+                "INSERT INTO notification_settings
+                    (user_id, email_bookings, email_messages, email_promotions,
+                     push_bookings, push_messages, push_promotions, updated_at)
+                 VALUES
+                    (:user_id, :email_bookings, :email_messages, :email_promotions,
+                     :push_bookings, :push_messages, :push_promotions, NOW())
+                 ON DUPLICATE KEY UPDATE
+                    email_bookings   = VALUES(email_bookings),
+                    email_messages   = VALUES(email_messages),
+                    email_promotions = VALUES(email_promotions),
+                    push_bookings    = VALUES(push_bookings),
+                    push_messages    = VALUES(push_messages),
+                    push_promotions  = VALUES(push_promotions),
+                    updated_at       = NOW()"
             );
-            $insertStmt->execute($values + ['user_id' => $_SESSION['user_id']]);
-        }
 
-        $saved = true;
+            $saveStmt->execute(array_merge(
+                ['user_id' => $_SESSION['user_id']],
+                $values
+            ));
+
+            /* Reflect immediately without a re-query */
+            foreach ($prefKeys as $key => [$column, $default]) {
+                $prefs[$key] = isset($_POST[$key]);
+            }
+
+            $saved = true;
+
+        } catch (PDOException $e) {
+            $saveError = 'Something went wrong saving your preferences. Please try again.';
+            error_log('usernotificationsettings save failed: ' . $e->getMessage());
+        }
     }
 }
-
-/* -----------------------------------------------------
-   CURRENT PREFERENCES
-   Default everything to ON until a row exists for this user.
------------------------------------------------------ */
-$prefsStmt = $pdo->prepare("SELECT * FROM notification_preferences WHERE user_id = :id LIMIT 1");
-$prefsStmt->execute(['id' => $_SESSION['user_id']]);
-$savedPrefs = $prefsStmt->fetch();
-
-$prefs = [];
-foreach ($allKeys as $key) {
-    $prefs[$key] = $savedPrefs ? (bool) $savedPrefs[$key] : true;
-}
-
-$activeSidebar = 'notifications';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -124,63 +187,19 @@ $activeSidebar = 'notifications';
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Notification Settings — RoomHive</title>
-
+<script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+<script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
-
-<header class="navbar">
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <nav class="nav-links">
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <div class="account-dropdown js-account-dropdown">
-            <button type="button" class="my-account js-account-toggle" id="accountDropdownToggle" aria-haspopup="true" aria-expanded="false">
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
-
-            <div class="account-dropdown-menu" id="accountDropdownMenu">
-                <?php if ($dbUser['is_host']): ?>
-                    <a href="/webprogg/host/hostprofile.php">Host Profile</a>
-                <?php endif; ?>
-                <a href="/webprogg/user/userprofile.php">My Profile</a>
-                <a href="/webprogg/auth/logout.php">Logout</a>
-            </div>
-        </div>
-    </nav>
+<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<!-- PAGE HEADER — PLAIN -->
+<header class="ub-page-head">
+    <span class="ub-eyebrow">Notification Settings</span>
+    <h1>Choose what you're notified about</h1>
+    <p class="ub-lead">Pick which events reach you by email, in-app notification, or both. Changes save instantly.</p>
 </header>
-
-<section class="up-welcome">
-  <div class="up-welcome-text">
-    <p class="up-welcome-eyebrow">Notification Settings</p>
-    <h1>Choose what we send you</h1>
-    <span class="up-welcome-underline"></span>
-    <p class="up-welcome-sub">Turn any notification on or off — you're always in control.</p>
-  </div>
-  <div class="up-welcome-image">
-    <img src="/webprogg/images/notificationsettings-userprofile.png" alt="">
-  </div>
-</section>
 
 <main class="up-dashboard">
 
@@ -189,47 +208,133 @@ $activeSidebar = 'notifications';
   <div class="up-content">
 
     <?php if ($saved): ?>
-      <section style="padding:12px 18px; border-radius:10px; background:#eaf7ee; border:1px solid #2f9e5c; color:#1f6b3b; font-size:0.9rem; margin-bottom:18px;">
-        Your notification preferences have been saved.
+      <section class="up-alert up-alert-success">
+        <p>&#10003; Your notification preferences have been saved.</p>
       </section>
     <?php endif; ?>
 
-    <?php if (!empty($errors)): ?>
-      <section style="padding:12px 18px; border-radius:10px; background:#fdeceb; border:1px solid #e0524d; color:#a1332e; font-size:0.9rem; margin-bottom:18px;">
-        <?php foreach ($errors as $error): ?>
-          <p style="margin:0;"><?php echo h($error); ?></p>
-        <?php endforeach; ?>
+    <?php if ($saveError !== ''): ?>
+      <section class="up-alert up-alert-error">
+        <p><?php echo h($saveError); ?></p>
       </section>
     <?php endif; ?>
 
-    <form method="POST" action="/webprogg/user/usernotificationsettings.php">
-      <?php echo csrf_field(); ?>
+    <form
+        method="POST"
+        action="/webprogg/user/usernotificationsettings.php"
+        class="up-card up-reveal"
+        style="max-width: 640px;"
+    >
+        <?php echo csrf_field(); ?>
 
-      <?php foreach ($toggleGroups as $groupLabel => $toggles): ?>
-        <section class="up-card up-bookings-card" style="margin-bottom:20px;">
-          <div class="up-card-header">
-            <h3><?php echo h($groupLabel); ?> Notifications</h3>
-          </div>
+        <!-- =========================
+             BOOKINGS GROUP
+        ========================== -->
+        <h3 style="margin:0 0 4px; color:var(--up-navy); font-size:15px; font-weight:800;">
+            Bookings
+        </h3>
+        <p style="margin:0 0 14px; color:var(--up-text-muted); font-size:12.5px;">
+            New inquiries, host approvals, and booking updates.
+        </p>
 
-          <?php foreach ($toggles as $key => $meta): ?>
-            <div class="up-security-row" style="align-items:flex-start;">
-              <div>
-                <strong style="display:block; font-size:14px; color:var(--up-navy, #1c2a38);"><?php echo h($meta[0]); ?></strong>
-                <span style="font-size:12.5px; color:#777777;"><?php echo h($meta[1]); ?></span>
-              </div>
-
-              <label style="position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0;">
-                <input type="checkbox" name="<?php echo h($key); ?>" <?php echo $prefs[$key] ? 'checked' : ''; ?>
-                       style="opacity:0; width:0; height:0;" class="up-toggle-input">
-                <span class="up-toggle-track" style="position:absolute; inset:0; background:<?php echo $prefs[$key] ? 'var(--up-orange, #e0693a)' : '#cccccc'; ?>; border-radius:24px; transition:background .15s;"></span>
-                <span class="up-toggle-thumb" style="position:absolute; top:3px; left:<?php echo $prefs[$key] ? '21px' : '3px'; ?>; width:18px; height:18px; background:#ffffff; border-radius:50%; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.3);"></span>
-              </label>
+        <div class="up-security-row" style="align-items:center; padding:10px 0;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">Email notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Booking updates sent to <?php echo h($dbUser['email']); ?></span>
             </div>
-          <?php endforeach; ?>
-        </section>
-      <?php endforeach; ?>
+            <label class="up-switch">
+                <input type="checkbox" name="email_bookings" <?php echo $prefs['email_bookings'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
 
-      <button type="submit" class="up-btn-solid">SAVE PREFERENCES</button>
+        <div class="up-security-row" style="align-items:center; padding:10px 0 16px;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">In-app notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Show booking updates on the bell icon</span>
+            </div>
+            <label class="up-switch">
+                <input type="checkbox" name="push_bookings" <?php echo $prefs['push_bookings'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
+
+        <div class="form-section-divider" style="height:1px; background:var(--up-border); margin:0 0 20px;"></div>
+
+        <!-- =========================
+             MESSAGES GROUP
+        ========================== -->
+        <h3 style="margin:0 0 4px; color:var(--up-navy); font-size:15px; font-weight:800;">
+            Messages
+        </h3>
+        <p style="margin:0 0 14px; color:var(--up-text-muted); font-size:12.5px;">
+            New messages from hosts in your inbox.
+        </p>
+
+        <div class="up-security-row" style="align-items:center; padding:10px 0;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">Email notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Message alerts sent to your email</span>
+            </div>
+            <label class="up-switch">
+                <input type="checkbox" name="email_messages" <?php echo $prefs['email_messages'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
+
+        <div class="up-security-row" style="align-items:center; padding:10px 0 16px;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">In-app notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Show message alerts on the bell icon</span>
+            </div>
+            <label class="up-switch">
+                <input type="checkbox" name="push_messages" <?php echo $prefs['push_messages'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
+
+        <div class="form-section-divider" style="height:1px; background:var(--up-border); margin:0 0 20px;"></div>
+
+        <!-- =========================
+             PROMOTIONS GROUP
+        ========================== -->
+        <h3 style="margin:0 0 4px; color:var(--up-navy); font-size:15px; font-weight:800;">
+            Promotions &amp; News
+        </h3>
+        <p style="margin:0 0 14px; color:var(--up-text-muted); font-size:12.5px;">
+            Hive Club offers, discounts, and RoomHive updates.
+        </p>
+
+        <div class="up-security-row" style="align-items:center; padding:10px 0;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">Email notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Offers and news sent to your email</span>
+            </div>
+            <label class="up-switch">
+                <input type="checkbox" name="email_promotions" <?php echo $prefs['email_promotions'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
+
+        <div class="up-security-row" style="align-items:center; padding:10px 0 16px;">
+            <div>
+                <strong style="display:block; font-size:13.5px; color:var(--up-navy);">In-app notifications</strong>
+                <span style="font-size:12px; color:var(--up-text-muted);">Show offers and news on the bell icon</span>
+            </div>
+            <label class="up-switch">
+                <input type="checkbox" name="push_promotions" <?php echo $prefs['push_promotions'] ? 'checked' : ''; ?>>
+                <span class="up-switch-track"></span>
+            </label>
+        </div>
+
+        <button
+            type="submit"
+            class="up-btn-solid"
+            style="margin-top:22px; align-self:flex-start;"
+        >
+            SAVE PREFERENCES
+        </button>
+
     </form>
 
   </div>
@@ -241,24 +346,11 @@ $activeSidebar = 'notifications';
             <a href="/webprogg/user/usershome.php">
                 <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
             </a>
-            <p class="footer-tagline">
-                Find, stay, relax, at home. RoomHive helps you discover
-                comfortable stays across Negros Oriental.
-            </p>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/PhoneIcon.jpg" alt="">
-                <span>0927 569 3574</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="">
-                <span>kimdivino55@gmail.com</span>
-            </div>
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="">
-                <span>Dumaguete City, Negros Oriental, Philippines</span>
-            </div>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
             <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
@@ -266,7 +358,6 @@ $activeSidebar = 'notifications';
             <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
-
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
@@ -274,7 +365,6 @@ $activeSidebar = 'notifications';
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
-
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
             <div class="footer-app-badges">
@@ -283,7 +373,6 @@ $activeSidebar = 'notifications';
             </div>
         </div>
     </div>
-
     <div class="footer-bottom">
         <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
     </div>
@@ -291,16 +380,28 @@ $activeSidebar = 'notifications';
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
-<!-- Toggle switch visual state (checkbox itself carries the real value on submit) -->
+<!-- Reveal (self-contained) -->
 <script>
-document.querySelectorAll('.up-toggle-input').forEach(function (input) {
-    input.addEventListener('change', function () {
-        const track = input.nextElementSibling;
-        const thumb = track.nextElementSibling;
-        track.style.background = input.checked ? 'var(--up-orange, #e0693a)' : '#cccccc';
-        thumb.style.left = input.checked ? '21px' : '3px';
-    });
-});
+(function () {
+    "use strict";
+    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
+    if (reduced || !("IntersectionObserver" in window)) {
+        revealEls.forEach(function (el) { el.classList.add("in-view"); });
+    } else {
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                io.unobserve(el);
+                el.classList.add("in-view");
+                window.setTimeout(function () { el.style.setProperty("--i", "0"); }, 1200);
+            });
+        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+        revealEls.forEach(function (el) { io.observe(el); });
+    }
+})();
 </script>
+
 </body>
 </html>

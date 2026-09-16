@@ -1,20 +1,18 @@
 <?php
 /**admin.php
- * RoomHive Admin Dashboard — now backed by real queries
- * Markup + data. All visual styling lives in admin.css
+ * RoomHive Admin Dashboard — now backed by real queries.
  *
- * Every section below used to be a hardcoded empty/zeroed
- * array. It now pulls from the real tables (users, listings,
- * bookings, reviews, host_applications, listing_photos) via
- * $pdo. If the platform is genuinely still empty, the same
- * empty-state UI you already had kicks in automatically —
- * nothing about the *look* of an empty dashboard changes,
- * only where the numbers come from.
+ * PHOTO FIX:
+ *   - resolve_photo() normalizes listing_photos.photo_path and
+ *     users.avatar_path into working URLs (same helper the
+ *     tenant/host pages use).
+ *   - Host Applications now show the applicant's real avatar
+ *     (users.avatar_path) with an initials-avatar fallback.
+ *   - Every <img> has an onerror fallback so a missing file on
+ *     disk shows the placeholder, never a broken-image icon.
  *
  * SCHEMA NOTE: the real `bookings` table has NO `total` and
- * NO `booked_at` columns. Money = amount_paid (or the
- * host/platform fee splits), time = created_at. All queries
- * below use the real columns.
+ * NO `booked_at` columns. Money = amount_paid, time = created_at.
  */
 
 session_start();
@@ -36,22 +34,35 @@ if (
  $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
  $adminEmail = $_SESSION['admin_email'] ?? '';
 
+/* =========================================================
+   PHOTO RESOLVER
+   Turns raw DB paths into working URLs:
+     'uploads/listings/x.jpg'   -> /webprogg/uploads/listings/x.jpg
+     '/uploads/listings/x.jpg'  -> /webprogg/uploads/listings/x.jpg
+     'webprogg/uploads/...'     -> /webprogg/uploads/...
+     'https://...'              -> unchanged
+     empty / null               -> $fallback
+========================================================= */
+if (!function_exists('resolve_photo')) {
+    function resolve_photo($path, $fallback = '/webprogg/images/ListingPlaceholder.png') {
+        if (empty($path)) {
+            return $fallback;
+        }
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+        $normalized = ltrim($path, '/');
+        if (stripos($normalized, 'webprogg/') === 0) {
+            $normalized = substr($normalized, strlen('webprogg/'));
+        }
+        return '/webprogg/' . $normalized;
+    }
+}
+
 /*
  * =========================================================
  * HOST APPLICATION ACTIONS (Approve / Reject)
  * =========================================================
- * Triggered by the Approve/Reject buttons on the Recent Host
- * Applications panel below. Runs before any HTML is echoed,
- * so the header() redirect at the end is always safe to send.
- *
- * Approving does TWO things in one transaction:
- *   1. host_applications.status -> 'approved'
- *   2. users.is_host -> 1 for that application's user_id
- * Step 2 is the part that was missing before — every host
- * guard (hostprofile.php, etc.) reads users.is_host, not the
- * application's own status column, so without it the admin
- * dashboard could show "Approved" while the user still
- * couldn't access anything host-only.
  */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_POST['application_id'])) {
     $applicationId = (int) $_POST['application_id'];
@@ -84,13 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
                 $pdo->commit();
             } catch (Exception $e) {
                 $pdo->rollBack();
-                // Leave the application as-is (still pending) rather than
-                // showing a false "approved" state if either update failed.
             }
         }
     }
 
-    // Redirect so refreshing the dashboard never resubmits the action.
     header('Location: /webprogg/admin/admin.php');
     exit();
 }
@@ -115,7 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
    ========================================================= */
  $totalBookings  = (int) $pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
 
-/* FIX: `bookings.total` doesn't exist — real column is amount_paid. */
  $totalRevenue   = (float) $pdo->query(
     "SELECT COALESCE(SUM(amount_paid),0) FROM bookings WHERE status IN ('confirmed','completed')"
 )->fetchColumn();
@@ -169,33 +176,39 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 }
 
 /* =========================================================
-   RECENT HOST APPLICATIONS (pending, most recent 4)
+   RECENT HOST APPLICATIONS (most recent 4)
+   PHOTO FIX: join users to show the applicant's real avatar.
+   Falls back to the generated initials avatar when the user
+   has no uploaded photo.
    ========================================================= */
  $hostApplications = array_map(function ($row) {
+    $initialsAvatar = 'https://ui-avatars.com/api/?background=EDA423&color=fff&bold=true&name=' . urlencode($row['full_name']);
     return [
         'id'         => (int) $row['id'],
         'name'       => $row['full_name'],
         'city'       => $row['location'],
         'status'     => ucfirst($row['status']),
         'raw_status' => $row['status'],
-        'img'        => 'https://ui-avatars.com/api/?background=EDA423&color=fff&bold=true&name=' . urlencode($row['full_name']),
+        'img'        => resolve_photo($row['avatar_path'], $initialsAvatar),
     ];
 }, $pdo->query(
-    "SELECT id, full_name, location, status
-     FROM host_applications
-     ORDER BY created_at DESC
+    "SELECT ha.id, ha.full_name, ha.location, ha.status,
+            u.avatar_path
+     FROM host_applications ha
+     LEFT JOIN users u ON u.id = ha.user_id
+     ORDER BY ha.created_at DESC
      LIMIT 4"
 )->fetchAll());
 
 /* =========================================================
    TOP PERFORMING LISTINGS (by revenue, top 4)
-   FIX: b.total -> b.amount_paid
+   PHOTO FIX: cover photo goes through resolve_photo().
    ========================================================= */
  $topListings = array_map(function ($row) {
     return [
         'name'     => $row['title'],
         'city'     => $row['location'],
-        'img'      => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
+        'img'      => resolve_photo($row['cover_photo']),
         'revenue'  => '₱' . number_format((float) $row['revenue']),
         'bookings' => (int) $row['booking_count'] . ' bookings',
     ];
@@ -214,13 +227,13 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    RECENT BOOKINGS (most recent 4)
-   FIX: b.booked_at -> b.created_at, b.total -> b.amount_paid
+   PHOTO FIX: cover photo goes through resolve_photo().
    ========================================================= */
  $recentBookings = array_map(function ($row) {
     return [
         'name'   => $row['title'],
         'city'   => $row['location'],
-        'img'    => $row['cover_photo'] ?? '/webprogg/images/ListingPlaceholder.png',
+        'img'    => resolve_photo($row['cover_photo']),
         'date'   => date('M j, Y', strtotime($row['created_at'])),
         'amount' => '₱' . number_format((float) $row['amount_paid']),
         'status' => ucfirst($row['status']),
@@ -236,9 +249,6 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    PLATFORM SUMMARY (this calendar month)
-   FIX: SUM(total) -> SUM(amount_paid), booked_at -> created_at.
-   The `conversations` table EXISTS in this schema, so the
-   messages tile now shows a real count instead of a hardcoded 0.
    ========================================================= */
  $monthStart = date('Y-m-01 00:00:00');
 
@@ -274,7 +284,6 @@ foreach (['confirmed', 'completed', 'cancelled', 'pending'] as $statusKey) {
 
 /* =========================================================
    CHART DATA — last 7 days of bookings / revenue
-   FIX: DATE(booked_at) -> DATE(created_at), total -> amount_paid
    ========================================================= */
  $chartLabels   = [];
  $bookingSeries = [];
@@ -342,6 +351,18 @@ function emptyState($text) {
     echo '<p>'.htmlspecialchars($text).'</p>';
     echo '</div>';
 }
+
+/**
+ * Renders an <img> with an onerror fallback so a file missing
+ * on disk shows the placeholder image instead of a broken icon.
+ */
+function listImage($src, $alt, $class = '') {
+    $safeSrc = htmlspecialchars($src);
+    $safeAlt = htmlspecialchars($alt);
+    return '<img src="' . $safeSrc . '" alt="' . $safeAlt . '"'
+        . ($class !== '' ? ' class="' . htmlspecialchars($class) . '"' : '')
+        . ' onerror="this.onerror=null;this.src=\'/webprogg/images/ListingPlaceholder.png\';">';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -405,6 +426,15 @@ function emptyState($text) {
     .host-app-approve:hover { background: #2FA84F; color: #fff; }
     .host-app-reject { background: #FCEAEA; color: #E14B4B; }
     .host-app-reject:hover { background: #E14B4B; color: #fff; }
+
+    /* Soft neutral background behind thumbnails so placeholder
+       and loading images never look broken */
+    .people-list img,
+    .listing-list img,
+    .booking-list img {
+        background: #f6f4ee;
+        object-fit: cover;
+    }
 </style>
 </head>
 <body>
@@ -589,7 +619,7 @@ function emptyState($text) {
                             <ul class="people-list">
                                 <?php foreach ($hostApplications as $h): ?>
                                     <li>
-                                        <img src="<?= htmlspecialchars($h['img']) ?>" alt="<?= htmlspecialchars($h['name']) ?>">
+                                        <?= listImage($h['img'], $h['name']) ?>
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($h['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($h['city']) ?></span>
@@ -628,7 +658,7 @@ function emptyState($text) {
                                 <?php foreach ($topListings as $i => $l): ?>
                                     <li>
                                         <span class="rank"><?= $i + 1 ?></span>
-                                        <img src="<?= htmlspecialchars($l['img']) ?>" alt="<?= htmlspecialchars($l['name']) ?>">
+                                        <?= listImage($l['img'], $l['name']) ?>
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($l['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($l['city']) ?></span>
@@ -654,7 +684,7 @@ function emptyState($text) {
                             <ul class="booking-list">
                                 <?php foreach ($recentBookings as $b): ?>
                                     <li>
-                                        <img src="<?= htmlspecialchars($b['img']) ?>" alt="<?= htmlspecialchars($b['name']) ?>">
+                                        <?= listImage($b['img'], $b['name']) ?>
                                         <div class="people-info">
                                             <span class="people-name"><?= htmlspecialchars($b['name']) ?></span>
                                             <span class="people-sub"><?= htmlspecialchars($b['city']) ?></span>

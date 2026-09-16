@@ -14,6 +14,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+/* NEW — navbar.php contract: this page is auth-gated, so
+   anyone reaching this point is logged in. Without this,
+   navbar.php defaults $isLoggedIn to false and renders the
+   GUEST navbar (LIST YOUR SPACE, no dropdown). */
+ $isLoggedIn = true;
+
 /*
  * -----------------------------------------------------
  * KEEP is_host IN SYNC WITH THE DATABASE
@@ -51,19 +57,33 @@ if (isset($_SESSION['user_id'])) {
 // the same pattern becomeahost.php uses)
  $currentPage = '/webprogg/user/usershome.php';
 
-
-  // =========================
-  // PAGE DATA Users Home
-  // =========================
-
- $navLinks = [
-    ['label' => 'HOME', 'href' => '/webprogg/user/usershome.php'],
-    ['label' => 'LISTINGS', 'href' => '/webprogg/Listings/listing.php'],
-    ['label' => 'HOW IT WORKS', 'href' => '/webprogg/host/howitworks.php'],
-    ['label' => 'BECOME A HOST', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'HIVE CLUB', 'href' => '/webprogg/hiveclub.php'],
-    ['label' => 'CONTACTS', 'href' => '/webprogg/misc/contacts.php'],
+/* =========================================================
+   CHANGED — SHARED NAVBAR CONTRACT
+   navbar.php expects:
+     $navigation  — "LABEL" => "/url" pairs (not a list of
+                    arrays, which is what this page used
+                    before)
+     $currentPage — the URL that gets the active class
+     $navAvatar, $notification_count — already set above
+     $isHost      — adds "Host Dashboard" to the dropdown
+                    if the user is a host
+   The old inline <nav> markup and its <style> block are
+   gone — navbar.php renders the header now.
+========================================================= */
+ $navigation = [
+    "HOME"          => "/webprogg/user/usershome.php",
+    "LISTINGS"      => "/webprogg/Listings/listing.php",
+    "HOW IT WORKS"  => "/webprogg/host/howitworks.php",
+    "BECOME A HOST" => "/webprogg/host/becomeahost.php",
+    "HIVE CLUB"     => "/webprogg/hiveclub.php",
+    "CONTACTS"      => "/webprogg/misc/contacts.php",
 ];
+
+ $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
+
+// =========================
+// PAGE DATA Users Home
+// =========================
 
  $listings = [
     ['name' => 'STUDIO LOFT',     'image' => '/webprogg/images/StudioLoft.png',    'type' => 'studio-loft'],
@@ -97,7 +117,7 @@ if (isset($_SESSION['user_id'])) {
     ],
 ];
 
-  $testimonials = [
+ $testimonials = [
     [
       'quote'  => 'Booking my apartment through RoomHive was seamless.',
       'body'   => 'The team was responsive from day one and the listing matched exactly what was shown. Moving in was stress-free.',
@@ -130,7 +150,7 @@ if (isset($_SESSION['user_id'])) {
     ],
 ];
 
-  $ctaImages = [
+ $ctaImages = [
     '/webprogg/images/FirstImageLeft.jpg',
     '/webprogg/images/SecondImageLeft.jpg',
     '/webprogg/images/MiddleImage.avif',
@@ -138,23 +158,23 @@ if (isset($_SESSION['user_id'])) {
     '/webprogg/images/SecondImageRight.jpg',
 ];
 
-  $footerCompanyLinks = [
+ $footerCompanyLinks = [
     ['label' => 'Home', 'href' => '/webprogg/user/usershome.php'],
     ['label' => 'Listings', 'href' => '/webprogg/Listings/listing.php'],
     ['label' => 'How It Works', 'href' => '/webprogg/host/howitworks.php'],
     ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
-  ];
+];
 
-  $footerInvolvedLinks = [
+ $footerInvolvedLinks = [
     ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Hive Club', 'href' => '/webprogg/hiveclub.php'],
     ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Terms Of Service', 'href' => '#'],
-  ];
+];
 
-  $phoneNumber = '+639275693574';
-  $emailAddress = 'RoomHive@gmail.com';
-  $currentYear = date('Y');
+ $phoneNumber = '+639275693574';
+ $emailAddress = 'RoomHive@gmail.com';
+ $currentYear = date('Y');
 ?>
 <!doctype html>
 <html lang="en">
@@ -180,135 +200,18 @@ if (isset($_SESSION['user_id'])) {
          static. Same inline flag index.php uses. -->
     <script>document.documentElement.classList.add("js-animations");</script>
   </head>
- 
+
   <body>
-   <!-- =========================
-     NAVIGATION BAR
-========================== -->
-<nav class="navbar">
 
-    <!-- LOGO -->
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-
-    <!-- NAVIGATION LINKS -->
-    <div class="nav-links">
-
-        <?php foreach ($navLinks as $link): ?>
-            <a
-                href="<?php echo htmlspecialchars($link['href']); ?>"
-                class="<?php echo ($link['href'] === $currentPage) ? 'active' : ''; ?>"
-            >
-                <?php echo htmlspecialchars($link['label']); ?>
-            </a>
-        <?php endforeach; ?>
-
-        <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo htmlspecialchars($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-       <!-- MY ACCOUNT DROPDOWN -->
-<div class="account-dropdown js-account-dropdown">
-
-    <button
-        type="button"
-        class="my-account js-account-toggle"
-        aria-haspopup="true"
-        aria-expanded="false"
-    >
-        <span class="account-circle">
-            <img
-                src="<?php echo htmlspecialchars($navAvatar); ?>"
-                alt="My Account"
-            >
-        </span>
-
-        <span>MY PROFILE</span>
-
-        <span class="dropdown-caret">&#9662;</span>
-    </button>
-
-    <div class="account-dropdown-menu">
-
-        <a href="/webprogg/user/userprofile.php">
-            My Profile
-        </a>
-
-        <a href="/webprogg/auth/logout.php">
-            Logout
-        </a>
-
-    </div>
-
-</div>
-
-    </div>
-
-</nav>
-
-<style>
-    .account-dropdown {
-        position: relative;
-    }
-
-    .account-dropdown .my-account {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
-    }
-
-    .account-dropdown .dropdown-caret {
-        font-size: 0.7em;
-        transition: transform 0.15s ease;
-    }
-
-    .account-dropdown.open .dropdown-caret {
-        transform: rotate(180deg);
-    }
-
-    .account-dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        min-width: 160px;
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-        overflow: hidden;
-        z-index: 100;
-        margin-top: 8px;
-    }
-
-    .account-dropdown.open .account-dropdown-menu {
-        display: block;
-    }
-
-    .account-dropdown-menu a {
-        display: block;
-        padding: 10px 16px;
-        text-decoration: none;
-        color: #333;
-        white-space: nowrap;
-    }
-
-    .account-dropdown-menu a:hover {
-        background: #f5f5f5;
-    }
-</style>
-<!-- The dropdown's open/close behavior now lives in javaScript.js
-     (shared by every page instead of a copy-pasted inline script). -->
-
+    <!-- =========================
+         NAVIGATION BAR
+         CHANGED: now uses the shared navbar.php include
+         (same design as host_navbar.php — 42px avatar, 12px
+         MY PROFILE label, self-contained dropdown).
+    ========================== -->
+    
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
     <!-- =========================
          HERO SECTION
     ========================== -->
@@ -454,7 +357,7 @@ if (isset($_SESSION['user_id'])) {
         </div>
       </div>
 
-            <div class="testimonials-slider">
+      <div class="testimonials-slider">
         <div class="testimonials-track">
 
           <?php foreach ($testimonials as $testimonial): ?>
@@ -567,5 +470,5 @@ if (isset($_SESSION['user_id'])) {
 
     <script src="/webprogg/assets/javaScript.js"></script>
   </body>
-   
- </html>
+
+</html>
