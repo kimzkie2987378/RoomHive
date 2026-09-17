@@ -21,8 +21,10 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 /* =========================
    FLAGS FROM book.php REDIRECTS
 ========================== */
- $showUnavailableNotice = isset($_GET['unavailable']);
- $showOwnBookingNotice  = isset($_GET['ownbooking']);
+ $showUnavailableNotice     = isset($_GET['unavailable']);
+ $showOwnBookingNotice      = isset($_GET['ownbooking']);
+ $showAlreadyListedNotice   = isset($_GET['alreadylisted']);
+ $showIncompleteDatesNotice = isset($_GET['incompletedates']); /* ===== NEW ===== */
 
 /* =========================
    AMENITY ICON MAP
@@ -184,7 +186,56 @@ if (empty($galleryImages)) {
 
  $unavailableRanges = $unavailableDatesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+/* =========================================================
+   ===== NEW ===== LONG-TERM OCCUPANCY
+   A long-term booking has NO checkout date — it occupies the
+   space from its move-in date ONWARD, indefinitely, until the
+   booking is finished (status leaves pending/confirmed).
+   While occupied, the space is unavailable to other users.
+   Once finished, the query above no longer matches and the
+   space automatically becomes bookable again.
+========================================================= */
+
+ $today = date('Y-m-d');
+
+ $isLongTermOccupied = false;
+
+foreach ($unavailableRanges as $range) {
+    $co = $range['checkout_date'] ?? null;
+
+    if (empty($co) && !empty($range['checkin_date']) && $range['checkin_date'] <= $today) {
+        $isLongTermOccupied = true;
+        break;
+    }
+}
+
+/* While a long-term stay occupies the space, nobody else can book it */
+if ($isLongTermOccupied) {
+    $isBookable = false;
+}
+
+/* ===== NEW: build the JS payload for the calendar =====
+   end = null  ->  open-ended long-term booking (blocks all
+   future dates from its start until it's finished). */
+ $unavailableRangesJs = [];
+
+foreach ($unavailableRanges as $range) {
+    $unavailableRangesJs[] = [
+        'start' => !empty($range['checkin_date'])  ? $range['checkin_date']  : null,
+        'end'   => !empty($range['checkout_date']) ? $range['checkout_date'] : null,
+    ];
+}
+
  $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
+
+/* =========================================================
+   ===== NEW ===== LISTING PUBLISH STATUS
+   Once the space is published (status = 'approved'),
+   the host can NOT list it again.
+========================================================= */
+
+ $listingStatus   = $listingRow['status'] ?? '';
+ $isAlreadyListed = ($listingStatus === 'approved');
 
 /* =========================
    MY APPLICATION STATUS
@@ -224,10 +275,7 @@ if ($isLoggedIn && !$isOwnListing) {
     'floor'          => $listingRow['floor'],
     'parking'        => $listingRow['parking'],
 
-    /* ===== NEW: MAP PIN =====
-       Exact pin coordinates saved by the host on host-step2.php.
-       isset() guards keep this page working even on listings
-       created before the latitude/longitude columns existed. */
+    /* ===== NEW: MAP PIN ===== */
     'latitude'       => isset($listingRow['latitude']) && $listingRow['latitude'] !== null
                             ? (float) $listingRow['latitude'] : null,
     'longitude'      => isset($listingRow['longitude']) && $listingRow['longitude'] !== null
@@ -389,6 +437,58 @@ if ($isLoggedIn && !$isOwnListing) {
             font-weight: 500;
 
             animation: rdRise 0.4s ease both;
+        }
+
+        /* ===== NEW: success-style notice (already listed) ===== */
+        .rd-notice-success {
+            background: #e8f8f1 !important;
+
+            border-color: #b9e3c5 !important;
+
+            color: #1e7a3d !important;
+        }
+
+        /* =====================================================
+           ===== NEW: ALREADY LISTED STATE =====
+        ====================================================== */
+
+        .rd-listed-note {
+            text-align: center;
+
+            margin-top: 10px;
+
+            font-size: 12.5px;
+            font-weight: 600;
+
+            color: var(--rd-moss) !important;
+        }
+
+        /* =====================================================
+           ===== NEW: DATE COMPLETION HINT =====
+           Shown under the Send Inquiry button while dates are
+           incomplete. Turns green when dates are complete.
+        ====================================================== */
+
+        .rd-date-hint {
+            text-align: center;
+
+            margin: 8px 0 0;
+
+            font-size: 12px;
+            font-weight: 600;
+
+            color: #b07708 !important;
+        }
+
+        .rd-date-hint.rd-hint-ok {
+            color: var(--rd-moss) !important;
+        }
+
+        /* ===== NEW: hides the check-out field while Long Term
+           is checked (only 1 date needed). Comes back when
+           Long Term is unchecked. ===== */
+        .rd-date-hidden {
+            display: none !important;
         }
 
         /* =====================================================
@@ -740,8 +840,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
         /* =====================================================
            NEW: MAP PIN — LEAFLET EXACT-LOCATION MAP
-           Shown when the host dropped a pin on host-step2.php.
-           Free Leaflet + OpenStreetMap — no API key needed.
         ====================================================== */
 
         .rd-map-embed {
@@ -973,6 +1071,16 @@ if ($isLoggedIn && !$isOwnListing) {
     <?php elseif ($showOwnBookingNotice): ?>
         <div class="rd-notice">
             &#8505;&#65039; You can't book your own listing.
+        </div>
+    <?php elseif ($showAlreadyListedNotice): ?>
+        <div class="rd-notice rd-notice-success">
+            &#10003; This space is already listed. It's live and visible to renters.
+        </div>
+    <?php elseif ($showIncompleteDatesNotice): ?>
+        <!-- ===== NEW: bounced back because dates were incomplete ===== -->
+        <div class="rd-notice">
+            &#9888;&#65039; Please complete your dates before continuing
+            <?php ?>(&mdash; for Long Term, just choose your move-in date).
         </div>
     <?php endif; ?>
 
@@ -1230,7 +1338,9 @@ if ($isLoggedIn && !$isOwnListing) {
                             <strong id="rd-checkin-display">Select date</strong>
                         </div>
 
-                        <span class="rd-date-sep">&ndash;</span>
+                        <!-- ===== NEW: separator + checkout field HIDE while
+                             Long Term is checked (only 1 date needed) ===== -->
+                        <span class="rd-date-sep" id="rd-date-sep">&ndash;</span>
 
                         <div class="rd-date-summary-field" id="rd-checkout-summary-field">
                             <span>Check-out</span>
@@ -1276,8 +1386,19 @@ if ($isLoggedIn && !$isOwnListing) {
                         Log In to Send Inquiry
                     </a>
 
+                <?php elseif ($isOwnListing && $isAlreadyListed): ?>
+
+                    <button type="button" class="rd-btn rd-btn-primary" disabled>
+                        &#10003; Already Listed
+                    </button>
+
+                    <p class="rd-listed-note">
+                        This space is live &mdash; renters can now send inquiries.
+                    </p>
+
                 <?php elseif ($isOwnListing): ?>
 
+                    <!-- Space uploaded but not yet published — host can pay & list -->
                     <form action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button type="submit" class="rd-btn rd-btn-primary">
@@ -1287,17 +1408,41 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 <?php elseif (!$isBookable): ?>
 
+                    <!-- ===== NEW: shows "Occupied — Long Term" while a
+                         long-term stay occupies the space. It comes back
+                         automatically once that stay is finished. ===== -->
                     <button type="button" class="rd-btn rd-btn-primary" disabled>
-                        Already Booked
+                        <?= $isLongTermOccupied
+                                ? '&#128336; Occupied &mdash; Long Term Stay'
+                                : 'Already Booked' ?>
                     </button>
+
+                    <?php if ($isLongTermOccupied): ?>
+                        <p class="rd-listed-note">
+                            This space is under a long-term stay.
+                            It will be available again once the stay is finished.
+                        </p>
+                    <?php endif; ?>
 
                 <?php else: ?>
 
+                    <!-- ===== NEW: inquiry form — button is DISABLED until
+                         dates are complete (check-in + check-out, or just
+                         check-in when Long Term is checked) ===== -->
                     <form id="rd-inquiry-form" action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
-                        <button type="submit" class="rd-btn rd-btn-primary">
+                        <button
+                            type="submit"
+                            class="rd-btn rd-btn-primary"
+                            id="rd-inquiry-submit"
+                            disabled
+                        >
                             Send Inquiry
                         </button>
+
+                        <p class="rd-date-hint" id="rd-date-hint">
+                            Select check-in and check-out to continue
+                        </p>
                     </form>
 
                 <?php endif; ?>
@@ -1306,9 +1451,11 @@ if ($isLoggedIn && !$isOwnListing) {
                     Message Host
                 </button>
 
+                <?php if (!($isOwnListing && $isAlreadyListed)): ?>
                 <p class="rd-charge-note">
                     &#128274; Don't worry, you won't be charged yet
                 </p>
+                <?php endif; ?>
 
             </div>
 
@@ -1354,14 +1501,7 @@ if ($isLoggedIn && !$isOwnListing) {
 
             </div>
 
-            <!-- =============================================
-                 LOCATION CARD
-                 ===== NEW: MAP PIN =====
-                 If the host dropped a pin on host-step2.php,
-                 show the REAL free Leaflet map centered on
-                 those exact coordinates. Old listings without
-                 a pin keep the placeholder image.
-            ============================================== -->
+            <!-- LOCATION CARD -->
 
             <div class="rd-card rd-location-card rd-reveal" style="--d: .34s;">
 
@@ -1551,9 +1691,12 @@ if ($isLoggedIn && !$isOwnListing) {
 ========================== -->
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 (function () {
+
+    var rdListingId = <?= (int) $listing['id'] ?>;
 
     /* -----------------------------------------------
        BACK LINK
@@ -1599,20 +1742,48 @@ if ($isLoggedIn && !$isOwnListing) {
         });
     });
 
+    /* Thumbnail arrows — scroll the strip */
+    var thumbsWrap = document.getElementById("rd-gallery-thumbs");
+    var thumbsPrev = document.getElementById("rd-thumbs-prev");
+    var thumbsNext = document.getElementById("rd-thumbs-next");
+
+    if (thumbsWrap && thumbsPrev) {
+        thumbsPrev.addEventListener("click", function () {
+            thumbsWrap.scrollBy({ left: -180, behavior: "smooth" });
+        });
+    }
+    if (thumbsWrap && thumbsNext) {
+        thumbsNext.addEventListener("click", function () {
+            thumbsWrap.scrollBy({ left: 180, behavior: "smooth" });
+        });
+    }
+
     /* -----------------------------------------------
-       SAVE BUTTON (visual toggle)
+       SAVE BUTTON (visual toggle, persisted locally)
     ------------------------------------------------ */
     var saveBtn = document.getElementById("rd-save-btn");
     if (saveBtn) {
+
+        var saveKey = "roomhive_saved_" + rdListingId;
+
+        try {
+            if (localStorage.getItem(saveKey) === "1") {
+                saveBtn.classList.add("active");
+            }
+        } catch (e) { /* storage unavailable — ignore */ }
+
         saveBtn.addEventListener("click", function () {
             saveBtn.classList.toggle("active");
 
-            var heart = saveBtn.querySelector(".rd-heart-icon");
-            var active = saveBtn.classList.contains("active");
+            var isSaved = saveBtn.classList.contains("active");
 
-            heart.innerHTML = active ? "&#9829;" : "&#9825;";
-            saveBtn.innerHTML = '<span class="rd-heart-icon">' + heart.innerHTML + "</span> " +
-                (active ? "Saved" : "Save");
+            try {
+                if (isSaved) {
+                    localStorage.setItem(saveKey, "1");
+                } else {
+                    localStorage.removeItem(saveKey);
+                }
+            } catch (e) { /* ignore */ }
         });
     }
 
@@ -1622,195 +1793,249 @@ if ($isLoggedIn && !$isOwnListing) {
     var shareBtn = document.getElementById("rd-share-btn");
     if (shareBtn) {
         shareBtn.addEventListener("click", function () {
-            var url = window.location.href;
-            var title = document.title;
+            var shareData = {
+                title: document.title,
+                url: window.location.href
+            };
 
             if (navigator.share) {
-                navigator.share({ title: title, url: url }).catch(function () {});
+                navigator.share(shareData).catch(function () { /* user cancelled */ });
             } else if (navigator.clipboard) {
-                navigator.clipboard.writeText(url).then(function () {
+                navigator.clipboard.writeText(window.location.href).then(function () {
                     var original = shareBtn.innerHTML;
-                    shareBtn.innerHTML = "&#10003; Link Copied";
-                    setTimeout(function () { shareBtn.innerHTML = original; }, 2000);
-                });
+                    shareBtn.innerHTML = '<span class="rd-share-icon">&#10003;</span> Copied!';
+                    setTimeout(function () {
+                        shareBtn.innerHTML = original;
+                    }, 1600);
+                }).catch(function () { /* ignore */ });
             }
         });
     }
 
     /* -----------------------------------------------
-       SHOW MORE / SHOW LESS (about text)
+       ABOUT — SHOW MORE / SHOW LESS
     ------------------------------------------------ */
-    var aboutText = document.getElementById("rd-about-text");
     var showMoreBtn = document.getElementById("rd-show-more");
+    var aboutText   = document.getElementById("rd-about-text");
 
-    if (aboutText && showMoreBtn) {
-        var isClamped = aboutText.scrollHeight > aboutText.clientHeight + 8;
+    if (showMoreBtn && aboutText) {
+        aboutText.classList.add("rd-clamped");
 
-        if (!isClamped) {
-            showMoreBtn.style.display = "none";
-        } else {
-            showMoreBtn.addEventListener("click", function () {
-                if (aboutText.style.maxHeight && aboutText.style.maxHeight !== "none") {
-                    aboutText.style.maxHeight = "";
-                    showMoreBtn.innerHTML = "Show more &#9662;";
-                } else {
-                    aboutText.style.maxHeight = "none";
-                    showMoreBtn.innerHTML = "Show less &#9652;";
-                }
-            });
+        showMoreBtn.addEventListener("click", function () {
+            var isClamped = aboutText.classList.toggle("rd-clamped");
+
+            showMoreBtn.innerHTML = isClamped
+                ? "Show more &#9662;"
+                : "Show less &#9652;";
+        });
+    }
+
+    /* ===============================================
+       ===== NEW ===== DATE PICKER + DATE COMPLETION
+       RULES + LONG-TERM SINGLE DATE
+    ------------------------------------------------
+       1. Send Inquiry stays DISABLED until dates are
+          complete (check-in + check-out normally).
+       2. Long Term checked  ->  only the move-in date
+          is needed; the check-out field DISAPPEARS.
+          Unchecking brings it back.
+       3. A long-term booking (no end date) blocks the
+          calendar from its start date ONWARD until the
+          stay is finished.
+    ================================================ */
+    var rdUnavailable = <?= json_encode($unavailableRangesJs) ?>;
+
+    var checkinInput    = document.getElementById("rd-checkin");
+    var checkoutInput   = document.getElementById("rd-checkout");
+    var checkinDisplay  = document.getElementById("rd-checkin-display");
+    var checkoutDisplay = document.getElementById("rd-checkout-display");
+    var longTermBox     = document.getElementById("rd-long-term");
+
+    var inquiryForm     = document.getElementById("rd-inquiry-form");
+    var inquirySubmit   = document.getElementById("rd-inquiry-submit");
+    var dateHint        = document.getElementById("rd-date-hint");
+    var checkoutField   = document.getElementById("rd-checkout-summary-field");
+    var dateSep         = document.getElementById("rd-date-sep");
+
+    function parseDay(value) {
+        return new Date(value + "T00:00:00");
+    }
+
+    function isDateUnavailable(date) {
+        var t = date.getTime();
+
+        for (var i = 0; i < rdUnavailable.length; i++) {
+            var r = rdUnavailable[i];
+
+            if (!r.start) continue;
+
+            var s = parseDay(r.start).getTime();
+
+            if (r.end) {
+                /* Normal booking — blocked between start and end */
+                var e = parseDay(r.end).getTime();
+                if (t >= s && t <= e) return true;
+            } else {
+                /* ===== NEW: LONG-TERM booking — open-ended.
+                   Blocks everything from move-in onward until
+                   the stay is finished (removed from DB active
+                   statuses). ===== */
+                if (t >= s) return true;
+            }
+        }
+
+        return false;
+    }
+
+    function fmt(date) {
+        var m = String(date.getMonth() + 1).padStart(2, "0");
+        var d = String(date.getDate()).padStart(2, "0");
+        return date.getFullYear() + "-" + m + "-" + d;
+    }
+
+    /* ===== NEW: enable / disable Send Inquiry based on
+       whether the dates are complete for the current mode ===== */
+    function refreshInquiryState() {
+        if (!inquirySubmit) return;
+
+        var isLongTerm = longTermBox && longTermBox.checked;
+        var hasCheckin  = !!(checkinInput && checkinInput.value);
+        var hasCheckout = !!(checkoutInput && checkoutInput.value);
+
+        var complete = isLongTerm ? hasCheckin : (hasCheckin && hasCheckout);
+
+        inquirySubmit.disabled = !complete;
+
+        if (dateHint) {
+            if (complete) {
+                dateHint.innerHTML = "&#10003; Dates complete &mdash; you're ready to continue";
+                dateHint.classList.add("rd-hint-ok");
+            } else if (isLongTerm) {
+                dateHint.textContent = "Long Term: choose your move-in date to continue";
+                dateHint.classList.remove("rd-hint-ok");
+            } else {
+                dateHint.textContent = "Select check-in and check-out to continue";
+                dateHint.classList.remove("rd-hint-ok");
+            }
         }
     }
 
-    /* -----------------------------------------------
-       ACCOUNT DROPDOWN (navbar)
-    ------------------------------------------------ */
-    document.querySelectorAll(".account-dropdown").forEach(function (dd) {
-        var btn = dd.querySelector(".my-account");
-        if (!btn) return;
+    /* ===== NEW: show / hide the check-out field when the
+       Long Term checkbox is toggled ===== */
+    function setLongTermUI(isLongTerm) {
+        if (checkoutField) checkoutField.classList.toggle("rd-date-hidden", isLongTerm);
+        if (dateSep)       dateSep.classList.toggle("rd-date-hidden", isLongTerm);
 
-        btn.addEventListener("click", function (e) {
-            e.stopPropagation();
-            dd.classList.toggle("open");
-        });
-    });
-
-    document.addEventListener("click", function () {
-        document.querySelectorAll(".account-dropdown.open").forEach(function (dd) {
-            dd.classList.remove("open");
-        });
-    });
-
-    /* -----------------------------------------------
-       CALENDAR — flatpickr with unavailable dates
-    ------------------------------------------------ */
-    var calendarEl       = document.getElementById("rd-calendar");
-    var checkinInput     = document.getElementById("rd-checkin");
-    var checkoutInput    = document.getElementById("rd-checkout");
-    var checkinDisplay   = document.getElementById("rd-checkin-display");
-    var checkoutDisplay  = document.getElementById("rd-checkout-display");
-    var longTermCheckbox = document.getElementById("rd-long-term");
-
-    if (calendarEl && typeof flatpickr !== "undefined") {
-
-        var bookedRanges = <?php
-            echo json_encode(array_map(function ($r) {
-                return [
-                    'from' => $r['checkin_date'],
-                    'to'   => $r['checkout_date'],
-                ];
-            }, $unavailableRanges));
-        ?>;
-
-        var booked = bookedRanges.map(function (r) {
-            return {
-                from: new Date(r.from + "T00:00:00"),
-                to:   new Date(r.to + "T00:00:00")
-            };
-        });
-
-        function fmtYMD(d) {
-            var m = String(d.getMonth() + 1).padStart(2, "0");
-            var day = String(d.getDate()).padStart(2, "0");
-            return d.getFullYear() + "-" + m + "-" + day;
+        if (checkoutDisplay) {
+            checkoutDisplay.textContent = isLongTerm ? "Long term" : "Select date";
         }
+    }
 
-        function fmtDisplay(d) {
-            return d.toLocaleDateString("en-US", {
-                month: "short", day: "numeric", year: "numeric"
-            });
-        }
+    var calendarEl = document.getElementById("rd-calendar");
+
+    if (calendarEl && window.flatpickr) {
 
         var fp = flatpickr(calendarEl, {
-            inline: true,
             mode: "range",
-            minDate: "today",
+            inline: true,
             dateFormat: "Y-m-d",
+            minDate: "today",
             disable: [
                 function (date) {
-                    var d = new Date(date);
-                    d.setHours(0, 0, 0, 0);
-
-                    return booked.some(function (r) {
-                        return d >= r.from && d <= r.to;
-                    });
+                    return isDateUnavailable(date);
                 }
             ],
             onChange: function (selectedDates) {
-                if (selectedDates.length === 2) {
-                    checkinInput.value  = fmtYMD(selectedDates[0]);
-                    checkoutInput.value = fmtYMD(selectedDates[1]);
-                    checkinDisplay.textContent  = fmtDisplay(selectedDates[0]);
-                    checkoutDisplay.textContent = fmtDisplay(selectedDates[1]);
-                } else if (selectedDates.length === 1) {
-                    checkinInput.value  = fmtYMD(selectedDates[0]);
-                    checkoutInput.value = "";
-                    checkinDisplay.textContent  = fmtDisplay(selectedDates[0]);
-                    checkoutDisplay.textContent = "Select date";
-                } else {
-                    checkinInput.value  = "";
-                    checkoutInput.value = "";
+                if (selectedDates.length === 0) {
                     checkinDisplay.textContent  = "Select date";
                     checkoutDisplay.textContent = "Select date";
+                    checkinInput.value  = "";
+                    checkoutInput.value = "";
+                    refreshInquiryState();
+                    return;
                 }
+
+                var first = selectedDates[0];
+                checkinInput.value  = fmt(first);
+                checkinDisplay.textContent = fmt(first);
+
+                if (longTermBox && longTermBox.checked) {
+                    /* Long term — only ONE date (move-in), no checkout */
+                    checkoutInput.value = "";
+                    checkoutDisplay.textContent = "Long term";
+                } else if (selectedDates.length === 2) {
+                    var second = selectedDates[1];
+                    checkoutInput.value  = fmt(second);
+                    checkoutDisplay.textContent = fmt(second);
+                } else {
+                    checkoutInput.value = "";
+                    checkoutDisplay.textContent = "Select date";
+                }
+
+                refreshInquiryState();
             }
         });
 
-        if (longTermCheckbox) {
-            longTermCheckbox.addEventListener("change", function () {
+        /* Long-term toggle — single date mode + hide checkout field */
+        if (longTermBox) {
+            longTermBox.addEventListener("change", function () {
                 if (this.checked) {
-                    fp.clear();
+                    fp.set("mode", "single");
+                    checkoutInput.value = "";
+                } else {
+                    fp.set("mode", "range");
+                }
+
+                setLongTermUI(this.checked);
+                fp.redraw();
+                refreshInquiryState();
+            });
+        }
+
+        /* Belt & braces: block submit if dates incomplete */
+        if (inquiryForm) {
+            inquiryForm.addEventListener("submit", function (e) {
+                if (inquirySubmit && inquirySubmit.disabled) {
+                    e.preventDefault();
                 }
             });
         }
 
+        /* Initialize state on page load */
+        setLongTermUI(longTermBox && longTermBox.checked);
+        refreshInquiryState();
     }
 
-})();
-</script>
+    /* -----------------------------------------------
+       ===== NEW: LEAFLET MAP — exact host pin =====
+    ------------------------------------------------ */
+    var mapEmbed = document.getElementById("rdMapEmbed");
 
-<!-- =========================================================
-     NEW: MAP PIN — render the host's exact pin
-     (Free Leaflet + OpenStreetMap, no API key)
-========================================================== -->
+    if (mapEmbed && window.L) {
+        var pinLat = parseFloat(mapEmbed.dataset.lat);
+        var pinLng = parseFloat(mapEmbed.dataset.lng);
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        if (!isNaN(pinLat) && !isNaN(pinLng)) {
 
-<script>
-(function () {
+            var rdMap = L.map(mapEmbed, {
+                scrollWheelZoom: false
+            }).setView([pinLat, pinLng], 16);
 
-    var embed = document.getElementById("rdMapEmbed");
-    if (!embed || typeof L === "undefined") return;
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(rdMap);
 
-    var lat = parseFloat(embed.dataset.lat);
-    var lng = parseFloat(embed.dataset.lng);
+            L.marker([pinLat, pinLng]).addTo(rdMap);
 
-    var map = L.map(embed, {
-        center: [lat, lng],
-        zoom: 16,
-        scrollWheelZoom: false
-    });
-
-    var standard = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    });
-
-    var satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri"
-    });
-
-    standard.addTo(map);
-    L.control.layers({ "Map": standard, "Satellite": satellite }).addTo(map);
-
-    var pinIcon = L.divIcon({
-        className: "rd-pin-icon",
-        html: '<div class="rd-pin">📍</div>',
-        iconSize: [36, 36],
-        iconAnchor: [18, 34]
-    });
-
-    L.marker([lat, lng], { icon: pinIcon }).addTo(map);
+            mapEmbed.addEventListener("click", function () {
+                rdMap.scrollWheelZoom.enable();
+            });
+            mapEmbed.addEventListener("mouseleave", function () {
+                rdMap.scrollWheelZoom.disable();
+            });
+        }
+    }
 
 })();
 </script>

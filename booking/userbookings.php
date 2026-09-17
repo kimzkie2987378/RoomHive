@@ -2,6 +2,14 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    userbookings.php
+
+   PAYMENT DISPLAY: each booking row shows the real payment
+   state from b.amount_paid:
+     - fully paid   -> total + "Fully Paid"
+     - advance paid -> amount paid + "Advance Paid" + "left" pill
+     - nothing paid -> total + "Booking Total"
+   (Previously every row showed the total labelled "Total
+   Paid", which hid advance payments — do not revert.)
 ========================================================= */
 
 session_start();
@@ -43,8 +51,8 @@ if ($dbUser['is_host']) {
     ? $_GET['status']
     : 'all';
 
-/* ALL BOOKINGS */
- $sql = "SELECT b.id, b.total, b.status, b.booked_at,
+/* ALL BOOKINGS — amount_paid added for the paid/left display */
+ $sql = "SELECT b.id, b.total, b.amount_paid, b.status, b.booked_at,
                l.title, l.location,
                p.photo_path AS cover_photo
         FROM bookings b
@@ -67,14 +75,29 @@ if ($statusFilter !== 'all') {
  $bookingsStmt->execute();
 
  $bookings = array_map(function ($row) {
+    $total = (float) $row['total'];
+    $paid  = (float) ($row['amount_paid'] ?? 0);
+    $left  = round($total - $paid, 2);
+
+    if ($paid > 0.005 && $left <= 0.005) {
+        $paymentState = 'full';    /* fully paid */
+    } elseif ($paid > 0.005) {
+        $paymentState = 'advance'; /* advance / partial payment */
+    } else {
+        $paymentState = 'none';    /* nothing paid yet */
+    }
+
     return [
-        'id'       => (int) $row['id'],
-        'title'    => $row['title'],
-        'location' => $row['location'],
-        'thumb'    => resolve_photo($row['cover_photo']),
-        'dates'    => date('M j, Y', strtotime($row['booked_at'])),
-        'status'   => $row['status'],
-        'total'    => number_format((float) $row['total'], 2),
+        'id'            => (int) $row['id'],
+        'title'         => $row['title'],
+        'location'      => $row['location'],
+        'thumb'         => resolve_photo($row['cover_photo']),
+        'dates'         => date('M j, Y', strtotime($row['booked_at'])),
+        'status'        => $row['status'],
+        'total_fmt'     => number_format($total, 2),
+        'paid_fmt'      => number_format($paid, 2),
+        'left_fmt'      => number_format(max(0.0, $left), 2),
+        'payment_state' => $paymentState,
     ];
 }, $bookingsStmt->fetchAll());
 
@@ -120,10 +143,6 @@ foreach ($countsStmt->fetchAll() as $row) {
 
 <!-- =====================================================
      PLAIN PAGE HEADER (this page only)
-     Replaces the decorative hero entirely: no photo, no
-     honeycomb, no blobs, no wave, no chips. Just the
-     heading block on white, aligned with the dashboard
-     below it.
 ===================================================== -->
 <style>
     .ub-page-head {
@@ -177,6 +196,22 @@ foreach ($countsStmt->fetchAll() as $row) {
     /* Dashboard sits closer now that the tall hero is gone */
     .up-dashboard {
         margin-top: 26px;
+    }
+
+    /* =====================================================
+       ADVANCE PAYMENT NOTE (booking rows)
+       Small amber pill under "Advance Paid" showing the
+       remaining balance, e.g. "₱200.00 left".
+    ===================================================== */
+    .up-booking-side .ub-left-note {
+        font-size: 11px;
+        font-weight: 800;
+        color: #C77800;
+        background: #FFF6E9;
+        border: 1px dashed #F5C77E;
+        border-radius: 999px;
+        padding: 2px 9px;
+        white-space: nowrap;
     }
 
     @media (max-width: 1200px) {
@@ -251,12 +286,9 @@ foreach ($countsStmt->fetchAll() as $row) {
     </nav>
 </header>
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+
 <!-- =====================================================
      PAGE HEADER — PLAIN
-     CHANGED: the entire decorative hero is gone (photo,
-     scrim, chips, wave, honeycomb, blobs, shimmer). Just
-     the heading block on white, aligned with the
-     dashboard's gutters.
 ===================================================== -->
 <header class="ub-page-head">
 
@@ -332,8 +364,18 @@ foreach ($countsStmt->fetchAll() as $row) {
                 <span class="up-status up-status-<?php echo h($booking['status']); ?>">
                   <?php echo h(ucfirst($booking['status'])); ?>
                 </span>
-                <strong>&#8369; <?php echo h($booking['total']); ?></strong>
-                <span>Total Paid</span>
+
+                <?php if ($booking['payment_state'] === 'full'): ?>
+                    <strong>&#8369; <?php echo h($booking['total_fmt']); ?></strong>
+                    <span>Fully Paid</span>
+                <?php elseif ($booking['payment_state'] === 'advance'): ?>
+                    <strong>&#8369; <?php echo h($booking['paid_fmt']); ?></strong>
+                    <span>Advance Paid</span>
+                    <span class="ub-left-note">&#8369;<?php echo h($booking['left_fmt']); ?> left</span>
+                <?php else: ?>
+                    <strong>&#8369; <?php echo h($booking['total_fmt']); ?></strong>
+                    <span>Booking Total</span>
+                <?php endif; ?>
               </div>
               <span class="up-booking-chevron">&#8250;</span>
             </a>

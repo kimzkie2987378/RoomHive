@@ -3,21 +3,28 @@
         ROOMHIVE — LISTING PAYMENT (Inquiry Step 2: Payment)
         listingpayment.php
 
-        UPDATED: this page now handles two cases —
-
-          1) NEW INQUIRY (existing behaviour)
-             /listingpayment.php?listing_id=..&checkin_date=..&...
-             Charges the flat $1,000 reservation fee and, on
-             success, process-payment.php creates a new booking.
-
-          2) PAY REMAINING BALANCE (new)
-             /listingpayment.php?listing_id=..&pay_balance=<booking_id>
-             Looks the booking up SERVER-SIDE and charges exactly
-             `total - amount_paid` for that booking — the amount is
-             never trusted from the URL/query string, only ever
-             computed here from the DB. On success,
-             process-payment.php should add this payment to that
-             booking's amount_paid instead of creating a new row.
+        DESIGN REFRESH:
+          - Added site navbar (brand + avatar + notifications)
+          - Soft gray page background + elevated cards
+          - Step tracker with checkmark on done step
+          - Larger payment method tiles w/ hover + custom radio
+          - Green secure-payment banner
+          - Balance mode now shows a paid-vs-remaining progress bar
+          - Sticky summary sidebar on desktop
+          - ALL business logic unchanged (new inquiry + pay balance,
+            server-side amount derivation, same form field names,
+            same POST target process-payment.php)
+          ===== NEW =====
+          - Listing status guards:
+              * Host CANNOT open this page for a space that is
+                already live (status = 'approved') — no re-listing.
+              * Renters CANNOT open this page for a space that is
+                not published yet.
+          - ===== NEW: MAP PIN ===== Real Leaflet map in the
+            Location card showing the exact pin the host dropped
+            on host-step2.php (latitude/longitude from the
+            listings table). Falls back to the placeholder image
+            for listings saved before pins existed.
         ========================================================= */
 
         session_start();
@@ -41,44 +48,25 @@
         }
 
         /* -----------------------------------------------------
-        PHOTO PATH FIX
-        Uploaded photo_path / avatar_path values (listing_photos.photo_path,
-        other users' avatar_path) are saved relative to /webprogg — e.g.
-        "listing_photos/abc.jpg" or "avatars/xyz.jpg". Printed as-is, the
-        browser resolves that against the CURRENT page's folder
-        (/webprogg/booking/) instead of the site root, which is why the
-        listing cover photo and host avatar were 404ing on this page even
-        though other pages (userprofile.php, mylistings.php,
-        pendingtenants.php) already handle this. This forces every photo
-        path back to an absolute, site-root path so it loads correctly
-        from any page.
+        PHOTO PATH FIX (unchanged)
         ----------------------------------------------------- */
         function resolve_photo($path, $fallback) {
             if (empty($path)) {
                 return $fallback;
             }
             if (preg_match('#^(https?://|/)#i', $path)) {
-                return $path; // already absolute — leave it alone
+                return $path;
             }
             return '/webprogg/' . ltrim($path, '/');
         }
 
         /* -----------------------------------------------------
-        RESOLVE LISTING + INQUIRY DETAILS FROM STEP 1
-
-        Field names below match listing-detail.php's #rd-inquiry-form
-        exactly (checkin_date / checkout_date / guests / long_term) —
-        keeping the same names end-to-end avoids the kind of silent
-        param-name mismatch that was dropping dates on the floor here
-        before.
+        RESOLVE LISTING + INQUIRY DETAILS FROM STEP 1 (unchanged)
         ----------------------------------------------------- */
         $listingId = isset($_GET['listing_id']) && is_numeric($_GET['listing_id'])
             ? (int) $_GET['listing_id']
             : 0;
 
-        /* Validate the date strings rather than trusting them as-is —
-        same check used in book.php, so a hand-edited URL can't pass
-        through a malformed value. */
         function payment_valid_date($value) {
             if (!is_string($value) || $value === '') {
                 return null;
@@ -93,25 +81,15 @@
         $longTerm = isset($_GET['long_term']) && $_GET['long_term'] === '1';
 
         if ($longTerm) {
-            // Long-term inquiries don't carry a checkout date.
             $checkout = '';
         }
 
-        /* Guests comes from a <select> of '1' / '2' / '3' / '4+' — keep
-        it as the same string set process-payment.php (and book.php)
-        already expect, instead of forcing is_numeric() and silently
-        discarding "4+". */
         $allowedGuestOptions = ['1', '2', '3', '4+'];
         $guestsInput = $_GET['guests'] ?? null;
         $guests = in_array($guestsInput, $allowedGuestOptions, true) ? $guestsInput : '1';
 
         /* -----------------------------------------------------
-        PAY-REMAINING-BALANCE MODE
-        ?pay_balance=<booking id> switches this page from "new
-        inquiry, flat $1,000 fee" into "charge exactly what's left
-        owed on an existing booking". The amount is ALWAYS computed
-        here from the DB — never taken from the query string — so a
-        hand-edited URL can't under- or over-charge.
+        PAY-REMAINING-BALANCE MODE (unchanged)
         ----------------------------------------------------- */
         $payBalanceBookingId = isset($_GET['pay_balance']) && is_numeric($_GET['pay_balance'])
             ? (int) $_GET['pay_balance']
@@ -136,8 +114,6 @@
                 && in_array($balanceBooking['status'], ['pending', 'confirmed'], true);
 
             if (!$balanceIsValid) {
-                // Not this user's booking, wrong listing, or nothing left
-                // to pay — bounce back rather than show a bad payment page.
                 header('Location: /webprogg/booking/userbookings.php');
                 exit;
             }
@@ -148,21 +124,25 @@
             );
 
             if ($remaining <= 0.005) {
-                // Already paid in full — nothing to do here.
                 header('Location: /webprogg/booking/booking-details.php?id=' . $payBalanceBookingId);
                 exit;
             }
 
-            // Reuse the booking's own dates/guests for display, since a
-            // balance payment has no Step-1 inquiry form behind it.
             $checkin  = $balanceBooking['checkin_date']  ?? $checkin;
             $checkout = $balanceBooking['checkout_date'] ?? $checkout;
             $guests   = $balanceBooking['guests']        ?? $guests;
         }
 
+        /* =====================================================
+        ===== NEW ===== LISTING FETCH — now also selects
+        l.status (for guards) and l.latitude / l.longitude
+        (for the exact map pin the host dropped in step 2).
+        ===================================================== */
         $listingStmt = $pdo->prepare(
             "SELECT l.id, l.title, l.location, l.exact_address, l.category, l.property_type, l.price,
                     l.user_id AS host_id,
+                    l.status,
+                    l.latitude, l.longitude,
                     l.bedrooms, l.bathrooms, l.size_sqm, l.floor, l.parking,
                     u.name AS host_name, u.avatar_path AS host_avatar, u.created_at AS host_since,
                     p.photo_path AS cover_photo
@@ -180,8 +160,42 @@
             exit;
         }
 
+        /* =========================================================
+        ===== NEW ===== LISTING STATUS GUARDS
+        Enforced here (server-side) so a disabled/hidden button on
+        listing-detail.php is not the only protection.
+
+          GUARD 1 — The host cannot open the listing/payment flow
+                    for a space that is ALREADY live. Once a space
+                    is uploaded and listed (status = 'approved'),
+                    it cannot be listed again.
+
+          GUARD 2 — Renters cannot pay for a space that is NOT
+                    published yet.
+
+        Both guards are skipped in balance mode — that flow is for
+        an existing validated booking, not a new listing/inquiry.
+        ========================================================= */
+        $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
+        $listingStatus  = $listing['status'] ?? '';
+
+        if ($balanceBooking === null) {
+
+            /* GUARD 1 — host trying to re-list an already-listed space */
+            if ($isListingOwner && $listingStatus === 'approved') {
+                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&alreadylisted=1');
+                exit;
+            }
+
+            /* GUARD 2 — renter trying to book an unlisted space */
+            if (!$isListingOwner && $listingStatus !== 'approved') {
+                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
+                exit;
+            }
+        }
+
         /* -----------------------------------------------------
-        LISTING RATING (from `reviews`, keyed by listing_id)
+        LISTING RATING (unchanged)
         ----------------------------------------------------- */
         $listingReviewsStmt = $pdo->prepare(
             "SELECT rating FROM reviews WHERE listing_id = :id"
@@ -193,8 +207,7 @@
         $listing_rating_count = count($listingRatings);
 
         /* -----------------------------------------------------
-        HOST RATING (from `reviews`, keyed by user_id — same
-        pattern used on userprofile.php)
+        HOST RATING (unchanged)
         ----------------------------------------------------- */
         $hostReviewsStmt = $pdo->prepare(
             "SELECT rating FROM reviews WHERE user_id = :id"
@@ -205,35 +218,45 @@
         $host_rating_avg   = count($hostRatings) > 0 ? round(array_sum($hostRatings) / count($hostRatings), 1) : 0;
         $host_rating_count = count($hostRatings);
 
-        /* SuperHost badge: no dedicated column for this yet — treat
-        a strong, review-backed rating as SuperHost status. Swap
-        for a real `users.is_superhost` column if one gets added. */
         $isSuperhost = $host_rating_count >= 5 && $host_rating_avg >= 4.8;
 
         /* -----------------------------------------------------
-        BOOKING SUMMARY FIGURES
+        BOOKING SUMMARY FIGURES (unchanged)
         ----------------------------------------------------- */
         $monthlyRent = (float) $listing['price'];
 
         if ($balanceBooking !== null) {
-            /* Paying down an existing booking — charge exactly what's
-               left owed, computed server-side above. */
             $totalDueToday   = $remaining;
             $bookingTotal    = (float) $balanceBooking['total'];
             $amountPaidSoFar = (float) $balanceBooking['amount_paid'];
         } else {
-            /* New inquiry — flat reservation/processing fee charged
-               today to lock in the inquiry. Everything else is settled
-               with the host once the booking is confirmed. Not a
-               DB-backed value yet; pull from a settings table/config
-               if one exists in your schema. */
             $totalDueToday   = 1000.00;
             $bookingTotal    = null;
             $amountPaidSoFar = null;
         }
 
+        /* NEW (presentation only): % of booking already paid,
+           used for the progress bar in balance mode. */
+        $paidPct = ($balanceBooking !== null && $bookingTotal > 0)
+            ? max(0, min(100, (int) round(($amountPaidSoFar / $bookingTotal) * 100)))
+            : 0;
+
         /* -----------------------------------------------------
-        PAYMENT METHODS OFFERED
+        ===== NEW ===== MAP PIN COORDINATES
+        Picked up from the pin the host dropped on host-step2.php.
+        isset() guards keep this page working on old listings
+        created before the latitude/longitude columns existed.
+        ----------------------------------------------------- */
+        $pinLatitude  = isset($listing['latitude'])  && $listing['latitude']  !== null
+            ? (float) $listing['latitude']
+            : null;
+        $pinLongitude = isset($listing['longitude']) && $listing['longitude'] !== null
+            ? (float) $listing['longitude']
+            : null;
+        $hasMapPin = ($pinLatitude !== null && $pinLongitude !== null);
+
+        /* -----------------------------------------------------
+        PAYMENT METHODS OFFERED (unchanged)
         ----------------------------------------------------- */
         $paymentMethods = [
             [
@@ -259,628 +282,1067 @@
             ],
         ];
 
-        $mapsQuery = trim($listing['exact_address'] . ', ' . $listing['location']);
+        /* ===== NEW: Google Maps link prefers the exact pin when
+           available, otherwise falls back to the address text ===== */
+        $mapsQuery = $hasMapPin
+            ? $pinLatitude . ',' . $pinLongitude
+            : trim($listing['exact_address'] . ', ' . $listing['location']);
         $mapsUrl   = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($mapsQuery);
         ?>
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title><?php echo $balanceBooking !== null ? 'Pay Balance' : 'Payment Method'; ?> — RoomHive</title>
-        <link rel="stylesheet" href="/webprogg/assets/style.css">
-        <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
-        </head>
-        <body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?php echo $balanceBooking !== null ? 'Pay Balance' : 'Payment Method'; ?> — RoomHive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/webprogg/assets/style.css">
+<link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 
+<!-- ===== NEW: FREE MAP — Leaflet + OpenStreetMap (no API key) ===== -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
+<style>
+    /* =====================================================
+       BASE
+    ===================================================== */
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        background: #F7F8FA;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #14142B;
+    }
 
-        <main class="bp-page">
+    /* =====================================================
+       TOP NAVBAR (new)
+    ===================================================== */
+    .lp-nav {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: #fff;
+        border-bottom: 1px solid #EEF1F6;
+    }
+    .lp-nav-inner {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .lp-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+    }
+    .lp-brand-mark {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #FFB94E, #F5A623);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff;
+        box-shadow: 0 4px 10px rgba(245,166,35,.35);
+    }
+    .lp-brand-mark svg { width: 18px; height: 18px; }
+    .lp-brand-text {
+        font-size: 17px;
+        font-weight: 400;
+        color: #14142B;
+        letter-spacing: -0.2px;
+    }
+    .lp-brand-text b { font-weight: 800; }
+    .lp-nav-right { display: flex; align-items: center; gap: 14px; }
+    .lp-nav-bell {
+        position: relative;
+        width: 38px; height: 38px;
+        border-radius: 50%;
+        border: 1px solid #EEF1F6;
+        background: #fff;
+        display: flex; align-items: center; justify-content: center;
+        color: #5B6172;
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .lp-nav-bell:hover { background: #F6F7FB; }
+    .lp-nav-bell svg { width: 17px; height: 17px; }
+    .lp-nav-badge {
+        position: absolute;
+        top: -4px; right: -4px;
+        min-width: 17px; height: 17px;
+        border-radius: 999px;
+        background: #E14B4B;
+        color: #fff;
+        font-size: 10px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        padding: 0 4px;
+        border: 2px solid #fff;
+    }
+    .lp-nav-user img {
+        width: 38px; height: 38px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #FFE3B3;
+        display: block;
+        background: #F6F4EE;
+    }
 
-            <?php if ($balanceBooking !== null): ?>
-                <a href="/webprogg/booking/booking-details.php?id=<?php echo h($payBalanceBookingId); ?>" class="bp-back-link">
-                    &#8592; Back to Booking
-                </a>
-            <?php else: ?>
-                <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?>" class="bp-back-link">
-                    &#8592; Back to Listing
-                </a>
-            <?php endif; ?>
+    /* =====================================================
+       PAGE SHELL
+    ===================================================== */
+    .bp-page { max-width: 1100px; margin: 0 auto; padding: 22px 20px 70px; }
 
-            <?php if ($balanceBooking === null): ?>
-            <!-- STEP TRACKER (new-inquiry flow only) -->
-            <div class="bp-steps">
-                <div class="bp-step bp-step-done">
-                    <span class="bp-step-circle">1</span>
-                    <span class="bp-step-label">Details</span>
+    .bp-back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 18px;
+        color: #5B6172;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13.5px;
+        transition: color .15s;
+    }
+    .bp-back-link:hover { color: #F5A623; }
+
+    /* =====================================================
+       STEP TRACKER
+    ===================================================== */
+    .bp-steps {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 30px;
+    }
+    .bp-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 7px;
+        width: 86px;
+    }
+    .bp-step-circle {
+        width: 34px; height: 34px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: #EEF1F6;
+        color: #8B93A6;
+        font-weight: 700;
+        font-size: 13px;
+        transition: all .2s;
+    }
+    .bp-step-circle svg { width: 15px; height: 15px; }
+    .bp-step-label { font-size: 12px; color: #8B93A6; font-weight: 600; text-align: center; }
+    .bp-step-done .bp-step-circle { background: #E7F7EC; color: #2FA84F; }
+    .bp-step-done .bp-step-label { color: #2FA84F; }
+    .bp-step-active .bp-step-circle {
+        background: linear-gradient(135deg, #FFB94E, #F5A623);
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(245,166,35,.45);
+    }
+    .bp-step-active .bp-step-label { color: #14142B; font-weight: 700; }
+    .bp-step-line {
+        flex: 1;
+        max-width: 110px;
+        height: 2.5px;
+        background: #EEF1F6;
+        border-radius: 99px;
+        margin-top: 16px;
+    }
+    .bp-step-line-done { background: #A8DFBC; }
+
+    /* =====================================================
+       LAYOUT
+    ===================================================== */
+    .bp-layout { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+    .bp-main { flex: 1.7; min-width: 300px; }
+    .bp-sidebar {
+        flex: 1;
+        min-width: 280px;
+        max-width: 380px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        position: sticky;
+        top: 84px;
+    }
+    @media (max-width: 900px) {
+        .bp-sidebar { position: static; max-width: none; }
+    }
+
+    /* =====================================================
+       CARDS
+    ===================================================== */
+    .bp-card {
+        background: #fff;
+        border: 1px solid #EEF1F6;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 2px 10px rgba(20,20,43,0.04);
+    }
+
+    .bp-main h1 { margin: 0 0 5px; font-size: 22px; color: #14142B; letter-spacing: -0.3px; }
+    .bp-subtext { margin: 0 0 20px; font-size: 13.5px; color: #8B93A6; }
+
+    /* =====================================================
+       SECURE BANNER (green)
+    ===================================================== */
+    .bp-secure-banner {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        background: #EAF9F0;
+        border: 1px solid #C9EDD7;
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 22px;
+    }
+    .bp-secure-icon {
+        width: 38px; height: 38px;
+        border-radius: 12px;
+        background: #D3F3E0;
+        display: flex; align-items: center; justify-content: center;
+        color: #2FA84F;
+        flex-shrink: 0;
+    }
+    .bp-secure-icon svg { width: 18px; height: 18px; }
+    .bp-secure-banner strong { display: block; color: #14532D; font-size: 13.5px; }
+    .bp-secure-banner p { margin: 2px 0 0; color: #4C8A63; font-size: 12.5px; }
+
+    /* =====================================================
+       PAYMENT METHODS
+    ===================================================== */
+    .bp-methods-label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #8B93A6;
+        margin: 0 0 10px;
+    }
+    .bp-methods { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+    .bp-method {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        border: 1.5px solid #EEF1F6;
+        border-radius: 14px;
+        padding: 15px 16px;
+        cursor: pointer;
+        position: relative;
+        transition: border-color .15s, background .15s, box-shadow .15s;
+    }
+    .bp-method:hover { border-color: #FFD9A0; }
+    .bp-method input { position: absolute; opacity: 0; pointer-events: none; }
+    .bp-method-selected {
+        border-color: #F5A623;
+        background: #FFF9F0;
+        box-shadow: 0 2px 10px rgba(245,166,35,0.15);
+    }
+    .bp-method-icon {
+        width: 48px; height: 48px;
+        border-radius: 12px;
+        background: #F6F7FB;
+        border: 1px solid #EEF1F6;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+    .bp-method-selected .bp-method-icon { background: #fff; border-color: #FFE3B3; }
+    .bp-method-icon img { max-width: 34px; max-height: 34px; object-fit: contain; }
+    .bp-method-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .bp-method-name {
+        font-weight: 700; color: #14142B; font-size: 14.5px;
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .bp-method-desc { font-size: 12.5px; color: #8B93A6; }
+    .bp-badge-recommended {
+        font-size: 10px; font-weight: 800;
+        background: #F5A623; color: #fff;
+        padding: 3px 9px; border-radius: 999px;
+        letter-spacing: 0.03em;
+    }
+    .bp-method-radio {
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        border: 2px solid #D8DCE5;
+        flex-shrink: 0;
+        transition: all .15s;
+    }
+    .bp-method-selected .bp-method-radio {
+        border-color: #F5A623;
+        background: radial-gradient(#F5A623 0 42%, transparent 46%);
+    }
+
+    /* =====================================================
+       HOW IT WORKS
+    ===================================================== */
+    .bp-howitworks {
+        background: #F6F7FB;
+        border-radius: 14px;
+        padding: 18px;
+        margin-bottom: 24px;
+    }
+    .bp-howitworks-title {
+        display: flex; align-items: center; gap: 8px;
+        font-weight: 700; color: #14142B; font-size: 13.5px; margin-bottom: 14px;
+    }
+    .bp-howitworks-icon {
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        background: #14142B; color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px;
+        font-style: normal;
+    }
+    .bp-howitworks-steps { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+    .bp-hiw-step { flex: 1; min-width: 140px; }
+    .bp-hiw-num {
+        width: 24px; height: 24px;
+        border-radius: 50%;
+        background: #fff; border: 1.5px solid #E3E7EF;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11.5px; font-weight: 800; color: #14142B;
+        margin-bottom: 7px;
+    }
+    .bp-hiw-step strong { display: block; font-size: 13px; color: #14142B; margin-bottom: 3px; }
+    .bp-hiw-step p { margin: 0; font-size: 12px; color: #8B93A6; line-height: 1.45; }
+    .bp-hiw-arrow { color: #C9CDD6; font-size: 16px; padding-top: 4px; }
+
+    /* =====================================================
+       PAY BUTTON
+    ===================================================== */
+    .bp-btn-pay {
+        display: block;
+        width: 100%;
+        padding: 15px;
+        border-radius: 14px;
+        border: none;
+        background: linear-gradient(135deg, #FFB94E, #F5A623);
+        color: #fff;
+        font-size: 15.5px;
+        font-weight: 800;
+        cursor: pointer;
+        margin-bottom: 8px;
+        box-shadow: 0 6px 16px rgba(245,166,35,0.4);
+        transition: transform .12s, box-shadow .12s, filter .12s;
+        font-family: inherit;
+    }
+    .bp-btn-pay:hover { filter: brightness(1.04); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(245,166,35,0.45); }
+    .bp-btn-pay:active { transform: translateY(0); }
+    .bp-btn-pay:disabled { opacity: 0.7; cursor: default; transform: none; }
+
+    .bp-secure-note {
+        text-align: center;
+        font-size: 11.5px;
+        color: #8B93A6;
+        margin: 0 0 14px;
+    }
+
+    .bp-back-inquiry {
+        display: block;
+        text-align: center;
+        color: #8B93A6;
+        font-size: 13px;
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .bp-back-inquiry:hover { color: #14142B; text-decoration: underline; }
+
+    /* =====================================================
+       SIDEBAR: LISTING SUMMARY
+    ===================================================== */
+    .bp-listing-photo {
+        width: 100%;
+        height: 170px;
+        object-fit: cover;
+        border-radius: 12px;
+        margin-bottom: 14px;
+        background: #F6F4EE;
+    }
+    .bp-listing-title { margin: 0 0 5px; font-size: 16px; color: #14142B; letter-spacing: -0.2px; }
+    .bp-listing-location {
+        display: flex; align-items: center; gap: 5px;
+        margin: 0 0 6px; font-size: 12.5px; color: #8B93A6;
+    }
+    .bp-listing-location img { width: 13px; height: 13px; }
+    .bp-listing-rating { margin: 0 0 16px; font-size: 13px; color: #14142B; font-weight: 700; }
+    .bp-listing-rating .bp-star { color: #F5B301; }
+    .bp-listing-rating span { color: #8B93A6; font-weight: 400; }
+
+    .bp-specs {
+        border-top: 1px solid #F1F3F8;
+        border-bottom: 1px solid #F1F3F8;
+        padding: 14px 0;
+        margin-bottom: 16px;
+        display: flex; flex-direction: column; gap: 9px;
+    }
+    .bp-spec-row { display: flex; justify-content: space-between; font-size: 13px; }
+    .bp-spec-row span { color: #8B93A6; }
+    .bp-spec-row strong { color: #14142B; font-weight: 600; }
+
+    .bp-booking-summary h4 { margin: 0 0 12px; font-size: 14px; color: #14142B; }
+    .bp-summary-row {
+        display: flex; justify-content: space-between;
+        font-size: 13.5px; margin-bottom: 9px; color: #5B6172;
+    }
+    .bp-summary-row strong { color: #14142B; }
+
+    /* Balance-mode progress bar */
+    .bp-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: #EEF1F6;
+        overflow: hidden;
+        margin: 2px 0 6px;
+    }
+    .bp-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #FFC96B, #F5A623);
+        transition: width .4s ease;
+    }
+    .bp-progress-caption {
+        font-size: 11.5px;
+        color: #8B93A6;
+        margin: 0 0 12px;
+    }
+    .bp-progress-caption b { color: #E8960F; }
+
+    .bp-summary-row-total {
+        display: flex; justify-content: space-between; align-items: center;
+        background: #FFF6E9;
+        border: 1px dashed #F5C77E;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-top: 4px;
+        color: #14142B;
+        font-weight: 700;
+        font-size: 14px;
+    }
+    .bp-summary-row-total strong { font-size: 17px; color: #C77800; }
+
+    /* =====================================================
+       HOST CARD
+    ===================================================== */
+    .bp-host-card h3 { margin: 0 0 14px; font-size: 15px; color: #14142B; }
+    .bp-host-row { display: flex; gap: 12px; margin-bottom: 12px; }
+    .bp-host-avatar {
+        width: 48px; height: 48px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+        border: 2px solid #FFE3B3;
+        background: #F6F4EE;
+    }
+    .bp-host-name {
+        margin: 0; font-weight: 700; color: #14142B; font-size: 14px;
+        display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    }
+    .bp-badge-superhost {
+        font-size: 10px; font-weight: 800;
+        background: #EAF2FE; color: #1A56DB;
+        padding: 3px 9px; border-radius: 999px;
+    }
+    .bp-host-since { margin: 3px 0 0; font-size: 12px; color: #8B93A6; }
+    .bp-host-rating { margin: 3px 0 0; font-size: 12px; color: #14142B; font-weight: 600; }
+    .bp-host-rating .bp-star { color: #F5B301; }
+    .bp-host-rating span { color: #8B93A6; font-weight: 400; }
+    .bp-host-response {
+        margin: 0;
+        font-size: 12px;
+        color: #5B6172;
+        background: #F6F7FB;
+        border-radius: 10px;
+        padding: 9px 12px;
+    }
+
+    /* =====================================================
+       LOCATION CARD
+    ===================================================== */
+    .bp-location-card h3 { margin: 0 0 10px; font-size: 15px; color: #14142B; }
+    .bp-location-address { margin: 0 0 12px; font-size: 13px; color: #5B6172; }
+    .bp-map-thumb {
+        position: relative;
+        display: block;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 12px;
+        height: 120px;
+        background: #EAF2FB;
+    }
+    .bp-map-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
+    .bp-map-thumb:hover img { transform: scale(1.05); }
+    .bp-map-pin {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -60%);
+        font-size: 24px;
+        filter: drop-shadow(0 3px 6px rgba(0,0,0,0.3));
+    }
+
+    /* =====================================================
+       ===== NEW: MAP PIN — LEAFLET EXACT-LOCATION MAP =====
+       Real interactive map centered on the exact pin the host
+       dropped on host-step2.php. Free Leaflet + OpenStreetMap,
+       no API key needed.
+    ===================================================== */
+    .bp-map-embed {
+        position: relative;
+        z-index: 1;
+
+        height: 150px;
+
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #EEF1F6;
+
+        margin-bottom: 10px;
+
+        box-shadow: 0 4px 14px -8px rgba(20, 20, 43, 0.3);
+
+        background: #EAF2FB;
+    }
+
+    .bp-pin-icon {
+        background: transparent;
+        border: none;
+    }
+
+    .bp-pin {
+        font-size: 30px;
+        line-height: 1;
+        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+    }
+
+    .bp-map-exact-note {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        margin: 0 0 12px;
+
+        font-size: 11.5px;
+        font-weight: 600;
+
+        color: #2FA84F;
+    }
+
+    .bp-btn-outline {
+        display: block;
+        width: 100%;
+        padding: 11px 16px;
+        border-radius: 12px;
+        border: 1.5px solid #EEF1F6;
+        background: #fff;
+        color: #14142B;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: center;
+        text-decoration: none;
+        transition: background .15s, border-color .15s;
+    }
+    .bp-btn-outline:hover { background: #F6F7FB; border-color: #E3E7EF; }
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     TOP NAVBAR
+========================================================= -->
+<header class="lp-nav">
+    <div class="lp-nav-inner">
+        <a class="lp-brand" href="/webprogg/Listings/listing.php">
+            <span class="lp-brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
+                </svg>
+            </span>
+            <span class="lp-brand-text">Room<b>Hive</b></span>
+        </a>
+        <div class="lp-nav-right">
+            <a class="lp-nav-bell" href="#" aria-label="Notifications">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/>
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                </svg>
+                <?php if ($notification_count > 0): ?>
+                    <span class="lp-nav-badge"><?php echo (int) $notification_count; ?></span>
+                <?php endif; ?>
+            </a>
+            <a class="lp-nav-user" href="/webprogg/user/userprofile.php" aria-label="Your account">
+                <img src="<?php echo h($navAvatar); ?>" alt="Your avatar"
+                     onerror="this.onerror=null;this.src='/webprogg/images/default-avatar.png';">
+            </a>
+        </div>
+    </div>
+</header>
+
+<main class="bp-page">
+
+    <?php if ($balanceBooking !== null): ?>
+        <a href="/webprogg/booking/booking-details.php?id=<?php echo h($payBalanceBookingId); ?>" class="bp-back-link">
+            &#8592; Back to Booking
+        </a>
+    <?php else: ?>
+        <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?>" class="bp-back-link">
+            &#8592; Back to Listing
+        </a>
+    <?php endif; ?>
+
+    <?php if ($balanceBooking === null): ?>
+    <!-- STEP TRACKER (new-inquiry flow only) -->
+    <div class="bp-steps">
+        <div class="bp-step bp-step-done">
+            <span class="bp-step-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m5 12.5 4.5 4.5L19 7.5"/>
+                </svg>
+            </span>
+            <span class="bp-step-label">Details</span>
+        </div>
+        <span class="bp-step-line bp-step-line-done"></span>
+        <div class="bp-step bp-step-active">
+            <span class="bp-step-circle">2</span>
+            <span class="bp-step-label">Payment</span>
+        </div>
+        <span class="bp-step-line"></span>
+        <div class="bp-step">
+            <span class="bp-step-circle">3</span>
+            <span class="bp-step-label">Confirmation</span>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="bp-layout">
+
+        <!-- =====================================================
+             MAIN: PAYMENT METHOD SELECTION
+        ===================================================== -->
+        <div class="bp-main">
+
+            <div class="bp-card">
+
+                <?php if ($balanceBooking !== null): ?>
+                    <h1>Pay Remaining Balance</h1>
+                    <p class="bp-subtext">
+                        Settle the remaining &#8369;<?php echo h(number_format($totalDueToday, 2)); ?>
+                        owed on this booking.
+                    </p>
+                <?php else: ?>
+                    <h1>Payment Method</h1>
+                    <p class="bp-subtext">Choose your preferred payment method to complete your inquiry.</p>
+                <?php endif; ?>
+
+                <div class="bp-secure-banner">
+                    <span class="bp-secure-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="4.5" y="10.5" width="15" height="10" rx="2"/>
+                            <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
+                        </svg>
+                    </span>
+                    <div>
+                        <strong>Your payment is secure and encrypted</strong>
+                        <p>We use trusted payment providers to keep your information safe.</p>
+                    </div>
                 </div>
-                <div class="bp-step-line bp-step-line-done"></div>
-                <div class="bp-step bp-step-active">
-                    <span class="bp-step-circle">2</span>
-                    <span class="bp-step-label">Payment</span>
-                </div>
-                <div class="bp-step-line"></div>
-                <div class="bp-step">
-                    <span class="bp-step-circle">3</span>
-                    <span class="bp-step-label">Confirmation</span>
-                </div>
-            </div>
-            <?php endif; ?>
 
-            <div class="bp-layout">
+                <form id="bp-payment-form" method="POST" action="/webprogg/booking/process-payment.php">
 
-                <!-- MAIN: PAYMENT METHOD SELECTION -->
-                <div class="bp-main">
+                    <input type="hidden" name="listing_id" value="<?php echo h($listingId); ?>">
+                    <input type="hidden" name="checkin_date" value="<?php echo h($checkin); ?>">
+                    <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
+                    <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
+                    <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
 
-                    <div class="bp-card">
+                    <?php if ($balanceBooking !== null): ?>
+                        <input type="hidden" name="booking_id" value="<?php echo h($payBalanceBookingId); ?>">
+                        <input type="hidden" name="payment_purpose" value="balance">
+                    <?php else: ?>
+                        <input type="hidden" name="payment_purpose" value="reservation">
+                    <?php endif; ?>
 
+                    <p class="bp-methods-label">Select a payment method</p>
+
+                    <div class="bp-methods">
+                        <?php foreach ($paymentMethods as $i => $method): ?>
+                            <label class="bp-method <?php echo $i === 0 ? 'bp-method-selected' : ''; ?>">
+                                <input
+                                    type="radio"
+                                    name="payment_method"
+                                    value="<?php echo h($method['id']); ?>"
+                                    <?php echo $i === 0 ? 'checked' : ''; ?>
+                                >
+                                <span class="bp-method-icon">
+                                    <img src="<?php echo h($method['icon']); ?>" alt="<?php echo h($method['label']); ?>"
+                                         onerror="this.onerror=null;this.style.display='none';">
+                                </span>
+                                <span class="bp-method-text">
+                                    <span class="bp-method-name">
+                                        <?php echo h($method['label']); ?>
+                                        <?php if ($method['recommended']): ?>
+                                            <span class="bp-badge-recommended">Recommended</span>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="bp-method-desc"><?php echo h($method['description']); ?></span>
+                                </span>
+                                <span class="bp-method-radio"></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <?php if ($balanceBooking === null): ?>
+                    <div class="bp-howitworks">
+                        <div class="bp-howitworks-title">
+                            <span class="bp-howitworks-icon">i</span>
+                            How it works
+                        </div>
+                        <div class="bp-howitworks-steps">
+                            <div class="bp-hiw-step">
+                                <span class="bp-hiw-num">1</span>
+                                <strong>Send Inquiry</strong>
+                                <p>You'll be redirected to the payment page.</p>
+                            </div>
+                            <span class="bp-hiw-arrow">&#8594;</span>
+                            <div class="bp-hiw-step">
+                                <span class="bp-hiw-num">2</span>
+                                <strong>Make Payment</strong>
+                                <p>Complete your payment using your selected method.</p>
+                            </div>
+                            <span class="bp-hiw-arrow">&#8594;</span>
+                            <div class="bp-hiw-step">
+                                <span class="bp-hiw-num">3</span>
+                                <strong>Confirm Booking</strong>
+                                <p>Your booking will be confirmed once payment is verified.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <button type="submit" class="bp-btn-pay">
+                        Pay Now &#8369; <?php echo h(number_format($totalDueToday, 0)); ?>
+                    </button>
+
+                    <p class="bp-secure-note">
                         <?php if ($balanceBooking !== null): ?>
-                            <h1>Pay Remaining Balance</h1>
-                            <p class="bp-subtext">
-                                Settle the remaining &#8369;<?php echo h(number_format($totalDueToday, 2)); ?>
-                                owed on this booking.
-                            </p>
+                            This payment will be added to booking #<?php echo h($payBalanceBookingId); ?>.
                         <?php else: ?>
-                            <h1>Payment Method</h1>
-                            <p class="bp-subtext">Choose your preferred payment method to complete your inquiry.</p>
+                            This is a one-time reservation fee to lock in your inquiry.
                         <?php endif; ?>
+                    </p>
 
-                        <div class="bp-secure-banner">
-                            <img src="/webprogg/images/LockIcon.png" alt="">
-                            <div>
-                                <strong>Your payment is secure and encrypted</strong>
-                                <p>We use trusted payment providers to keep your information safe.</p>
-                            </div>
-                        </div>
-
-                        <form id="bp-payment-form" method="POST" action="/webprogg/booking/process-payment.php">
-
-                            <input type="hidden" name="listing_id" value="<?php echo h($listingId); ?>">
-                            <input type="hidden" name="checkin_date" value="<?php echo h($checkin); ?>">
-                            <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
-                            <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
-                            <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
-
-                            <?php if ($balanceBooking !== null): ?>
-                                <!-- Tells process-payment.php to top up amount_paid on this
-                                     existing booking instead of creating a new one. The
-                                     amount itself is re-derived server-side there too —
-                                     never trust a client-supplied total. -->
-                                <input type="hidden" name="booking_id" value="<?php echo h($payBalanceBookingId); ?>">
-                                <input type="hidden" name="payment_purpose" value="balance">
-                            <?php else: ?>
-                                <input type="hidden" name="payment_purpose" value="reservation">
-                            <?php endif; ?>
-
-                            <div class="bp-methods">
-                                <?php foreach ($paymentMethods as $i => $method): ?>
-                                    <label class="bp-method <?php echo $i === 0 ? 'bp-method-selected' : ''; ?>">
-                                        <input
-                                            type="radio"
-                                            name="payment_method"
-                                            value="<?php echo h($method['id']); ?>"
-                                            <?php echo $i === 0 ? 'checked' : ''; ?>
-                                        >
-                                        <span class="bp-method-icon">
-                                            <img src="<?php echo h($method['icon']); ?>" alt="<?php echo h($method['label']); ?>">
-                                        </span>
-                                        <span class="bp-method-text">
-                                            <span class="bp-method-name">
-                                                <?php echo h($method['label']); ?>
-                                                <?php if ($method['recommended']): ?>
-                                                    <span class="bp-badge-recommended">Recommended</span>
-                                                <?php endif; ?>
-                                            </span>
-                                            <span class="bp-method-desc"><?php echo h($method['description']); ?></span>
-                                        </span>
-                                        <span class="bp-method-radio"></span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-
-                            <?php if ($balanceBooking === null): ?>
-                            <div class="bp-howitworks">
-                                <div class="bp-howitworks-title">
-                                    <span class="bp-howitworks-icon">&#8505;</span>
-                                    How it works
-                                </div>
-                                <div class="bp-howitworks-steps">
-                                    <div class="bp-hiw-step">
-                                        <span class="bp-hiw-num">1</span>
-                                        <strong>Send Inquiry</strong>
-                                        <p>You'll be redirected to the payment page.</p>
-                                    </div>
-                                    <span class="bp-hiw-arrow">&#8594;</span>
-                                    <div class="bp-hiw-step">
-                                        <span class="bp-hiw-num">2</span>
-                                        <strong>Make Payment</strong>
-                                        <p>Complete your payment using your selected method.</p>
-                                    </div>
-                                    <span class="bp-hiw-arrow">&#8594;</span>
-                                    <div class="bp-hiw-step">
-                                        <span class="bp-hiw-num">3</span>
-                                        <strong>Confirm Booking</strong>
-                                        <p>Your booking will be confirmed once payment is verified.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-
-                            <button type="submit" class="bp-btn-pay">
-                                Pay Now &#8369; <?php echo h(number_format($totalDueToday, 0)); ?>
-                            </button>
-
-                            <?php if ($balanceBooking !== null): ?>
-                                <a
-                                    href="/webprogg/booking/booking-details.php?id=<?php echo h($payBalanceBookingId); ?>"
-                                    class="bp-back-inquiry"
-                                >
-                                    &#8592; Back to Booking
-                                </a>
-                            <?php else: ?>
-                                <a
-                                    href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?>"
-                                    class="bp-back-inquiry"
-                                >
-                                    &#8592; Back to Inquiry
-                                </a>
-                            <?php endif; ?>
-
-                        </form>
-
-                    </div>
-
-                </div>
-
-                <!-- SIDEBAR: LISTING / BOOKING SUMMARY / HOST / LOCATION -->
-                <aside class="bp-sidebar">
-
-                    <div class="bp-card">
-
-                        <img
-                            class="bp-listing-photo"
-                            src="<?php echo h(resolve_photo($listing['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>"
-                            alt="<?php echo h($listing['title']); ?>"
-                        >
-
-                        <h3 class="bp-listing-title"><?php echo h($listing['title']); ?></h3>
-                        <p class="bp-listing-location">
-                            <img src="/webprogg/images/GPSIcon.png" alt="">
-                            <?php echo h($listing['location']); ?>
-                        </p>
-                        <p class="bp-listing-rating">
-                            &#9733; <?php echo h($listing_rating_avg); ?>
-                            <span>(<?php echo h($listing_rating_count); ?> reviews)</span>
-                        </p>
-
-                        <?php if ($checkin): ?>
-                            <div class="bp-specs">
-                                <div class="bp-spec-row">
-                                    <span>Check-in</span>
-                                    <strong><?php echo h($checkin); ?></strong>
-                                </div>
-                                <?php if ($checkout): ?>
-                                    <div class="bp-spec-row">
-                                        <span>Check-out</span>
-                                        <strong><?php echo h($checkout); ?></strong>
-                                    </div>
-                                <?php elseif ($longTerm): ?>
-                                    <div class="bp-spec-row">
-                                        <span>Duration</span>
-                                        <strong>Long Term</strong>
-                                    </div>
-                                <?php endif; ?>
-                                <div class="bp-spec-row">
-                                    <span>Guests</span>
-                                    <strong><?php echo h($guests); ?></strong>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <div class="bp-specs">
-                            <div class="bp-spec-row">
-                                <span>Property Type</span>
-                                <strong><?php echo h($listing['property_type'] ?: 'Not specified'); ?></strong>
-                            </div>
-                            <div class="bp-spec-row">
-                                <span>Bedrooms</span>
-                                <strong><?php echo h($listing['bedrooms'] ?? 'Not specified'); ?></strong>
-                            </div>
-                            <div class="bp-spec-row">
-                                <span>Bathrooms</span>
-                                <strong><?php echo h($listing['bathrooms'] ?? 'Not specified'); ?></strong>
-                            </div>
-                            <div class="bp-spec-row">
-                                <span>Size</span>
-                                <strong><?php echo isset($listing['size_sqm']) ? h($listing['size_sqm']) . ' m&sup2;' : 'Not specified'; ?></strong>
-                            </div>
-                            <div class="bp-spec-row">
-                                <span>Floor</span>
-                                <strong><?php echo h($listing['floor'] ?? 'Not specified'); ?></strong>
-                            </div>
-                            <div class="bp-spec-row">
-                                <span>Parking</span>
-                                <strong><?php echo h($listing['parking'] ?: 'Not specified'); ?></strong>
-                            </div>
-                        </div>
-
-                        <div class="bp-booking-summary">
-                            <h4><?php echo $balanceBooking !== null ? 'Payment Summary' : 'Booking Summary'; ?></h4>
-
-                            <?php if ($balanceBooking !== null): ?>
-                                <div class="bp-summary-row">
-                                    <span>Booking Total</span>
-                                    <strong>&#8369; <?php echo h(number_format($bookingTotal, 2)); ?></strong>
-                                </div>
-                                <div class="bp-summary-row">
-                                    <span>Already Paid</span>
-                                    <strong>&#8369; <?php echo h(number_format($amountPaidSoFar, 2)); ?></strong>
-                                </div>
-                                <div class="bp-summary-row bp-summary-row-total">
-                                    <span>Due Today</span>
-                                    <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
-                                </div>
-                            <?php else: ?>
-                                <div class="bp-summary-row">
-                                    <span>Monthly Rent</span>
-                                    <strong>&#8369; <?php echo h(number_format($monthlyRent, 0)); ?></strong>
-                                </div>
-                                <div class="bp-summary-row bp-summary-row-total">
-                                    <span>Total Due Today</span>
-                                    <strong>&#8369; <?php echo h(number_format($totalDueToday, 0)); ?></strong>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-
-                    </div>
-
-                    <!-- HOST CARD -->
-                    <div class="bp-card bp-host-card">
-                        <h3>Host</h3>
-                        <div class="bp-host-row">
-                            <img
-                                class="bp-host-avatar"
-                                src="<?php echo h(resolve_photo($listing['host_avatar'], '/webprogg/images/default-avatar.png')); ?>"
-                                alt="<?php echo h($listing['host_name']); ?>"
-                            >
-                            <div>
-                                <p class="bp-host-name">
-                                    <?php echo h($listing['host_name']); ?>
-                                    <?php if ($isSuperhost): ?>
-                                        <span class="bp-badge-superhost">SuperHost</span>
-                                    <?php endif; ?>
-                                </p>
-                                <p class="bp-host-since">
-                                    Member since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?>
-                                </p>
-                                <p class="bp-host-rating">
-                                    &#9733; <?php echo h($host_rating_avg); ?>
-                                    <span>(<?php echo h($host_rating_count); ?> reviews)</span>
-                                </p>
-                            </div>
-                        </div>
-                        <p class="bp-host-response">Usually responds within a few hours</p>
-                    </div>
-
-                    <!-- LOCATION CARD -->
-                    <div class="bp-card bp-location-card">
-                        <h3>Location</h3>
-                        <p class="bp-location-address">
-                            <?php echo h($listing['location']); ?>
-                        </p>
-                        <a
-                            href="<?php echo h($mapsUrl); ?>"
-                            target="_blank"
-                            rel="noopener"
-                            class="bp-map-thumb"
-                            aria-label="View on Google Maps"
-                        >
-                            <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview">
-                            <span class="bp-map-pin">&#128205;</span>
+                    <?php if ($balanceBooking !== null): ?>
+                        <a href="/webprogg/booking/booking-details.php?id=<?php echo h($payBalanceBookingId); ?>"
+                           class="bp-back-inquiry">
+                            &#8592; Back to Booking
                         </a>
-                        <a href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener" class="bp-btn-outline">
-                            View on Google Maps
+                    <?php else: ?>
+                        <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?>"
+                           class="bp-back-inquiry">
+                            &#8592; Back to Inquiry
                         </a>
-                    </div>
+                    <?php endif; ?>
 
-                </aside>
+                </form>
 
             </div>
 
-        </main>
+        </div>
 
+        <!-- =====================================================
+             SIDEBAR: LISTING / SUMMARY / HOST / LOCATION
+        ===================================================== -->
+        <aside class="bp-sidebar">
 
+            <div class="bp-card">
 
-        <script src="/webprogg/assets/javaScript.js"></script>
+                <img
+                    class="bp-listing-photo"
+                    src="<?php echo h(resolve_photo($listing['cover_photo'], '/webprogg/images/ListingPlaceholder.png')); ?>"
+                    alt="<?php echo h($listing['title']); ?>"
+                    onerror="this.onerror=null;this.src='/webprogg/images/ListingPlaceholder.png';"
+                >
 
-        <!-- =========================================================
-            PAYMENT METHOD — SELECTION HIGHLIGHT
-        ========================================================= -->
-        <script>
-        (function () {
-            const methods = document.querySelectorAll('.bp-method');
+                <h3 class="bp-listing-title"><?php echo h($listing['title']); ?></h3>
+                <p class="bp-listing-location">
+                    <img src="/webprogg/images/GPSIcon.png" alt="">
+                    <?php echo h($listing['location']); ?>
+                </p>
+                <p class="bp-listing-rating">
+                    <span class="bp-star">&#9733;</span> <?php echo h($listing_rating_avg); ?>
+                    <span>(<?php echo h($listing_rating_count); ?> reviews)</span>
+                </p>
 
-            methods.forEach(function (label) {
-                const input = label.querySelector('input[type="radio"]');
-                if (!input) return;
+                <?php if ($checkin): ?>
+                    <div class="bp-specs">
+                        <div class="bp-spec-row">
+                            <span>Check-in</span>
+                            <strong><?php echo h(date('M j, Y', strtotime($checkin))); ?></strong>
+                        </div>
+                        <?php if ($checkout): ?>
+                            <div class="bp-spec-row">
+                                <span>Check-out</span>
+                                <strong><?php echo h(date('M j, Y', strtotime($checkout))); ?></strong>
+                            </div>
+                        <?php elseif ($longTerm): ?>
+                            <div class="bp-spec-row">
+                                <span>Duration</span>
+                                <strong>Long Term</strong>
+                            </div>
+                        <?php endif; ?>
+                        <div class="bp-spec-row">
+                            <span>Guests</span>
+                            <strong><?php echo h($guests); ?></strong>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
-                input.addEventListener('change', function () {
-                    methods.forEach(function (l) { l.classList.remove('bp-method-selected'); });
-                    if (input.checked) label.classList.add('bp-method-selected');
-                });
-            });
-        })();
-        </script>
+                <div class="bp-specs">
+                    <div class="bp-spec-row">
+                        <span>Property Type</span>
+                        <strong><?php echo h($listing['property_type'] ?: 'Not specified'); ?></strong>
+                    </div>
+                    <div class="bp-spec-row">
+                        <span>Bedrooms</span>
+                        <strong><?php echo h($listing['bedrooms'] ?? 'Not specified'); ?></strong>
+                    </div>
+                    <div class="bp-spec-row">
+                        <span>Bathrooms</span>
+                        <strong><?php echo h($listing['bathrooms'] ?? 'Not specified'); ?></strong>
+                    </div>
+                    <div class="bp-spec-row">
+                        <span>Size</span>
+                        <strong><?php echo isset($listing['size_sqm']) ? h($listing['size_sqm']) . ' m&sup2;' : 'Not specified'; ?></strong>
+                    </div>
+                    <div class="bp-spec-row">
+                        <span>Floor</span>
+                        <strong><?php echo h($listing['floor'] ?? 'Not specified'); ?></strong>
+                    </div>
+                    <div class="bp-spec-row">
+                        <span>Parking</span>
+                        <strong><?php echo h($listing['parking'] ?: 'Not specified'); ?></strong>
+                    </div>
+                </div>
 
-        <!-- =========================================================
-            PAY NOW — SUBMIT + LOADING STATE
-        ========================================================= -->
-        <script>
-        (function () {
-            const form = document.getElementById('bp-payment-form');
-            if (!form) return;
+                <div class="bp-booking-summary">
+                    <h4><?php echo $balanceBooking !== null ? 'Payment Summary' : 'Booking Summary'; ?></h4>
 
-            form.addEventListener('submit', function () {
-                const btn = form.querySelector('.bp-btn-pay');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.textContent = 'Redirecting to payment...';
-                }
-            });
-        })();
-        </script>
+                    <?php if ($balanceBooking !== null): ?>
+                        <div class="bp-summary-row">
+                            <span>Booking Total</span>
+                            <strong>&#8369; <?php echo h(number_format($bookingTotal, 2)); ?></strong>
+                        </div>
+                        <div class="bp-summary-row">
+                            <span>Already Paid</span>
+                            <strong>&#8369; <?php echo h(number_format($amountPaidSoFar, 2)); ?></strong>
+                        </div>
 
-        <!-- =========================================================
-            BOOKING PAYMENT — STYLES
-        ========================================================= -->
-        <style>
-            .bp-page { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+                        <!-- Paid progress bar -->
+                        <div class="bp-progress" role="progressbar"
+                             aria-valuenow="<?php echo $paidPct; ?>" aria-valuemin="0" aria-valuemax="100">
+                            <div class="bp-progress-fill" style="width: <?php echo $paidPct; ?>%;"></div>
+                        </div>
+                        <p class="bp-progress-caption"><b><?php echo $paidPct; ?>%</b> of the booking is already paid</p>
 
-            .bp-back-link {
-                display: inline-block;
-                margin-bottom: 16px;
-                color: #14142B;
-                text-decoration: none;
-                font-weight: 600;
-            }
-            .bp-back-link:hover { text-decoration: underline; }
+                        <div class="bp-summary-row-total">
+                            <span>Due Today</span>
+                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
+                        </div>
+                    <?php else: ?>
+                        <div class="bp-summary-row">
+                            <span>Monthly Rent</span>
+                            <strong>&#8369; <?php echo h(number_format($monthlyRent, 0)); ?></strong>
+                        </div>
+                        <div class="bp-summary-row">
+                            <span>Reservation Fee</span>
+                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 0)); ?></strong>
+                        </div>
+                        <div class="bp-summary-row-total">
+                            <span>Total Due Today</span>
+                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 0)); ?></strong>
+                        </div>
+                    <?php endif; ?>
+                </div>
 
-            /* STEP TRACKER */
-            .bp-steps {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                margin-bottom: 28px;
-            }
-            .bp-step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-            .bp-step-circle {
-                width: 28px; height: 28px;
-                border-radius: 50%;
-                display: flex; align-items: center; justify-content: center;
-                background: #EEF1F6;
-                color: #999;
-                font-weight: 700;
-                font-size: 13px;
-            }
-            .bp-step-label { font-size: 12px; color: #999; font-weight: 600; }
-            .bp-step-done .bp-step-circle { background: #FFA726; color: #fff; }
-            .bp-step-done .bp-step-label { color: #14142B; }
-            .bp-step-active .bp-step-circle { background: #FFA726; color: #fff; }
-            .bp-step-active .bp-step-label { color: #14142B; }
-            .bp-step-line { width: 60px; height: 2px; background: #EEF1F6; }
-            .bp-step-line-done { background: #FFA726; }
+            </div>
 
-            .bp-layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-            .bp-main { flex: 2; min-width: 300px; }
-            .bp-sidebar { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 16px; }
+            <!-- HOST CARD -->
+            <div class="bp-card bp-host-card">
+                <h3>Host</h3>
+                <div class="bp-host-row">
+                    <img
+                        class="bp-host-avatar"
+                        src="<?php echo h(resolve_photo($listing['host_avatar'], '/webprogg/images/default-avatar.png')); ?>"
+                        alt="<?php echo h($listing['host_name']); ?>"
+                        onerror="this.onerror=null;this.src='/webprogg/images/default-avatar.png';"
+                    >
+                    <div>
+                        <p class="bp-host-name">
+                            <?php echo h($listing['host_name']); ?>
+                            <?php if ($isSuperhost): ?>
+                                <span class="bp-badge-superhost">SuperHost</span>
+                            <?php endif; ?>
+                        </p>
+                        <p class="bp-host-since">
+                            Member since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?>
+                        </p>
+                        <p class="bp-host-rating">
+                            <span class="bp-star">&#9733;</span> <?php echo h($host_rating_avg); ?>
+                            <span>(<?php echo h($host_rating_count); ?> reviews)</span>
+                        </p>
+                    </div>
+                </div>
+                <p class="bp-host-response">&#9889; Usually responds within a few hours</p>
+            </div>
 
-            .bp-card {
-                background: #fff;
-                border: 1px solid #EEF1F6;
-                border-radius: 14px;
-                padding: 20px;
-            }
+            <!-- =====================================================
+                 LOCATION CARD
+                 ===== NEW: MAP PIN =====
+                 If the host dropped a pin on host-step2.php, show
+                 the REAL interactive Leaflet map centered on those
+                 exact coordinates. Old listings without a pin keep
+                 the placeholder image.
+            ===================================================== -->
+            <div class="bp-card bp-location-card">
+                <h3>Location</h3>
+                <p class="bp-location-address">
+                    <?php echo h($listing['location']); ?>
+                </p>
 
-            .bp-main h1 { margin: 0 0 4px; font-size: 20px; color: #14142B; }
-            .bp-subtext { margin: 0 0 18px; font-size: 13px; color: #777; }
+                <?php if ($hasMapPin): ?>
 
-            .bp-secure-banner {
-                display: flex;
-                gap: 10px;
-                align-items: flex-start;
-                background: #FFF6E9;
-                border: 1px solid #FFE0B2;
-                border-radius: 10px;
-                padding: 12px 14px;
-                margin-bottom: 20px;
-                font-size: 13px;
-            }
-            .bp-secure-banner img { width: 18px; height: 18px; margin-top: 2px; }
-            .bp-secure-banner strong { display: block; color: #14142B; font-size: 13px; }
-            .bp-secure-banner p { margin: 2px 0 0; color: #8A5A10; font-size: 12px; }
+                    <!-- ===== NEW: real interactive map with the host's exact pin ===== -->
+                    <div
+                        class="bp-map-embed"
+                        id="bpMapEmbed"
+                        data-lat="<?php echo h($pinLatitude); ?>"
+                        data-lng="<?php echo h($pinLongitude); ?>"
+                    ></div>
 
-            .bp-methods { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-            .bp-method {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                border: 1px solid #EEF1F6;
-                border-radius: 10px;
-                padding: 14px;
-                cursor: pointer;
-                position: relative;
-            }
-            .bp-method input { position: absolute; opacity: 0; pointer-events: none; }
-            .bp-method-selected { border-color: #FFA726; background: #FFF9F0; }
-            .bp-method-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
-            .bp-method-icon img { max-width: 100%; max-height: 100%; }
-            .bp-method-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-            .bp-method-name { font-weight: 700; color: #14142B; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-            .bp-method-desc { font-size: 12px; color: #777; }
-            .bp-badge-recommended {
-                font-size: 10px; font-weight: 700;
-                background: #E6F6EC; color: #1E7A3D;
-                padding: 2px 8px; border-radius: 999px;
-            }
-            .bp-method-radio {
-                width: 18px; height: 18px;
-                border-radius: 50%;
-                border: 2px solid #D8D8D8;
-                flex-shrink: 0;
-            }
-            .bp-method-selected .bp-method-radio {
-                border-color: #FFA726;
-                background: radial-gradient(#FFA726 0 40%, transparent 44%);
-            }
+                    <p class="bp-map-exact-note">
+                        &#128205; Exact pin dropped by the host
+                    </p>
 
-            .bp-howitworks {
-                background: #F6F7FB;
-                border-radius: 10px;
-                padding: 16px;
-                margin-bottom: 22px;
-            }
-            .bp-howitworks-title {
-                display: flex; align-items: center; gap: 6px;
-                font-weight: 700; color: #14142B; font-size: 13px; margin-bottom: 12px;
-            }
-            .bp-howitworks-icon {
-                width: 18px; height: 18px;
-                border-radius: 50%;
-                background: #14142B; color: #fff;
-                display: inline-flex; align-items: center; justify-content: center;
-                font-size: 11px;
-            }
-            .bp-howitworks-steps { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-            .bp-hiw-step { flex: 1; min-width: 140px; }
-            .bp-hiw-num {
-                width: 22px; height: 22px;
-                border-radius: 50%;
-                background: #fff; border: 1px solid #D8D8D8;
-                display: inline-flex; align-items: center; justify-content: center;
-                font-size: 11px; font-weight: 700; color: #14142B;
-                margin-bottom: 6px;
-            }
-            .bp-hiw-step strong { display: block; font-size: 12.5px; color: #14142B; margin-bottom: 2px; }
-            .bp-hiw-step p { margin: 0; font-size: 11.5px; color: #777; }
-            .bp-hiw-arrow { color: #C9C9C9; font-size: 16px; padding-top: 2px; }
+                <?php else: ?>
 
-            .bp-btn-pay {
-                display: block;
-                width: 100%;
-                padding: 14px;
-                border-radius: 10px;
-                border: none;
-                background: #FFA726;
-                color: #fff;
-                font-size: 15px;
-                font-weight: 700;
-                cursor: pointer;
-                margin-bottom: 12px;
-            }
-            .bp-btn-pay:hover { background: #FB983F; }
-            .bp-btn-pay:disabled { opacity: 0.7; cursor: default; }
+                    <!-- Placeholder for old listings saved without a pin -->
+                    <a
+                        href="<?php echo h($mapsUrl); ?>"
+                        target="_blank"
+                        rel="noopener"
+                        class="bp-map-thumb"
+                        aria-label="View on Google Maps"
+                    >
+                        <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview"
+                             onerror="this.onerror=null;this.style.background='#EAF2FB';">
+                        <span class="bp-map-pin">&#128205;</span>
+                    </a>
 
-            .bp-back-inquiry {
-                display: block;
-                text-align: center;
-                color: #777;
-                font-size: 13px;
-                text-decoration: none;
-                font-weight: 600;
-            }
-            .bp-back-inquiry:hover { text-decoration: underline; }
+                <?php endif; ?>
 
-            /* SIDEBAR: LISTING SUMMARY */
-            .bp-listing-photo { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; margin-bottom: 12px; }
-            .bp-listing-title { margin: 0 0 4px; font-size: 15px; color: #14142B; }
-            .bp-listing-location {
-                display: flex; align-items: center; gap: 4px;
-                margin: 0 0 6px; font-size: 12px; color: #777;
-            }
-            .bp-listing-location img { width: 12px; height: 12px; }
-            .bp-listing-rating { margin: 0 0 14px; font-size: 12.5px; color: #14142B; }
-            .bp-listing-rating span { color: #777; font-weight: 400; }
+                <a href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener" class="bp-btn-outline">
+                    View on Google Maps
+                </a>
+            </div>
 
-            .bp-specs {
-                border-top: 1px solid #EEF1F6;
-                border-bottom: 1px solid #EEF1F6;
-                padding: 12px 0;
-                margin-bottom: 14px;
-                display: flex; flex-direction: column; gap: 8px;
-            }
-            .bp-spec-row { display: flex; justify-content: space-between; font-size: 12.5px; }
-            .bp-spec-row span { color: #777; }
-            .bp-spec-row strong { color: #14142B; }
+        </aside>
 
-            .bp-booking-summary h4 { margin: 0 0 10px; font-size: 13px; color: #14142B; }
-            .bp-summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; color: #555; }
-            .bp-summary-row-total {
-                padding-top: 8px;
-                border-top: 1px solid #EEF1F6;
-                color: #14142B;
-                font-weight: 700;
-            }
+    </div>
 
-            /* HOST CARD */
-            .bp-host-card h3 { margin: 0 0 12px; font-size: 15px; color: #14142B; }
-            .bp-host-row { display: flex; gap: 10px; margin-bottom: 10px; }
-            .bp-host-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-            .bp-host-name { margin: 0; font-weight: 700; color: #14142B; font-size: 13.5px; display: flex; align-items: center; gap: 6px; }
-            .bp-badge-superhost {
-                font-size: 9.5px; font-weight: 700;
-                background: #E8F0FE; color: #1A56DB;
-                padding: 2px 7px; border-radius: 999px;
-            }
-            .bp-host-since { margin: 2px 0 0; font-size: 11.5px; color: #777; }
-            .bp-host-rating { margin: 2px 0 0; font-size: 11.5px; color: #14142B; }
-            .bp-host-rating span { color: #777; font-weight: 400; }
-            .bp-host-response { margin: 0; font-size: 11.5px; color: #777; }
+</main>
 
-            /* LOCATION CARD */
-            .bp-location-card h3 { margin: 0 0 10px; font-size: 15px; color: #14142B; }
-            .bp-location-address { margin: 0 0 10px; font-size: 12.5px; color: #777; }
-            .bp-map-thumb {
-                position: relative;
-                display: block;
-                border-radius: 10px;
-                overflow: hidden;
-                margin-bottom: 10px;
-                height: 110px;
-                background: #EAF2FB;
-            }
-            .bp-map-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-            .bp-map-pin {
-                position: absolute; top: 50%; left: 50%;
-                transform: translate(-50%, -60%);
-                font-size: 22px;
-            }
+<script src="/webprogg/assets/javaScript.js"></script>
 
-            .bp-btn-outline {
-                display: block;
-                width: 100%;
-                padding: 10px 16px;
-                border-radius: 10px;
-                border: 1px solid #EEF1F6;
-                background: #fff;
-                color: #14142B;
-                font-size: 13px;
-                font-weight: 700;
-                text-align: center;
-                text-decoration: none;
-                box-sizing: border-box;
-            }
-            .bp-btn-outline:hover { background: #F6F7FB; }
+<!-- ===== NEW: Leaflet JS (free map, no API key) ===== -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-            .bp-listspace-btn {
-                background: #FFA726 !important;
-                color: #fff !important;
-                padding: 8px 16px;
-                border-radius: 8px;
-                text-decoration: none;
-                font-weight: 700;
-            }
-        </style>
+<!-- =========================================================
+    ===== NEW ===== HOST MAP PIN — LEAFLET INIT
+    Centers on the exact latitude/longitude the host dropped
+    on host-step2.php. Scroll-zoom stays off until clicked so
+    the page doesn't get "trapped" while scrolling.
+========================================================= -->
+<script>
+(function () {
+    var mapEmbed = document.getElementById('bpMapEmbed');
 
-        </body>
-        </html>
+    if (!mapEmbed || !window.L) return;
+
+    var pinLat = parseFloat(mapEmbed.dataset.lat);
+    var pinLng = parseFloat(mapEmbed.dataset.lng);
+
+    if (isNaN(pinLat) || isNaN(pinLng)) return;
+
+    var bpMap = L.map(mapEmbed, {
+        scrollWheelZoom: false
+    }).setView([pinLat, pinLng], 16);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(bpMap);
+
+    /* Emoji pin marker — matches the style used on the listing page */
+    var bpPinIcon = L.divIcon({
+        className: 'bp-pin-icon',
+        html: '<span class="bp-pin">&#128205;</span>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 28]
+    });
+
+    L.marker([pinLat, pinLng], { icon: bpPinIcon }).addTo(bpMap);
+
+    /* Enable wheel zoom only after the user clicks the map,
+       disable again when the cursor leaves — keeps page
+       scrolling smooth */
+    mapEmbed.addEventListener('click', function () {
+        bpMap.scrollWheelZoom.enable();
+    });
+    mapEmbed.addEventListener('mouseleave', function () {
+        bpMap.scrollWheelZoom.disable();
+    });
+})();
+</script>
+
+<!-- =========================================================
+    PAYMENT METHOD — SELECTION HIGHLIGHT
+========================================================= -->
+<script>
+(function () {
+    const methods = document.querySelectorAll('.bp-method');
+
+    methods.forEach(function (label) {
+        const input = label.querySelector('input[type="radio"]');
+        if (!input) return;
+
+        input.addEventListener('change', function () {
+            methods.forEach(function (l) { l.classList.remove('bp-method-selected'); });
+            if (input.checked) label.classList.add('bp-method-selected');
+        });
+    });
+})();
+</script>
+
+<!-- =========================================================
+    PAY NOW — SUBMIT + LOADING STATE
+========================================================= -->
+<script>
+(function () {
+    const form = document.getElementById('bp-payment-form');
+    if (!form) return;
+
+    form.addEventListener('submit', function () {
+        const btn = form.querySelector('.bp-btn-pay');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Redirecting to payment...';
+        }
+    });
+})();
+</script>
+
+</body>
+</html>

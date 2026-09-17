@@ -4,58 +4,41 @@
    process-payment.php
 
    Flow A (new inquiry): listingpayment.php (Step 2: choose
-   method) -> THIS FILE -> booking-details.php (booking created).
+   method) -> THIS FILE -> payment-confirmation.php (Step 3).
 
    Flow B (pay remaining balance): booking-details.php's "Pay
    Remaining Balance" button -> listingpayment.php (pay_balance
-   mode) -> THIS FILE -> booking-details.php (amount_paid topped
-   up on the SAME booking, no new row inserted).
+   mode) -> THIS FILE -> payment-confirmation.php (balance=1).
 
-   THIS FILE HAS TWO STAGES, controlled by the hidden "stage"
-   field, so it doesn't need a second physical file:
+   Flow C (owner "List Now"): listing-detail.php "List Now" ->
+   listingpayment.php -> THIS FILE -> the listing is PUBLISHED
+   (status = 'approved'). No booking row is created.
 
-   STAGE 1 — "review"  (arrives here from listingpayment.php)
-     Shows a payment-method-specific mock screen:
-       - gcash -> GCash mobile-prompt screen (blue)
-       - maya  -> Maya mobile-prompt screen (green)
-       - card  -> card entry form (dark navy)
-     Each screen's form posts back to this SAME file with
-     stage=confirm plus whatever that method collected, and
-     carries booking_id / payment_purpose through as hidden
-     fields so Stage 2 knows which flow it's finishing.
+   Two stages via the hidden "stage" field:
+     Stage 1 "review"  — method-specific mock screen
+     Stage 2 "confirm" — validates input, then either inserts a
+     booking (reservation), tops up amount_paid (balance), or
+     publishes the listing (owner list fee).
 
-   STAGE 2 — "confirm" (the method-specific form's submit)
-     Validates input for the chosen method, then either:
-       - payment_purpose = "reservation" (default): inserts a
-         new row into `bookings` (status starts 'pending'),
-         with total = the listing's real price and
-         amount_paid = the reservation fee just charged.
-       - payment_purpose = "balance": tops up amount_paid on
-         the EXISTING booking named by booking_id, by exactly
-         whatever is still owed (re-derived from the DB here,
-         never trusted from the client).
-     Redirects to booking-details.php for that booking either way.
+   SERVER-SIDE ENFORCEMENT:
+   - Listing status guards (no re-listing approved spaces,
+     no booking unlisted spaces).
+   - Date completion guard: check-in AND check-out required,
+     check-in only when long_term = 1. Skipped for the owner's
+     List Now flow (no dates involved).
+   - Date-conflict guard: overlapping pending/confirmed holds
+     are rejected — including open-ended long-term stays
+     (checkout NULL blocks from move-in onward until finished).
+   - "long_term" carried through Stage 1 -> Stage 2.
 
-   NOTE: There is no real payment gateway wired up here (no
-   GCash/Maya/card-processor API calls) — this simulates the
-   UX so the booking flow is complete end-to-end. Swap the
-   "TODO: real gateway call" blocks for actual API calls when
-   you're ready to integrate one.
+   EXPIRY NOTE: new bookings get paid_at = NOW() so they're
+   exempt from the 10-minute unpaid-hold sweep.
 
-   EXPIRY NOTE: a newly-created booking gets paid_at = NOW() at
-   the same moment as booked_at, since this is the point a
-   (simulated) charge actually succeeds. That's what exempts it
-   from roomhive_expire_stale_bookings()'s 10-minute unpaid-hold
-   sweep (see booking_helpers.php) — once a tenant gets this
-   far, the listing stays reserved for them until the host
-   explicitly accepts or cancels it, not on a timer. A balance
-   payment doesn't touch paid_at — the booking was already past
-   that hold the moment the reservation fee cleared.
-
-   REQUIRES the amount_paid column added to `bookings`:
-     ALTER TABLE bookings
-       ADD COLUMN amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0.00
-       AFTER total;
+   RECEIPT NOTE: even a PARTIAL payment (e.g. only the ₱1,000
+   reservation fee) redirects to payment-confirmation.php —
+   the receipt shows the advance payment and the amount left,
+   so the guest can present it to the host. The chosen method
+   is forwarded via &pm= so the receipt prints the real method.
 ========================================================= */
 
 session_start();
@@ -70,62 +53,103 @@ function h($value) {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
-/* -----------------------------------------------------
-   INBOUND DATA (carried through both stages as hidden
-   fields — listing_id/checkin_date/checkout_date/guests/
-   payment_method/booking_id/payment_purpose never change
-   once Stage 1 renders)
------------------------------------------------------ */
-$listingId      = isset($_POST['listing_id']) && is_numeric($_POST['listing_id']) ? (int) $_POST['listing_id'] : 0;
-$checkin        = $_POST['checkin_date']  ?? '';
-$checkout       = $_POST['checkout_date'] ?? '';
-$guests         = $_POST['guests']   ?? '1';
-$paymentMethod  = $_POST['payment_method'] ?? '';
-$stage          = $_POST['stage'] ?? 'review';
-$paymentPurpose = ($_POST['payment_purpose'] ?? 'reservation') === 'balance' ? 'balance' : 'reservation';
-$bookingId      = isset($_POST['booking_id']) && is_numeric($_POST['booking_id']) ? (int) $_POST['booking_id'] : null;
+/* Strict Y-m-d validator — never trust client dates */
+function pp_valid_date($value) {
+    if (!is_string($value) || $value === '') {
+        return null;
+    }
+    $d = DateTime::createFromFormat('Y-m-d', $value);
+    return ($d && $d->format('Y-m-d') === $value) ? $value : null;
+}
 
-$validMethods = ['gcash', 'maya', 'card'];
+/* -----------------------------------------------------
+   INBOUND DATA
+----------------------------------------------------- */
+ $listingId      = isset($_POST['listing_id']) && is_numeric($_POST['listing_id']) ? (int) $_POST['listing_id'] : 0;
+ $guests         = $_POST['guests']   ?? '1';
+ $paymentMethod  = $_POST['payment_method'] ?? '';
+ $stage          = $_POST['stage'] ?? 'review';
+ $paymentPurpose = ($_POST['payment_purpose'] ?? 'reservation') === 'balance' ? 'balance' : 'reservation';
+ $bookingId      = isset($_POST['booking_id']) && is_numeric($_POST['booking_id']) ? (int) $_POST['booking_id'] : null;
+
+/* Long-term flag, carried from listingpayment.php */
+ $longTerm = ($_POST['long_term'] ?? '0') === '1';
+
+ $checkinRaw  = $_POST['checkin_date']  ?? '';
+ $checkoutRaw = $_POST['checkout_date'] ?? '';
+
+ $checkin  = pp_valid_date($checkinRaw) ?? '';
+ $checkout = (!$longTerm) ? (pp_valid_date($checkoutRaw) ?? '') : '';
+
+ $validMethods = ['gcash', 'maya', 'card'];
 if (!in_array($paymentMethod, $validMethods, true)) {
     header('Location: /webprogg/booking/listingpayment.php?listing_id=' . $listingId);
     exit;
 }
 
-$errors = [];
+ $errors = [];
 
 /* -----------------------------------------------------
-   RELOAD THE LISTING (never trust price/title from the
-   client — always re-fetch server-side)
+   RELOAD THE LISTING (server-side source of truth)
 ----------------------------------------------------- */
-$listingStmt = $pdo->prepare(
-    "SELECT l.id, l.title, l.price, l.user_id AS host_id, p.photo_path AS cover_photo
+ $listingStmt = $pdo->prepare(
+    "SELECT l.id, l.title, l.price, l.location, l.user_id AS host_id, l.status,
+            p.photo_path AS cover_photo
      FROM listings l
      LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
      WHERE l.id = :id
      LIMIT 1"
 );
-$listingStmt->execute(['id' => $listingId]);
-$listing = $listingStmt->fetch();
+ $listingStmt->execute(['id' => $listingId]);
+ $listing = $listingStmt->fetch();
 
 if ($listing === false) {
     header('Location: /webprogg/Listings/listing.php');
     exit;
 }
 
-/* Same reservation fee shown as "Total Due Today" on
-   listingpayment.php for a brand-new inquiry — keep these in
-   sync, or better, move this to a shared config/settings
-   table. */
-$reservationFee = 1000.00;
+/* Same reservation fee as listingpayment.php "Total Due Today" */
+ $reservationFee = 1000.00;
 
 /* -----------------------------------------------------
-   IF THIS IS A BALANCE PAYMENT, LOAD + VALIDATE THE
-   EXISTING BOOKING NOW (both stages need it: Stage 1 to
-   show the correct "Amount to Pay", Stage 2 to charge and
-   record it).
+   LISTING STATUS + DATE GUARDS (reservation flow only)
 ----------------------------------------------------- */
-$balanceBooking  = null;
-$balanceDueNow   = null;
+ $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
+ $listingStatus  = $listing['status'] ?? '';
+
+if ($paymentPurpose === 'reservation') {
+
+    /* GUARD 1 — host cannot re-list an already-listed space */
+    if ($isListingOwner && $listingStatus === 'approved') {
+        header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&alreadylisted=1');
+        exit;
+    }
+
+    /* GUARD 2 — renter cannot pay for an unlisted space */
+    if (!$isListingOwner && $listingStatus !== 'approved') {
+        header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
+        exit;
+    }
+
+    /* GUARD 3 — dates must be complete (renters only; the
+       host's List Now flow carries no dates by design) */
+    if (!$isListingOwner) {
+        if ($checkin === '' || (!$longTerm && $checkout === '')) {
+            header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&incompletedates=1');
+            exit;
+        }
+        if (!$longTerm && $checkout !== '' && $checkout < $checkin) {
+            header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&incompletedates=1');
+            exit;
+        }
+    }
+}
+
+/* -----------------------------------------------------
+   BALANCE MODE — load + validate the existing booking
+----------------------------------------------------- */
+ $balanceBooking = null;
+ $balanceDueNow  = null;
 
 if ($paymentPurpose === 'balance') {
 
@@ -135,7 +159,8 @@ if ($paymentPurpose === 'balance') {
     }
 
     $balanceStmt = $pdo->prepare(
-        "SELECT id, user_id, listing_id, total, amount_paid, status
+        "SELECT id, user_id, listing_id, total, amount_paid, status,
+                checkin_date, checkout_date, guests
          FROM bookings
          WHERE id = :id
          LIMIT 1"
@@ -156,25 +181,23 @@ if ($paymentPurpose === 'balance') {
     $balanceDueNow = round((float) $balanceBooking['total'] - (float) $balanceBooking['amount_paid'], 2);
 
     if ($balanceDueNow <= 0.005) {
-        // Already settled — nothing left to charge.
         header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId);
         exit;
     }
+
+    /* Show the booking's real dates on the payment screen */
+    $checkin  = pp_valid_date($balanceBooking['checkin_date']  ?? '') ?? '';
+    $checkout = pp_valid_date($balanceBooking['checkout_date'] ?? '') ?? '';
+    $longTerm = ($checkin !== '' && $checkout === '');
+    $guests   = $balanceBooking['guests'] ?? $guests;
 }
 
-/* The amount this screen is actually asking for right now —
-   the flat reservation fee for a new inquiry, or the exact
-   remaining balance for a balance payment. Always
-   server-derived, never taken from the client. */
-$amountDue = $paymentPurpose === 'balance' ? $balanceDueNow : $reservationFee;
+ $amountDue = $paymentPurpose === 'balance' ? $balanceDueNow : $reservationFee;
 
 /* =========================================================
-   STAGE 2 — CONFIRM: validate method-specific input, then
-   either create the booking (reservation) or top up
-   amount_paid on the existing one (balance), and redirect.
+   STAGE 2 — CONFIRM
 ========================================================= */
 if ($stage === 'confirm') {
-
 
     if ($paymentMethod === 'gcash' || $paymentMethod === 'maya') {
         $mobileNumber = trim($_POST['mobile_number'] ?? '');
@@ -205,20 +228,15 @@ if ($stage === 'confirm') {
 
     if (empty($errors)) {
 
-        /* TODO: real gateway call goes here — call the GCash /
-           Maya / card processor API with these details, and
-           only proceed past this point once THEY confirm the
-           charge succeeded. Right now we simulate an instant
-           successful charge. */
+        /* TODO: real gateway call goes here — only proceed once
+           THEY confirm the charge succeeded. Simulated for now. */
 
         if ($paymentPurpose === 'balance') {
 
             /* ---------------------------------------------
                PAY REMAINING BALANCE — top up the existing
                booking's amount_paid. Re-lock + re-check the
-               remaining balance right before writing, so two
-               submits in a row (double-click, back-button
-               replay) can't double-charge past the total.
+               remaining balance right before writing.
             --------------------------------------------- */
             $pdo->beginTransaction();
 
@@ -245,7 +263,6 @@ if ($stage === 'confirm') {
             $remainingNow = round((float) $lockedBooking['total'] - (float) $lockedBooking['amount_paid'], 2);
 
             if ($remainingNow <= 0.005) {
-                // Someone else / another tab already settled it.
                 $pdo->rollBack();
                 header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId . '&paid=1');
                 exit;
@@ -263,22 +280,71 @@ if ($stage === 'confirm') {
 
             $pdo->commit();
 
-            header('Location: /webprogg/booking/booking-details.php?id=' . $bookingId . '&paid=1');
+            /* ===== STEP 3: go to the confirmation page ===== */
+            header('Location: /webprogg/booking/payment-confirmation.php?id=' . $bookingId
+                . '&paid=1&balance=1&pm=' . rawurlencode($paymentMethod)
+                . '&amt=' . rawurlencode(number_format($remainingNow, 2, '.', '')));
+            exit;
+
+        } elseif ($isListingOwner) {
+
+            /* ---------------------------------------------
+               OWNER "LIST NOW" FLOW — the host paid the
+               listing fee, publish the space. No booking
+               row is created.
+
+               NOTE: if your project uses ADMIN approval
+               instead of pay-to-publish, DELETE the UPDATE
+               below and keep only the redirect.
+            --------------------------------------------- */
+            $approveStmt = $pdo->prepare(
+                "UPDATE listings
+                 SET status = 'approved'
+                 WHERE id = :id AND user_id = :user_id"
+            );
+            $approveStmt->execute([
+                'id'      => $listingId,
+                'user_id' => $_SESSION['user_id'],
+            ]);
+
+            header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&listed=1');
             exit;
 
         } else {
 
             /* ---------------------------------------------
-               NEW INQUIRY — insert a fresh booking.
-               total        = the listing's real price (what's
-                              ultimately owed for this stay).
-               amount_paid  = the reservation fee charged today.
-               paid_at = NOW() alongside booked_at: this is the
-               moment payment actually clears (simulated), so
-               this hold is exempt from the 10-minute
-               unpaid-hold expiry from here on — see
-               booking_helpers.php.
+               NEW INQUIRY — insert a fresh booking, with a
+               date-conflict guard inside a transaction.
+
+               Overlap rule (NULL end = open-ended long-term):
+                 requested [ci, co|∞] overlaps existing
+                 [eci, eco|∞] when  ci <= eco|∞  AND  co|∞ >= eci
             --------------------------------------------- */
+            $pdo->beginTransaction();
+
+            $conflictStmt = $pdo->prepare(
+                "SELECT 1
+                 FROM bookings
+                 WHERE listing_id = :listing_id
+                   AND status IN ('pending', 'confirmed')
+                   AND checkin_date IS NOT NULL
+                   AND :checkin <= COALESCE(checkout_date, '9999-12-31')
+                   AND :range_end >= checkin_date
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $conflictStmt->execute([
+                'listing_id' => $listingId,
+                'checkin'    => $checkin,
+                'range_end'  => $checkout !== '' ? $checkout : '9999-12-31',
+            ]);
+
+            if ($conflictStmt->fetch()) {
+                $pdo->rollBack();
+                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
+                exit;
+            }
+
             $roomTotal = (float) $listing['price'];
 
             $insertStmt = $pdo->prepare(
@@ -297,28 +363,32 @@ if ($stage === 'confirm') {
                 'guests'        => $guests,
             ]);
 
+            $pdo->commit();
+
             $newBookingId = (int) $pdo->lastInsertId();
 
-            header('Location: /webprogg/booking/booking-details.php?id=' . $newBookingId . '&paid=1');
+            /* ===== STEP 3: go to the confirmation page =====
+               Even though only the ₱1,000 reservation fee was
+               paid, the guest ALWAYS gets an official receipt
+               showing the advance payment + amount left. */
+            header('Location: /webprogg/booking/payment-confirmation.php?id=' . $newBookingId
+                . '&paid=1&pm=' . rawurlencode($paymentMethod)
+                . '&amt=' . rawurlencode(number_format($reservationFee, 2, '.', '')));
             exit;
         }
     }
 
-    /* Validation failed — fall through and re-render Stage 1
-       for the same method, with the errors shown. */
+    /* Validation failed — re-render Stage 1 with errors */
     $stage = 'review';
 }
 
-$methodLabels = [
+ $methodLabels = [
     'gcash' => 'GCash',
     'maya'  => 'Maya',
     'card'  => 'Credit/Debit Card',
 ];
 
-/* "Change payment method" needs a different destination
-   depending on which flow this is — a balance payment goes
-   back to the pay_balance screen, a new inquiry goes back to
-   Step 1's checkin/checkout/guests. */
+/* "Change payment method" destination — carries long_term */
 if ($paymentPurpose === 'balance') {
     $changeMethodUrl = '/webprogg/booking/listingpayment.php'
         . '?listing_id=' . rawurlencode((string) $listingId)
@@ -328,8 +398,25 @@ if ($paymentPurpose === 'balance') {
         . '?listing_id=' . rawurlencode((string) $listingId)
         . '&checkin_date=' . rawurlencode($checkin)
         . '&checkout_date=' . rawurlencode($checkout)
-        . '&guests=' . rawurlencode($guests);
+        . '&guests=' . rawurlencode($guests)
+        . ($longTerm ? '&long_term=1' : '');
 }
+
+/* Summary line (what is being paid for) */
+if ($isListingOwner && $paymentPurpose === 'reservation') {
+    $summaryMeta = 'One-time listing fee &middot; publishes your space';
+} elseif ($checkin !== '' && $checkout !== '') {
+    $summaryMeta = date('M j, Y', strtotime($checkin)) . ' &rarr; ' . date('M j, Y', strtotime($checkout))
+        . ' &middot; ' . h($guests) . ' guest' . ($guests === '1' ? '' : 's');
+} elseif ($checkin !== '' && $longTerm) {
+    $summaryMeta = 'Move-in ' . date('M j, Y', strtotime($checkin)) . ' &middot; Long Term';
+} else {
+    $summaryMeta = h($listing['location']);
+}
+
+ $chargeLabel = $paymentPurpose === 'balance'
+    ? 'Balance to Pay'
+    : ($isListingOwner ? 'Listing Fee' : 'Amount to Pay');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -337,10 +424,242 @@ if ($paymentPurpose === 'balance') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Complete Payment — RoomHive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+
+<style>
+    :root {
+        --pp-ink: #14142B;
+        --pp-soft: #8B93A6;
+        --pp-line: #EEF1F6;
+        --pp-honey: #F5A623;
+        --pp-honey-light: #FFB94E;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        background: #F7F8FA;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: var(--pp-ink);
+    }
+
+    .pp-nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: #fff;
+        border-bottom: 1px solid var(--pp-line);
+    }
+    .pp-nav-inner {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .pp-brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        text-decoration: none;
+    }
+    .pp-brand-mark {
+        width: 30px; height: 30px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, var(--pp-honey-light), var(--pp-honey));
+        display: flex; align-items: center; justify-content: center;
+        color: #fff;
+        box-shadow: 0 4px 10px rgba(245,166,35,.35);
+    }
+    .pp-brand-mark svg { width: 16px; height: 16px; }
+    .pp-brand-text { font-size: 14px; font-weight: 400; color: var(--pp-ink); }
+    .pp-brand-text b { font-weight: 800; }
+    .pp-secure-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #1E7A3D;
+        background: #EAF9F0;
+        border: 1px solid #C9EDD7;
+        padding: 5px 11px;
+        border-radius: 999px;
+    }
+
+    .pp-page { max-width: 480px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    .pp-back-link {
+        display: inline-block;
+        margin-bottom: 16px;
+        color: #5B6172;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 13px;
+        transition: color .15s;
+    }
+    .pp-back-link:hover { color: var(--pp-honey); }
+
+    .pp-balance-heading {
+        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--pp-ink);
+        margin: 0 0 20px;
+    }
+
+    .pp-steps { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 26px; }
+    .pp-step { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 70px; }
+    .pp-step-circle {
+        width: 32px; height: 32px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--pp-line); color: var(--pp-soft);
+        font-weight: 700; font-size: 12.5px;
+        transition: all .2s;
+    }
+    .pp-step-circle svg { width: 14px; height: 14px; }
+    .pp-step-label { font-size: 11px; color: var(--pp-soft); font-weight: 600; }
+    .pp-step-done .pp-step-circle { background: #E7F7EC; color: #2FA84F; }
+    .pp-step-done .pp-step-label { color: #2FA84F; }
+    .pp-step-active .pp-step-circle {
+        background: linear-gradient(135deg, var(--pp-honey-light), var(--pp-honey));
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(245,166,35,.45);
+    }
+    .pp-step-active .pp-step-label { color: var(--pp-ink); font-weight: 700; }
+    .pp-step-line { width: 44px; height: 2.5px; background: var(--pp-line); border-radius: 99px; margin-bottom: 18px; }
+    .pp-step-line-done { background: #A8DFBC; }
+
+    .pp-card {
+        background: #fff;
+        border: 1px solid var(--pp-line);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 2px 12px rgba(20,20,43,0.05);
+    }
+
+    .pp-summary {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #F6F7FB;
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 18px;
+    }
+    .pp-summary-photo {
+        width: 56px; height: 56px;
+        border-radius: 10px;
+        object-fit: cover;
+        flex-shrink: 0;
+        background: #F0EEE6;
+    }
+    .pp-summary-title {
+        margin: 0;
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--pp-ink);
+        line-height: 1.3;
+    }
+    .pp-summary-meta {
+        margin: 3px 0 0;
+        font-size: 12px;
+        color: var(--pp-soft);
+        line-height: 1.4;
+    }
+
+    .pp-errors {
+        background: #FDECEC;
+        border: 1px solid #F5B5B5;
+        color: #A3282E;
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        font-size: 13px;
+    }
+    .pp-errors ul { margin: 0; padding-left: 18px; }
+
+    .pp-brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .pp-brand-icon { width: 44px; height: 44px; object-fit: contain; }
+    .pp-brand-row h1 { margin: 0; font-size: 18px; color: var(--pp-ink); letter-spacing: -0.2px; }
+    .pp-subtext { margin: 2px 0 0; font-size: 12.5px; color: var(--pp-soft); }
+
+    .pp-amount-box {
+        display: flex; align-items: center; justify-content: space-between;
+        border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px;
+        font-weight: 600;
+    }
+    .pp-amount-box strong { font-size: 19px; letter-spacing: -0.3px; }
+    .pp-amount-gcash { background: #E7F0FF; color: #0B57D0; }
+    .pp-amount-maya  { background: #E6F6EC; color: #1E7A3D; }
+    .pp-amount-card  { background: #F0F1F6; color: var(--pp-ink); }
+    .pp-amount-owner { background: #FFF6E9; color: #C77800; border: 1px dashed #F5C77E; }
+
+    .pp-form { display: flex; flex-direction: column; gap: 14px; }
+    .pp-field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #555; font-weight: 600; }
+    .pp-field input {
+        padding: 12px 14px;
+        border: 1px solid #DADEE6;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .pp-field input:focus {
+        outline: none;
+        border-color: var(--pp-honey);
+        box-shadow: 0 0 0 3px rgba(245,166,35,0.18);
+    }
+    .pp-field-row { display: flex; gap: 12px; }
+    .pp-field-row .pp-field { flex: 1; }
+
+    .pp-hint { margin: -4px 0 0; font-size: 11.5px; color: var(--pp-soft); }
+
+    .pp-btn-confirm {
+        display: block; width: 100%;
+        padding: 14px; border-radius: 12px; border: none;
+        color: #fff; font-size: 15px; font-weight: 800; cursor: pointer;
+        font-family: inherit;
+        box-shadow: 0 6px 16px rgba(20,20,43,0.14);
+        transition: transform .12s, box-shadow .12s, filter .12s;
+    }
+    .pp-btn-confirm:hover:not(:disabled) { filter: brightness(1.05); transform: translateY(-1px); }
+    .pp-btn-confirm:active:not(:disabled) { transform: translateY(0); }
+    .pp-btn-confirm:disabled { opacity: 0.7; cursor: default; transform: none; }
+    .pp-btn-gcash { background: #0B57D0; }
+    .pp-btn-maya  { background: #1E7A3D; }
+    .pp-btn-card  { background: #14142B; }
+
+    .pp-secure-note {
+        margin: 18px 0 0;
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--pp-soft);
+    }
+</style>
 </head>
 <body>
+
+<header class="pp-nav">
+    <div class="pp-nav-inner">
+        <a class="pp-brand" href="/webprogg/Listings/listing.php">
+            <span class="pp-brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
+                </svg>
+            </span>
+            <span class="pp-brand-text">Room<b>Hive</b> Checkout</span>
+        </a>
+        <span class="pp-secure-chip">
+            &#128274; Secured
+        </span>
+    </div>
+</header>
 
 <main class="pp-page">
 
@@ -348,10 +667,16 @@ if ($paymentPurpose === 'balance') {
         &#8592; Change payment method
     </a>
 
-    <!-- STEP TRACKER (still Step 2 — this is "make payment" within it; skipped for a balance payment, which isn't part of the inquiry flow) -->
     <?php if ($paymentPurpose !== 'balance'): ?>
     <div class="pp-steps">
-        <div class="pp-step pp-step-done"><span class="pp-step-circle">1</span><span class="pp-step-label">Details</span></div>
+        <div class="pp-step pp-step-done">
+            <span class="pp-step-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m5 12.5 4.5 4.5L19 7.5"/>
+                </svg>
+            </span>
+            <span class="pp-step-label">Details</span>
+        </div>
         <div class="pp-step-line pp-step-line-done"></div>
         <div class="pp-step pp-step-active"><span class="pp-step-circle">2</span><span class="pp-step-label">Payment</span></div>
         <div class="pp-step-line"></div>
@@ -361,7 +686,25 @@ if ($paymentPurpose === 'balance') {
     <p class="pp-balance-heading">Paying remaining balance on booking #<?php echo h($bookingId); ?></p>
     <?php endif; ?>
 
-    <div class="pp-card pp-card-<?php echo h($paymentMethod); ?>">
+    <div class="pp-card">
+
+        <div class="pp-summary">
+            <img
+                class="pp-summary-photo"
+                src="<?php
+                    $cover = $listing['cover_photo'] ?? '';
+                    echo h(preg_match('#^(https?://|/)#i', (string) $cover) || $cover === ''
+                        ? ($cover !== '' ? $cover : '/webprogg/images/ListingPlaceholder.png')
+                        : '/webprogg/' . ltrim((string) $cover, '/'));
+                ?>"
+                alt=""
+                onerror="this.onerror=null;this.src='/webprogg/images/ListingPlaceholder.png';"
+            >
+            <div>
+                <p class="pp-summary-title"><?php echo h($listing['title']); ?></p>
+                <p class="pp-summary-meta"><?php echo $summaryMeta; ?></p>
+            </div>
+        </div>
 
         <?php if (!empty($errors)): ?>
             <div class="pp-errors">
@@ -384,8 +727,8 @@ if ($paymentPurpose === 'balance') {
                 </div>
             </div>
 
-            <div class="pp-amount-box pp-amount-gcash">
-                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+            <div class="pp-amount-box <?php echo ($isListingOwner && $paymentPurpose === 'reservation') ? 'pp-amount-owner' : 'pp-amount-gcash'; ?>">
+                <span><?php echo h($chargeLabel); ?></span>
                 <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
@@ -394,6 +737,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkin_date" value="<?php echo h($checkin); ?>">
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
+                <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <?php if ($paymentPurpose === 'balance'): ?>
@@ -409,6 +753,7 @@ if ($paymentPurpose === 'balance') {
                         placeholder="09XX XXX XXXX"
                         value="<?php echo h($_POST['mobile_number'] ?? ''); ?>"
                         maxlength="11"
+                        inputmode="numeric"
                         required
                     >
                 </label>
@@ -431,8 +776,8 @@ if ($paymentPurpose === 'balance') {
                 </div>
             </div>
 
-            <div class="pp-amount-box pp-amount-maya">
-                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+            <div class="pp-amount-box <?php echo ($isListingOwner && $paymentPurpose === 'reservation') ? 'pp-amount-owner' : 'pp-amount-maya'; ?>">
+                <span><?php echo h($chargeLabel); ?></span>
                 <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
@@ -441,6 +786,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkin_date" value="<?php echo h($checkin); ?>">
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
+                <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <?php if ($paymentPurpose === 'balance'): ?>
@@ -456,6 +802,7 @@ if ($paymentPurpose === 'balance') {
                         placeholder="09XX XXX XXXX"
                         value="<?php echo h($_POST['mobile_number'] ?? ''); ?>"
                         maxlength="11"
+                        inputmode="numeric"
                         required
                     >
                 </label>
@@ -478,8 +825,8 @@ if ($paymentPurpose === 'balance') {
                 </div>
             </div>
 
-            <div class="pp-amount-box pp-amount-card">
-                <span><?php echo $paymentPurpose === 'balance' ? 'Balance to Pay' : 'Amount to Pay'; ?></span>
+            <div class="pp-amount-box <?php echo ($isListingOwner && $paymentPurpose === 'reservation') ? 'pp-amount-owner' : 'pp-amount-card'; ?>">
+                <span><?php echo h($chargeLabel); ?></span>
                 <strong>&#8369; <?php echo h(number_format($amountDue, 2)); ?></strong>
             </div>
 
@@ -488,6 +835,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkin_date" value="<?php echo h($checkin); ?>">
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
+                <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <?php if ($paymentPurpose === 'balance'): ?>
@@ -502,6 +850,7 @@ if ($paymentPurpose === 'balance') {
                         name="card_number"
                         placeholder="1234 5678 9012 3456"
                         maxlength="19"
+                        inputmode="numeric"
                         value="<?php echo h($_POST['card_number'] ?? ''); ?>"
                         required
                     >
@@ -526,6 +875,7 @@ if ($paymentPurpose === 'balance') {
                             name="card_expiry"
                             placeholder="MM/YY"
                             maxlength="5"
+                            inputmode="numeric"
                             value="<?php echo h($_POST['card_expiry'] ?? ''); ?>"
                             required
                         >
@@ -537,6 +887,7 @@ if ($paymentPurpose === 'balance') {
                             name="card_cvv"
                             placeholder="123"
                             maxlength="4"
+                            inputmode="numeric"
                             value="<?php echo h($_POST['card_cvv'] ?? ''); ?>"
                             required
                         >
@@ -558,101 +909,55 @@ if ($paymentPurpose === 'balance') {
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
-<style>
-    .pp-page { max-width: 480px; margin: 0 auto; padding: 24px 20px 60px; }
+<script>
+(function () {
+    var form = document.querySelector('form.pp-form');
+    if (!form) return;
 
-    .pp-back-link {
-        display: inline-block;
-        margin-bottom: 16px;
-        color: #14142B;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 13px;
-    }
-    .pp-back-link:hover { text-decoration: underline; }
+    /* Submit — loading state + double-submit guard */
+    form.addEventListener('submit', function () {
+        var btn = form.querySelector('.pp-btn-confirm');
+        if (btn && !btn.disabled) {
+            btn.disabled = true;
+            btn.textContent = 'Processing\u2026';
+        }
+    });
 
-    .pp-balance-heading {
-        text-align: center;
-        font-size: 13px;
-        font-weight: 700;
-        color: #14142B;
-        margin: 0 0 20px;
-    }
-
-    .pp-steps { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 24px; }
-    .pp-step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .pp-step-circle {
-        width: 26px; height: 26px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        background: #EEF1F6; color: #999; font-weight: 700; font-size: 12px;
-    }
-    .pp-step-label { font-size: 11px; color: #999; font-weight: 600; }
-    .pp-step-done .pp-step-circle, .pp-step-active .pp-step-circle { background: #FFA726; color: #fff; }
-    .pp-step-done .pp-step-label, .pp-step-active .pp-step-label { color: #14142B; }
-    .pp-step-line { width: 44px; height: 2px; background: #EEF1F6; }
-    .pp-step-line-done { background: #FFA726; }
-
-    .pp-card {
-        background: #fff;
-        border: 1px solid #EEF1F6;
-        border-radius: 14px;
-        padding: 24px;
+    /* Card number — auto-space every 4 digits */
+    var cardNum = form.querySelector('input[name="card_number"]');
+    if (cardNum) {
+        cardNum.addEventListener('input', function () {
+            var d = this.value.replace(/\D/g, '').slice(0, 16);
+            this.value = d.replace(/(\d{4})(?=\d)/g, '$1 ');
+        });
     }
 
-    .pp-errors {
-        background: #FDECEC;
-        border: 1px solid #F5B5B5;
-        color: #A3282E;
-        border-radius: 10px;
-        padding: 10px 14px;
-        margin-bottom: 16px;
-        font-size: 13px;
+    /* Expiry — auto MM/YY */
+    var cardExp = form.querySelector('input[name="card_expiry"]');
+    if (cardExp) {
+        cardExp.addEventListener('input', function () {
+            var d = this.value.replace(/\D/g, '').slice(0, 4);
+            this.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+        });
     }
-    .pp-errors ul { margin: 0; padding-left: 18px; }
 
-    .pp-brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-    .pp-brand-icon { width: 44px; height: 44px; object-fit: contain; }
-    .pp-brand-row h1 { margin: 0; font-size: 18px; color: #14142B; }
-    .pp-subtext { margin: 2px 0 0; font-size: 12.5px; color: #777; }
-
-    .pp-amount-box {
-        display: flex; align-items: center; justify-content: space-between;
-        border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 13px;
+    /* CVV — digits only */
+    var cardCvv = form.querySelector('input[name="card_cvv"]');
+    if (cardCvv) {
+        cardCvv.addEventListener('input', function () {
+            this.value = this.value.replace(/\D/g, '').slice(0, 4);
+        });
     }
-    .pp-amount-box strong { font-size: 18px; }
-    .pp-amount-gcash { background: #E7F0FF; color: #0B57D0; }
-    .pp-amount-maya  { background: #E6F6EC; color: #1E7A3D; }
-    .pp-amount-card  { background: #EEF1F6; color: #14142B; }
 
-    .pp-form { display: flex; flex-direction: column; gap: 14px; }
-    .pp-field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #555; font-weight: 600; }
-    .pp-field input {
-        padding: 12px 14px;
-        border: 1px solid #DADEE6;
-        border-radius: 10px;
-        font-size: 14px;
-        font-family: inherit;
+    /* Mobile — digits only */
+    var mobile = form.querySelector('input[name="mobile_number"]');
+    if (mobile) {
+        mobile.addEventListener('input', function () {
+            this.value = this.value.replace(/\D/g, '').slice(0, 11);
+        });
     }
-    .pp-field input:focus { outline: none; border-color: #FFA726; }
-    .pp-field-row { display: flex; gap: 12px; }
-    .pp-field-row .pp-field { flex: 1; }
-
-    .pp-hint { margin: -4px 0 0; font-size: 11.5px; color: #999; }
-
-    .pp-btn-confirm {
-        display: block; width: 100%;
-        padding: 14px; border-radius: 10px; border: none;
-        color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
-    }
-    .pp-btn-gcash { background: #0B57D0; }
-    .pp-btn-gcash:hover { background: #0A4CB8; }
-    .pp-btn-maya  { background: #1E7A3D; }
-    .pp-btn-maya:hover  { background: #196A34; }
-    .pp-btn-card  { background: #14142B; }
-    .pp-btn-card:hover  { background: #24243F; }
-
-    .pp-secure-note { margin: 18px 0 0; text-align: center; font-size: 11.5px; color: #999; }
-</style>
+})();
+</script>
 
 </body>
 </html>

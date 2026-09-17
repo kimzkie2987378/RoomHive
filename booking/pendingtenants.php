@@ -3,10 +3,12 @@
    ROOMHIVE — PENDING TENANTS
    pendingtenants.php
 
-   DESIGN FIX: the host-dd dropdown styles are now embedded
-   directly in this page's <style> block (they weren't
-   applying from hostprofile.css, leaving the menu stuck
-   open as plain text). All PHP logic unchanged.
+   RECEIPT ACCESS (new): each application shows the real
+   payment state — "Fully Paid" (green) / "Advance Paid ·
+   ₱X left" (amber) / "₱X Pending" — plus a "View Receipt"
+   button (card + modal) that opens the guest's official
+   receipt (payment-confirmation.php) in a new tab. The
+   receipt page allows the listing's host to view it.
 ========================================================= */
 
 session_start();
@@ -126,18 +128,38 @@ function pt_date_range_label($checkin, $checkout) {
 
 /* -----------------------------------------------------
    PAYMENT FIGURES + LABELS
+   CHANGED: now distinguishes FULL / ADVANCE / NONE so the
+   host sees the advance payment and can open the receipt.
 ----------------------------------------------------- */
 function pt_payment_breakdown($total, $amountPaid) {
     $totalAmount = (float) $total;
     $amountPaid  = (float) ($amountPaid ?? 0);
     $balanceDue  = max(0, round($totalAmount - $amountPaid, 2));
-    $isFullyPaid = $balanceDue <= 0.005;
+    $hasPayment  = ($amountPaid > 0.005);
+    $isFullyPaid = ($hasPayment && $balanceDue <= 0.005);
+
+    if ($isFullyPaid) {
+        $state = 'full';
+        $status_label = 'Fully Paid';
+        $status_class = 'pt-payment-paid';
+    } elseif ($hasPayment) {
+        $state = 'advance';
+        $status_label = 'Advance Paid &#8369;' . number_format($balanceDue, 2) . ' left';
+        $status_label = 'Advance Paid · ₱' . number_format($balanceDue, 2) . ' left';
+        $status_class = 'pt-payment-pending';
+    } else {
+        $state = 'none';
+        $status_label = '₱' . number_format($balanceDue, 2) . ' Pending';
+        $status_class = 'pt-payment-pending';
+    }
 
     return [
-        'balance_due'   => $balanceDue,
-        'is_fully_paid' => $isFullyPaid,
-        'status_label'  => $isFullyPaid ? 'Fully Paid' : ('₱' . number_format($balanceDue, 2) . ' Pending'),
-        'status_class'  => $isFullyPaid ? 'pt-payment-paid' : 'pt-payment-pending',
+        'balance_due'     => $balanceDue,
+        'is_fully_paid'   => $isFullyPaid,
+        'payment_state'   => $state,
+        'amount_paid_fmt' => number_format($amountPaid, 2),
+        'status_label'    => $status_label,
+        'status_class'    => $status_class,
     ];
 }
 
@@ -145,7 +167,7 @@ function pt_payment_time_label($paidAt) {
     return !empty($paidAt) ? date('M j, Y, g:i A', strtotime($paidAt)) : 'Not paid yet';
 }
 
- $hp_css_version = '4';
+ $hp_css_version = '5';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -212,7 +234,8 @@ function pt_payment_time_label($paidAt) {
     </nav>
 
 </header>
- <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+
 <!-- =========================================================
      MAIN DASHBOARD LAYOUT
 ========================================================= -->
@@ -318,6 +341,11 @@ function pt_payment_time_label($paidAt) {
         $paymentStatus    = $payment['status_label'];
         $paymentStatusCls = $payment['status_class'];
         $paymentTime      = pt_payment_time_label($app['paid_at']);
+
+        /* Receipt URL — only when the guest has actually paid something */
+        $receiptUrl = $payment['payment_state'] !== 'none'
+            ? '/webprogg/booking/payment-confirmation.php?id=' . (int) $app['booking_id']
+            : '';
       ?>
 
         <div
@@ -338,6 +366,9 @@ function pt_payment_time_label($paidAt) {
             data-guests="<?php echo h($app['guests'] !== null && $app['guests'] !== '' ? $app['guests'] : 'Not specified'); ?>"
             data-applied="<?php echo h(date('M j, Y', strtotime($app['booked_at']))); ?>"
             data-total="<?php echo h(number_format((float) $app['total'], 2)); ?>"
+            data-paid="<?php echo h($payment['amount_paid_fmt']); ?>"
+            data-balance="<?php echo h(number_format($payment['balance_due'], 2)); ?>"
+            data-receipt-url="<?php echo h($receiptUrl); ?>"
             tabindex="0"
             role="button"
             aria-label="View application details from <?php echo h($app['tenant_name']); ?>"
@@ -379,6 +410,15 @@ function pt_payment_time_label($paidAt) {
               <?php echo h($paymentStatus); ?>
             </span>
             <span class="pt-payment-time"><?php echo h($paymentTime); ?></span>
+            <?php if ($receiptUrl !== ''): ?>
+            <a
+              class="pt-receipt-link"
+              href="<?php echo h($receiptUrl); ?>"
+              target="_blank"
+              rel="noopener"
+              title="Open the guest's official receipt"
+            >&#128196; View Receipt</a>
+            <?php endif; ?>
           </div>
 
           <!-- STAY DATES — between payment and price/actions -->
@@ -446,6 +486,22 @@ function pt_payment_time_label($paidAt) {
         <div class="pt-modal-payment">
           <span class="pt-modal-payment-status" id="ptModalPaymentStatus"></span>
           <span class="pt-modal-payment-time" id="ptModalPaymentTime"></span>
+        </div>
+
+        <!-- NEW: open the guest's official receipt (new tab) -->
+        <a class="pt-modal-receipt-link" id="ptModalReceiptLink" href="#" target="_blank" rel="noopener" style="display:none;">
+          &#128196; View Guest Receipt
+        </a>
+
+        <div class="pt-modal-paid-row">
+          <div>
+            <span class="pt-modal-muted">Paid so far</span>
+            <strong>&#8369; <span id="ptModalPaid"></span></strong>
+          </div>
+          <div>
+            <span class="pt-modal-muted">Balance</span>
+            <strong>&#8369; <span id="ptModalBalance"></span></strong>
+          </div>
         </div>
 
         <div class="pt-modal-daterange">
@@ -563,10 +619,6 @@ function pt_payment_time_label($paidAt) {
 
 <!-- =========================================================
      PENDING TENANTS — STYLES (hive-polished)
-     NOW INCLUDES the .host-dd dropdown styles inline so the
-     dropdown is styled correctly on this page no matter what
-     state hostprofile.css is in. Inline <style> loads after
-     stylesheets, so these rules always win.
 ========================================================= -->
 <style>
     /* =====================================================
@@ -612,7 +664,6 @@ function pt_payment_time_label($paidAt) {
 
     .host-dd.open .dropdown-caret { transform: rotate(180deg); }
 
-    /* CRITICAL: menu hidden until .open is toggled */
     .host-dd-menu {
         display: none !important;
 
@@ -783,6 +834,29 @@ function pt_payment_time_label($paidAt) {
 
     .pt-payment-time { font-size: 11px; color: #6b7684; }
 
+    /* NEW — View Receipt link on the card */
+    .pt-receipt-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 3px;
+        padding: 4px 11px;
+        border-radius: 999px;
+        background: #FDF1DC;
+        border: 1px solid rgba(237, 164, 35, 0.5);
+        color: #B07708;
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .pt-receipt-link:hover {
+        background: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(237, 164, 35, 0.25);
+    }
+
     @media (min-width: 720px) {
         .pt-payment { flex-basis: auto; }
     }
@@ -868,7 +942,6 @@ function pt_payment_time_label($paidAt) {
         to   { opacity: 1; transform: translateY(0) scale(1); }
     }
 
-    /* Honey accent bar across the top */
     .pt-modal::before {
         content: "";
         position: absolute;
@@ -955,6 +1028,46 @@ function pt_payment_time_label($paidAt) {
     }
     .pt-modal-payment-time { font-size: 12px; color: #6b7684; }
 
+    /* NEW — receipt button + paid/balance row in the modal */
+    .pt-modal-receipt-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+        padding: 9px 14px;
+        border-radius: 10px;
+        background: #FDF1DC;
+        border: 1px solid rgba(237, 164, 35, 0.5);
+        color: #B07708;
+        font-size: 12.5px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .pt-modal-receipt-link:hover {
+        background: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(237, 164, 35, 0.25);
+    }
+
+    .pt-modal-paid-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: #FAFAFD;
+        border: 1px solid rgba(28, 42, 56, 0.08);
+        border-radius: 10px;
+    }
+    .pt-modal-paid-row > div {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .pt-modal-paid-row strong { color: #1c2a38; font-size: 14px; }
+
     .pt-modal-daterange {
         display: flex;
         align-items: center;
@@ -1010,7 +1123,6 @@ function pt_payment_time_label($paidAt) {
 
     if (!dd || !btn) { return; }
 
-    /* Start clean — never restore a stale open state */
     dd.classList.remove("open");
     btn.setAttribute("aria-expanded", "false");
 
@@ -1021,7 +1133,6 @@ function pt_payment_time_label($paidAt) {
         btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     });
 
-    /* Close on outside click */
     document.addEventListener("click", function (event) {
         if (!dd.contains(event.target)) {
             dd.classList.remove("open");
@@ -1029,7 +1140,6 @@ function pt_payment_time_label($paidAt) {
         }
     });
 
-    /* Close on Esc */
     document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
             dd.classList.remove("open");
@@ -1040,7 +1150,7 @@ function pt_payment_time_label($paidAt) {
 </script>
 
 <!-- =========================================================
-     ACCEPT/REJECT + MODAL SCRIPT (unchanged logic)
+     ACCEPT/REJECT + MODAL SCRIPT
 ========================================================= -->
 <script>
 (function () {
@@ -1104,6 +1214,13 @@ function pt_payment_time_label($paidAt) {
         }
     });
 
+    /* VIEW RECEIPT LINKS — open in a new tab, don't open the modal */
+    document.querySelectorAll('.pt-receipt-link').forEach(function (link) {
+        link.addEventListener('click', function (event) {
+            event.stopPropagation();
+        });
+    });
+
     /* APPLICATION DETAILS MODAL */
 
     var overlay = document.getElementById('ptModalOverlay');
@@ -1126,6 +1243,21 @@ function pt_payment_time_label($paidAt) {
         paymentStatusEl.textContent = card.getAttribute('data-payment-status');
         paymentStatusEl.className = 'pt-modal-payment-status ' + card.getAttribute('data-payment-class');
         document.getElementById('ptModalPaymentTime').textContent = card.getAttribute('data-payment-time');
+
+        /* Receipt link — only when the guest has paid something */
+        var receiptLink = document.getElementById('ptModalReceiptLink');
+        var receiptUrl = card.getAttribute('data-receipt-url') || '';
+        if (receiptLink) {
+            if (receiptUrl) {
+                receiptLink.href = receiptUrl;
+                receiptLink.style.display = 'inline-flex';
+            } else {
+                receiptLink.style.display = 'none';
+            }
+        }
+
+        document.getElementById('ptModalPaid').textContent = card.getAttribute('data-paid') || '0.00';
+        document.getElementById('ptModalBalance').textContent = card.getAttribute('data-balance') || '0.00';
 
         document.getElementById('ptModalDateRange').textContent = card.getAttribute('data-daterange');
         document.getElementById('ptModalCheckin').textContent = card.getAttribute('data-checkin');
