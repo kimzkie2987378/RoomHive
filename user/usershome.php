@@ -24,12 +24,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
  * -----------------------------------------------------
  * KEEP is_host IN SYNC WITH THE DATABASE
  * -----------------------------------------------------
- * $_SESSION['is_host'] is only set at login time, so if an
- * admin approves this user's host application (or their
- * host status otherwise changes) during the same session,
- * the session flag goes stale and the nav keeps showing
- * them as a regular user. Re-check the real column on every
- * load so the nav is always accurate.
  */
 if (isset($_SESSION['user_id'])) {
     $hostCheckStmt = $pdo->prepare("SELECT is_host, avatar_path FROM users WHERE id = :id LIMIT 1");
@@ -39,37 +33,14 @@ if (isset($_SESSION['user_id'])) {
     $_SESSION['avatar_path'] = $hostRow['avatar_path'] ?? null;
 }
 
-/* Same staleness reasoning as is_host above: the navbar's
-   account icon should reflect a freshly-uploaded profile photo
-   without requiring the user to log out and back in. */
  $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-/* Notification bell badge count — same placeholder used across
-   every logged-in page's navbar until real notifications land. */
  $notification_count = 0;
 
-/*
- * Get the logged-in user's name.
- */
  $userName = $_SESSION['user_name'] ?? 'User';
 
-// Current page (used to compute the "active" nav class dynamically,
-// the same pattern becomeahost.php uses)
  $currentPage = '/webprogg/user/usershome.php';
 
-/* =========================================================
-   CHANGED — SHARED NAVBAR CONTRACT
-   navbar.php expects:
-     $navigation  — "LABEL" => "/url" pairs (not a list of
-                    arrays, which is what this page used
-                    before)
-     $currentPage — the URL that gets the active class
-     $navAvatar, $notification_count — already set above
-     $isHost      — adds "Host Dashboard" to the dropdown
-                    if the user is a host
-   The old inline <nav> markup and its <style> block are
-   gone — navbar.php renders the header now.
-========================================================= */
  $navigation = [
     "HOME"          => "/webprogg/user/usershome.php",
     "LISTINGS"      => "/webprogg/Listings/listing.php",
@@ -175,6 +146,50 @@ if (isset($_SESSION['user_id'])) {
  $phoneNumber = '+639275693574';
  $emailAddress = 'RoomHive@gmail.com';
  $currentYear = date('Y');
+
+/* =========================================================
+   NEW — SPONSORED AD LISTINGS (floating ad widget)
+   Same source as listing.php: approved listings with no
+   active 'pending' hold, newest first. Up to 8 are pulled
+   so the 2 visible ad cards can rotate to fresh listings
+   every cycle. Image path handling matches listing.php.
+========================================================= */
+ $adStmt = $pdo->query(
+    "SELECT l.id, l.title, l.location, l.price,
+            p.photo_path AS cover_photo
+     FROM listings l
+     LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+     WHERE l.status = 'approved'
+     AND NOT EXISTS (
+         SELECT 1 FROM bookings b
+         WHERE b.listing_id = l.id
+             AND b.status = 'pending'
+     )
+     ORDER BY l.created_at DESC
+     LIMIT 8"
+ );
+ $adListings = array_map(function ($row) {
+    $cover = (string) ($row['cover_photo'] ?? '');
+
+    if ($cover === '') {
+        $adImage = '/webprogg/images/ListingPlaceholder.png';
+    } elseif (preg_match('#^(https?://|/)#i', $cover)) {
+        $adImage = $cover; /* already absolute */
+    } else {
+        /* same convention listing.php uses for cover photos */
+        $adImage = '/webprogg/uploads/listing_photos/cover/' . basename($cover);
+    }
+
+    return [
+        'id'       => (int) $row['id'],
+        'title'    => $row['title'],
+        'location' => $row['location'],
+        'price'    => number_format((float) $row['price']),
+        'image'    => $adImage,
+        'url'      => '/webprogg/Listings/listing-detail.php?id=' . (int) $row['id'],
+    ];
+ }, $adStmt->fetchAll());
 ?>
 <!doctype html>
 <html lang="en">
@@ -189,27 +204,173 @@ if (isset($_SESSION['user_id'])) {
     />
     <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css" />
-    <!-- CHANGED: motion & interaction layer — same as index.php.
-         Loads AFTER style.css so it can override it. This is what
-         powers scroll-reveal, the smart navbar, button ripples,
-         image fade-ins and the back-to-top button on this page. -->
     <link rel="stylesheet" href="/webprogg/assets/motion.css" />
 
-    <!-- CHANGED: enables entrance animations only when JS is
-         available. Without JS, the page renders fully visible /
-         static. Same inline flag index.php uses. -->
     <script>document.documentElement.classList.add("js-animations");</script>
+
+    <!-- =====================================================
+         SPONSORED AD WIDGET STYLES
+         2 floating listing cards, bottom-right. Each cycle:
+         animate in -> hold 10s -> animate out -> next pair.
+    ====================================================== -->
+    <style>
+        .rh-ad-wrap {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 900;
+
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+
+            width: 292px;
+
+            pointer-events: none;
+        }
+
+        .rh-ad-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            pointer-events: auto;
+
+            background: #1c2a38;
+            border-radius: 10px;
+            padding: 5px 10px;
+
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity .45s ease, transform .45s ease;
+        }
+        .rh-ad-wrap.show .rh-ad-header {
+            opacity: 1;
+            transform: none;
+        }
+
+        .rh-ad-header span {
+            color: #f6c04e;
+            font-size: 9.5px;
+            font-weight: 800;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+        }
+
+        .rh-ad-close {
+            background: none;
+            border: none;
+            color: #aab6c2;
+            font-size: 15px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 2px 4px;
+        }
+        .rh-ad-close:hover { color: #fff; }
+
+        .rh-ad-card {
+            pointer-events: auto;
+
+            display: flex;
+            gap: 10px;
+            align-items: center;
+
+            background: #fff;
+            border: 1px solid rgba(28, 42, 56, 0.08);
+            border-radius: 14px;
+            padding: 8px;
+
+            box-shadow: 0 14px 34px rgba(28, 42, 56, 0.2);
+
+            text-decoration: none;
+
+            opacity: 0;
+            transform: translateY(18px) scale(.97);
+
+            transition:
+                opacity .5s ease,
+                transform .5s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .rh-ad-card.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        .rh-ad-card.hide {
+            opacity: 0;
+            transform: translateY(10px) scale(.98);
+        }
+
+        .rh-ad-card:nth-child(3) { transition-delay: .12s; } /* second card follows */
+
+        .rh-ad-thumb {
+            width: 74px;
+            height: 74px;
+            border-radius: 10px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: #F0EEE6;
+        }
+
+        .rh-ad-body { min-width: 0; flex: 1; }
+
+        .rh-ad-title {
+            margin: 0;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #1c2a38;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .rh-ad-loc {
+            margin: 2px 0 0;
+            font-size: 11px;
+            color: #6b7684;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .rh-ad-price {
+            margin: 4px 0 0;
+            font-size: 12.5px;
+            font-weight: 800;
+            color: #b07708;
+        }
+
+        .rh-ad-cta {
+            display: inline-block;
+            margin-top: 3px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            color: #dd930f;
+        }
+
+        .rh-ad-card:hover { border-color: rgba(237, 164, 35, .55); }
+
+        @media (max-width: 640px) {
+            .rh-ad-wrap { width: 236px; right: 12px; bottom: 12px; }
+            .rh-ad-thumb { width: 60px; height: 60px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .rh-ad-card,
+            .rh-ad-header {
+                transition: none !important;
+            }
+        }
+    </style>
   </head>
 
   <body>
 
     <!-- =========================
          NAVIGATION BAR
-         CHANGED: now uses the shared navbar.php include
-         (same design as host_navbar.php — 42px avatar, 12px
-         MY PROFILE label, self-contained dropdown).
     ========================== -->
-    
+
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
     <!-- =========================
@@ -420,6 +581,43 @@ if (isset($_SESSION['user_id'])) {
     </section>
 
     <!-- =========================
+         SPONSORED AD WIDGET (floating)
+         2 real listing cards; every 10 seconds they animate
+         out and the next pair animates in. Rendered only when
+         there is at least one approved listing to show.
+    ========================== -->
+    <?php if (!empty($adListings)): ?>
+    <div class="rh-ad-wrap" id="rhAdWrap" aria-label="Sponsored listings">
+
+        <div class="rh-ad-header">
+            <span>Sponsored &middot; For You</span>
+            <button type="button" class="rh-ad-close" id="rhAdClose" aria-label="Close ads">&times;</button>
+        </div>
+
+        <a href="#" class="rh-ad-card" id="rhAdCard0" data-slot="0">
+            <img class="rh-ad-thumb" src="" alt="" id="rhAdImg0">
+            <div class="rh-ad-body">
+                <p class="rh-ad-title" id="rhAdTitle0"></p>
+                <p class="rh-ad-loc" id="rhAdLoc0"></p>
+                <p class="rh-ad-price" id="rhAdPrice0"></p>
+                <span class="rh-ad-cta">VIEW LISTING &rarr;</span>
+            </div>
+        </a>
+
+        <a href="#" class="rh-ad-card" id="rhAdCard1" data-slot="1">
+            <img class="rh-ad-thumb" src="" alt="" id="rhAdImg1">
+            <div class="rh-ad-body">
+                <p class="rh-ad-title" id="rhAdTitle1"></p>
+                <p class="rh-ad-loc" id="rhAdLoc1"></p>
+                <p class="rh-ad-price" id="rhAdPrice1"></p>
+                <span class="rh-ad-cta">VIEW LISTING &rarr;</span>
+            </div>
+        </a>
+
+    </div>
+    <?php endif; ?>
+
+    <!-- =========================
          FOOTER
     ========================== -->
     <footer class="site-footer">
@@ -469,6 +667,123 @@ if (isset($_SESSION['user_id'])) {
     </footer>
 
     <script src="/webprogg/assets/javaScript.js"></script>
+
+    <!-- =========================================================
+         SPONSORED AD ROTATION
+         - 2 visible slots, pool of up to 8 real listings
+         - Every 10 seconds: fade out -> next pair -> fade in
+         - Close button removes the widget for the page
+    ========================================================= -->
+    <script>
+    (function () {
+        "use strict";
+
+        var wrap = document.getElementById('rhAdWrap');
+        if (!wrap) return;
+
+        var POOL = <?php
+            echo json_encode(
+                $adListings,
+                JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+            );
+        ?>;
+
+        if (!Array.isArray(POOL) || POOL.length === 0) {
+            wrap.remove();
+            return;
+        }
+
+        var HOLD_MS   = 10000; /* each pair stays 10 seconds */
+        var FADE_MS   = 550;   /* must match the CSS transition */
+
+        var slots = [
+            {
+                card:  document.getElementById('rhAdCard0'),
+                img:   document.getElementById('rhAdImg0'),
+                title: document.getElementById('rhAdTitle0'),
+                loc:   document.getElementById('rhAdLoc0'),
+                price: document.getElementById('rhAdPrice0')
+            },
+            {
+                card:  document.getElementById('rhAdCard1'),
+                img:   document.getElementById('rhAdImg1'),
+                title: document.getElementById('rhAdTitle1'),
+                loc:   document.getElementById('rhAdLoc1'),
+                price: document.getElementById('rhAdPrice1')
+            }
+        ].filter(function (s) { return s.card; });
+
+        if (!slots.length) { wrap.remove(); return; }
+
+        var cursor = 0;
+        var timer  = null;
+
+        function itemAt(i) {
+            return POOL[((i % POOL.length) + POOL.length) % POOL.length];
+        }
+
+        function fill(slot, listing) {
+            slot.card.href = listing.url;
+            slot.img.src   = listing.image;
+            slot.img.alt   = listing.title;
+            slot.title.textContent = listing.title;
+            slot.loc.textContent   = listing.location || '';
+            slot.price.innerHTML   = '\u20B1' + listing.price + '<span style="font-weight:600;color:#8B93A6;">/month</span>';
+        }
+
+        function showPair() {
+            for (var i = 0; i < slots.length; i++) {
+                fill(slots[i], itemAt(cursor + i));
+                slots[i].card.classList.remove('hide');
+                slots[i].card.classList.add('show');
+            }
+            wrap.classList.add('show');
+        }
+
+        function hidePair(then) {
+            wrap.classList.remove('show');
+            for (var i = 0; i < slots.length; i++) {
+                slots[i].card.classList.remove('show');
+                slots[i].card.classList.add('hide');
+            }
+            window.setTimeout(then, FADE_MS);
+        }
+
+        function cycle() {
+            hidePair(function () {
+                cursor += slots.length;          /* advance the pool */
+                if (cursor >= POOL.length) { cursor = 0; }
+                showPair();
+            });
+        }
+
+        /* First appearance shortly after load */
+        window.setTimeout(showPair, 1200);
+
+        /* Then every 10 seconds */
+        timer = window.setInterval(cycle, HOLD_MS);
+
+        /* Pause rotating while the tab is hidden so the user
+           always gets a full 10s view when they come back */
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) {
+                window.clearInterval(timer);
+            } else {
+                timer = window.setInterval(cycle, HOLD_MS);
+            }
+        });
+
+        /* Close button — removes the ads for this visit */
+        var closeBtn = document.getElementById('rhAdClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                window.clearInterval(timer);
+                wrap.remove();
+            });
+        }
+    })();
+    </script>
+
   </body>
 
 </html>

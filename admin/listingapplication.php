@@ -7,6 +7,18 @@
  * finished the wizard yet if status is still 'draft'), joined to
  * `users` for the host's name, and actually updates `listings.status`
  * when you click Approve / Reject.
+ *
+ * KEPT: approve/reject notify the host; delete = safe transactional
+ * cascade (conversations DETACHED, then photos/wishlist/reviews/
+ * bookings/listings); CSRF on every POST form; working admin chip;
+ * dynamic action-menu (detached dropdown).
+ *
+ * NEW (this version):
+ *   - NAV ALIGNMENT: working ☰ menu button (off-canvas sidebar
+ *     + overlay under 1000px), topbar shadow on scroll.
+ *   - "Hive Club" nav entry added (adminhiveclub.php).
+ *   - Bell badge aligned to the standard count: pending HOST
+ *     applications + pending LISTINGS (was listings-only).
  */
 
 session_start();
@@ -20,7 +32,38 @@ if (
     exit();
 }
 
-/* ---------- Sidebar navigation ---------- */
+ $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+ $adminEmail = $_SESSION['admin_email'] ?? '';
+
+/* ---------- CSRF token (per-session) ---------- */
+if (empty($_SESSION['admin_csrf'])) {
+    $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
+}
+ $csrfToken = $_SESSION['admin_csrf'];
+
+/* ---------- Shared notifier ---------- */
+if (!function_exists('admin_notify_user')) {
+    function admin_notify_user($pdo, $userId, $message, $link) {
+        try {
+            if ((int) $userId <= 0 || trim((string) $message) === '') { return false; }
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'm' => mb_substr(trim((string) $message), 0, 240),
+                'l' => (string) $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('listingapplication notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+/* ---------- Sidebar navigation (Hive Club added) ---------- */
  $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
@@ -29,18 +72,29 @@ if (
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'active' => true, 'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
     ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Hive Club',            'icon' => 'tag',        'href' => '/webprogg/admin/adminhiveclub.php'],
     ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
     ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
     ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
-$notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
+/* NAV ALIGNMENT: standard count — pending host apps + pending listings */
+ $notificationCount = (int) $pdo->query(
+    "SELECT (SELECT COUNT(*) FROM host_applications WHERE status = 'pending')
+           + (SELECT COUNT(*) FROM listings WHERE status = 'pending')"
+)->fetchColumn();
 
 /* =========================================================
    HANDLE LISTING ACTIONS
    ========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+
+    /* CSRF gate — every form on this page now carries the token */
+    if (!isset($_POST['csrf_token']) || !hash_equals($csrfToken, $_POST['csrf_token'])) {
+        header('Location: /webprogg/admin/listingapplication.php');
+        exit();
+    }
 
     $targetId = (int) $_POST['id'];
     $action   = $_POST['action'];
@@ -55,6 +109,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
             ? 'approved'
             : 'rejected';
 
+        /* owner + title needed for the notification */
+        $ownerStmt = $pdo->prepare(
+            "SELECT user_id, title FROM listings WHERE id = :id LIMIT 1"
+        );
+        $ownerStmt->execute(['id' => $targetId]);
+        $listingRow = $ownerStmt->fetch();
+
         $stmt = $pdo->prepare("
             UPDATE listings
             SET status = :status,
@@ -67,6 +128,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
             'id'     => $targetId,
         ]);
 
+        /* Notify the host of the decision */
+        if ($listingRow) {
+            if ($newStatus === 'approved') {
+                admin_notify_user(
+                    $pdo,
+                    (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was approved and is now live on RoomHive.',
+                    '/webprogg/Listings/listing-detail.php?id=' . $targetId
+                );
+            } else {
+                admin_notify_user(
+                    $pdo,
+                    (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was not approved. Edit and resubmit it from My Listings.',
+                    '/webprogg/user/mylistings.php'
+                );
+            }
+        }
+
         header('Location: /webprogg/admin/listingapplication.php?' . http_build_query([
             'filter' => $_GET['filter'] ?? 'all',
             'page'   => $_GET['page'] ?? 1,
@@ -77,17 +157,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 
     /* -----------------------------------------
        DELETE LISTING APPLICATION
+       Safe cascading delete in a transaction;
+       conversations are DETACHED (kept, listing_id = NULL).
        ----------------------------------------- */
     if ($action === 'delete') {
 
-        $stmt = $pdo->prepare("
-            DELETE FROM listings
-            WHERE id = :id
-        ");
+        $pdo->beginTransaction();
+        try {
 
-        $stmt->execute([
-            'id' => $targetId,
-        ]);
+            /* detach conversations pointing at this listing —
+               the (tenant, host) chat may still matter elsewhere */
+            try {
+                $convCols = $pdo->query("SHOW COLUMNS FROM conversations")
+                                ->fetchAll(PDO::FETCH_COLUMN);
+                if (in_array('listing_id', $convCols, true)) {
+                    $pdo->prepare("UPDATE conversations SET listing_id = NULL WHERE listing_id = :id")
+                        ->execute(['id' => $targetId]);
+                }
+            } catch (PDOException $e) {
+                error_log('listingapplication delete: conversations detach skipped: ' . $e->getMessage());
+            }
+
+            $pdo->prepare("DELETE FROM listing_photos WHERE listing_id = :id")
+                ->execute(['id' => $targetId]);
+            $pdo->prepare("DELETE FROM wishlist WHERE listing_id = :id")
+                ->execute(['id' => $targetId]);
+            $pdo->prepare("DELETE FROM reviews WHERE listing_id = :id")
+                ->execute(['id' => $targetId]);
+            $pdo->prepare("DELETE FROM bookings WHERE listing_id = :id")
+                ->execute(['id' => $targetId]);
+            $pdo->prepare("DELETE FROM listings WHERE id = :id")
+                ->execute(['id' => $targetId]);
+
+            $pdo->commit();
+
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            error_log('listingapplication delete failed: ' . $e->getMessage());
+            /* the listing simply stays if something still references it */
+        }
 
         header('Location: /webprogg/admin/listingapplication.php?' . http_build_query([
             'filter' => $_GET['filter'] ?? 'all',
@@ -100,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 /* =========================================================
    LOAD LISTINGS FROM THE DATABASE (skip unfinished drafts)
    ========================================================= */
-$rows = $pdo->query(
+ $rows = $pdo->query(
     "SELECT l.id, l.title, l.location, l.property_type, l.price,
             l.description, l.amenities, l.status, l.created_at,
             u.name AS host_name
@@ -110,7 +218,7 @@ $rows = $pdo->query(
      ORDER BY l.created_at DESC"
 )->fetchAll();
 
-$listingApps = array_map(function ($r) {
+ $listingApps = array_map(function ($r) {
     return [
         'id'        => (int) $r['id'],
         'title'     => $r['title'],
@@ -126,7 +234,7 @@ $listingApps = array_map(function ($r) {
     ];
 }, $rows);
 
-$requiredDocuments = ['Land Title / Lease Contract', 'Barangay Business Clearance', 'Property Photos (Exterior & Interior)', 'Fire Safety Certificate'];
+ $requiredDocuments = ['Land Title / Lease Contract', 'Barangay Business Clearance', 'Property Photos (Exterior & Interior)', 'Fire Safety Certificate'];
 
 foreach ($listingApps as &$l) {
     $l['avatar'] = 'https://ui-avatars.com/api/?background=1C2A38&color=fff&bold=true&name=' . urlencode($l['host']);
@@ -134,32 +242,32 @@ foreach ($listingApps as &$l) {
 unset($l);
 
 /* ---------- Filter ---------- */
-$filter = $_GET['filter'] ?? 'all';
-$validFilters = ['all', 'pending', 'approved', 'rejected'];
+ $filter = $_GET['filter'] ?? 'all';
+ $validFilters = ['all', 'pending', 'approved', 'rejected'];
 if (!in_array($filter, $validFilters, true)) { $filter = 'all'; }
 
-$counts = [
+ $counts = [
     'all'      => count($listingApps),
     'pending'  => count(array_filter($listingApps, fn($a) => $a['status'] === 'Pending')),
     'approved' => count(array_filter($listingApps, fn($a) => $a['status'] === 'Approved')),
     'rejected' => count(array_filter($listingApps, fn($a) => $a['status'] === 'Rejected')),
 ];
 
-$filtered = $filter === 'all'
+ $filtered = $filter === 'all'
     ? $listingApps
     : array_values(array_filter($listingApps, fn($a) => strtolower($a['status']) === $filter));
 
 /* ---------- Pagination ---------- */
-$perPage = 8;
-$totalItems = count($filtered);
-$totalPages = max(1, (int)ceil($totalItems / $perPage));
-$page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
-$offset = ($page - 1) * $perPage;
-$pageItems = array_slice($filtered, $offset, $perPage);
+ $perPage = 8;
+ $totalItems = count($filtered);
+ $totalPages = max(1, (int)ceil($totalItems / $perPage));
+ $page = max(1, min($totalPages, (int)($_GET['page'] ?? 1)));
+ $offset = ($page - 1) * $perPage;
+ $pageItems = array_slice($filtered, $offset, $perPage);
 
 /* ---------- Selected listing (for the right-hand detail panel) ---------- */
-$selectedId = isset($_GET['id']) ? (int)$_GET['id'] : ($pageItems[0]['id'] ?? null);
-$selected = null;
+ $selectedId = isset($_GET['id']) ? (int)$_GET['id'] : ($pageItems[0]['id'] ?? null);
+ $selected = null;
 foreach ($listingApps as $l) {
     if ($l['id'] === $selectedId) { $selected = $l; break; }
 }
@@ -185,7 +293,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -230,13 +338,78 @@ function emptyState($text) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
+<style>
+    .sidebar .nav { padding-top: 10px; }
+    /* Working admin dropdown menu (same as admin.php) */
+    .admin-chip { position: relative; cursor: pointer; }
+    .admin-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(20, 20, 43, 0.12);
+        padding: 8px;
+        z-index: 50;
+    }
+    .admin-chip.open .admin-menu { display: block; }
+    .admin-menu-header {
+        display: flex;
+        flex-direction: column;
+        padding: 8px 10px 10px;
+        border-bottom: 1px solid #EEF1F6;
+        margin-bottom: 6px;
+    }
+    .admin-menu-name { font-weight: 600; font-size: 13px; color: #14142B; }
+    .admin-menu-email { font-size: 12px; color: #8B93A6; margin-top: 2px; }
+    .admin-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #14142B;
+        text-decoration: none;
+    }
+    .admin-menu-item:hover { background: #F6F7FB; }
+    .admin-menu-item .icon { width: 16px; height: 16px; }
+    .admin-logout { color: #E14B4B; }
+
+    /* ---- NAV ALIGNMENT: mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
+</style>
 </head>
 <body>
 
-<div class="layout">
+<div class="layout" id="adminLayout">
+
+    <!-- Mobile overlay (NAV ALIGNMENT) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- ============ SIDEBAR ============ -->
-        <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
@@ -250,8 +423,8 @@ function emptyState($text) {
 
     <!-- ============ MAIN ============ -->
     <div class="main">
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
             <div class="search-box">
                 <?= icon('search') ?>
                 <input type="text" placeholder="Search users, bookings, properties...">
@@ -261,13 +434,26 @@ function emptyState($text) {
                     <?= icon('bell') ?>
                     <?php if ($notificationCount > 0): ?><span class="bell-badge"><?= $notificationCount ?></span><?php endif; ?>
                 </button>
-                <div class="admin-chip">
-                    <div class="admin-avatar admin-avatar-fallback">A</div>
+                <div class="admin-chip" id="adminChip">
+                    <div class="admin-avatar admin-avatar-fallback"><?= htmlspecialchars(strtoupper(substr($adminName, 0, 1))) ?></div>
                     <div class="admin-info">
-                        <span class="admin-name">Admin User</span>
+                        <span class="admin-name"><?= htmlspecialchars($adminName) ?></span>
                         <span class="admin-role">Administrator</span>
                     </div>
                     <?= icon('chevron-down', 'chevron') ?>
+
+                    <div class="admin-menu" id="adminMenu">
+                        <div class="admin-menu-header">
+                            <span class="admin-menu-name"><?= htmlspecialchars($adminName) ?></span>
+                            <?php if ($adminEmail): ?>
+                                <span class="admin-menu-email"><?= htmlspecialchars($adminEmail) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <a href="/webprogg/auth/logout.php" class="admin-menu-item admin-logout">
+                            <?= icon('lock') ?>
+                            <span>Log Out</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </header>
@@ -360,13 +546,14 @@ function emptyState($text) {
 
                                                             <!-- ACCEPT -->
                                                             <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $l['id'] ?>">
                                                                 <input type="hidden" name="action" value="approve">
 
                                                                 <button
                                                                     type="submit"
                                                                     class="dropdown-item accept-item"
-                                                                    onclick="return confirm('Accept this listing?')"
+                                                                    onclick="return confirm('Accept this listing? The host will be notified.')"
                                                                 >
                                                                     <?= icon('check-circle') ?>
                                                                     <span>Accept</span>
@@ -375,13 +562,14 @@ function emptyState($text) {
 
                                                             <!-- REJECT -->
                                                             <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $l['id'] ?>">
                                                                 <input type="hidden" name="action" value="reject">
 
                                                                 <button
                                                                     type="submit"
                                                                     class="dropdown-item reject-item"
-                                                                    onclick="return confirm('Reject this listing?')"
+                                                                    onclick="return confirm('Reject this listing? The host will be notified.')"
                                                                 >
                                                                     <?= icon('x-circle') ?>
                                                                     <span>Reject</span>
@@ -390,13 +578,14 @@ function emptyState($text) {
 
                                                             <!-- DELETE -->
                                                             <form method="POST" action="" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $l['id'] ?>">
                                                                 <input type="hidden" name="action" value="delete">
 
                                                                 <button
                                                                     type="submit"
                                                                     class="dropdown-item delete-item"
-                                                                    onclick="return confirm('Delete this listing application permanently?')"
+                                                                    onclick="return confirm('Delete this listing application permanently? Its photos, bookings and reviews will be removed too. Conversations are kept but detached.')"
                                                                 >
                                                                     <?= icon('trash') ?>
                                                                     <span>Delete</span>
@@ -490,42 +679,42 @@ function emptyState($text) {
                                 <span class="info-value"><?= htmlspecialchars($selected['date']) ?> <?= htmlspecialchars($selected['time']) ?></span>
                             </div>
 
-                            <?php if (true): ?>
-                                <div class="detail-actions">
+                            <div class="detail-actions">
 
-                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
-                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
-                                        <input type="hidden" name="action" value="reject">
+                                <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                                    <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                    <input type="hidden" name="action" value="reject">
 
-                                        <button
-                                            type="submit"
-                                            class="btn-reject"
-                                            onclick="return confirm('Reject this listing?')"
-                                        >
-                                            Reject Listing
-                                        </button>
-                                    </form>
+                                    <button
+                                        type="submit"
+                                        class="btn-reject"
+                                        onclick="return confirm('Reject this listing? The host will be notified.')"
+                                    >
+                                        Reject Listing
+                                    </button>
+                                </form>
 
-                                    <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
-                                        <input type="hidden" name="id" value="<?= $selected['id'] ?>">
-                                        <input type="hidden" name="action" value="approve">
+                                <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline; flex:1;">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                                    <input type="hidden" name="id" value="<?= $selected['id'] ?>">
+                                    <input type="hidden" name="action" value="approve">
 
-                                        <button
-                                            type="submit"
-                                            class="btn-approve"
-                                            onclick="return confirm('Approve this listing?')"
-                                        >
-                                            Approve Listing
-                                        </button>
-                                    </form>
+                                    <button
+                                        type="submit"
+                                        class="btn-approve"
+                                        onclick="return confirm('Approve this listing? The host will be notified.')"
+                                    >
+                                        Approve Listing
+                                    </button>
+                                </form>
 
-                                </div>
+                            </div>
 
-                                <div class="detail-note">
-                                    <?= icon('lock') ?>
-                                    You can change the listing decision at any time.
-                                </div>
-                            <?php endif; ?>
+                            <div class="detail-note">
+                                <?= icon('lock') ?>
+                                You can change the listing decision at any time. The host is notified of every change.
+                            </div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -633,6 +822,57 @@ window.addEventListener('scroll', function () {
 window.addEventListener('resize', function () {
     closeAllActionMenus();
 });
+
+/* =====================================================
+   NAV ALIGNMENT — canonical shared admin UI script
+   (chip dropdown, mobile sidebar toggle, topbar shadow)
+====================================================== */
+(function () {
+    "use strict";
+
+    /* ---- Admin chip dropdown ---- */
+    var chip = document.getElementById('adminChip');
+    if (chip) {
+        chip.addEventListener('click', function (e) {
+            chip.classList.toggle('open');
+            e.stopPropagation();
+        });
+        document.addEventListener('click', function () {
+            chip.classList.remove('open');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
+    }
+
+    /* ---- Mobile sidebar toggle (menu button now works) ---- */
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
+    });
+
+    /* ---- Topbar shadow on scroll ---- */
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
+})();
 </script>
 
 </body>

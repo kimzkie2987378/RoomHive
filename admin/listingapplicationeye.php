@@ -4,11 +4,20 @@
  *
  * Reached via the eye icon on listingapplication.php. Shows
  * everything the host filled in across the listing wizard —
- * host-step2.php ("Add Your Space": category, property type,
- * address, price, capacity, amenities, description, house
- * rules) and host-step3.php ("Upload Photos": the cover photo
- * plus every additional photo) — with the actual images shown
- * inline, not just linked.
+ * host-step2.php ("Add Your Space") and host-step3.php ("Upload
+ * Photos") — with the actual images shown inline, not just linked.
+ *
+ * NAV ALIGNMENT (this version):
+ * - Sidebar now matches the rest of the admin suite: NAV ONLY
+ *   (RoomHive brand block and "Need Help" card removed).
+ * - The ☰ menu button now WORKS: off-canvas sidebar + dimmed
+ *   overlay under 1000px, Escape/click-outside closes it.
+ * - Topbar gains a soft shadow once the page scrolls.
+ * - Bell badge aligned to the standard count: pending HOST
+ *   applications + pending LISTINGS (was listings-only).
+ *
+ * KEPT: CSRF on approve/reject, host notification on decisions,
+ * photo site-root path fix, working admin chip dropdown.
  */
 
 session_start();
@@ -20,6 +29,37 @@ if (
 ) {
     header('Location: /webprogg/auth/adminlogin.php');
     exit();
+}
+
+ $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
+ $adminEmail = $_SESSION['admin_email'] ?? '';
+
+/* ---------- CSRF token (per-session) ---------- */
+if (empty($_SESSION['admin_csrf'])) {
+    $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
+}
+ $csrfToken = $_SESSION['admin_csrf'];
+
+/* ---------- Shared notifier ---------- */
+if (!function_exists('admin_notify_user')) {
+    function admin_notify_user($pdo, $userId, $message, $link) {
+        try {
+            if ((int) $userId <= 0 || trim((string) $message) === '') { return false; }
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'm' => mb_substr(trim((string) $message), 0, 240),
+                'l' => (string) $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('listingapplicationeye notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
 }
 
 /* ---------- Sidebar navigation (same set as listingapplication.php) ---------- */
@@ -37,18 +77,22 @@ if (
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
-$notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
+/* NAV ALIGNMENT: standard count — pending host apps + pending listings */
+ $notificationCount = (int) $pdo->query(
+    "SELECT (SELECT COUNT(*) FROM host_applications WHERE status = 'pending')
+           + (SELECT COUNT(*) FROM listings WHERE status = 'pending')"
+)->fetchColumn();
 
 /* ---------------------------------------------------------
    INPUT — which listing are we viewing?
    filter/page are only carried along so Back returns the
    admin to exactly where they were in the table.
 --------------------------------------------------------- */
-$listingId = (int) ($_GET['id'] ?? 0);
-$filter    = $_GET['filter'] ?? 'all';
-$page      = (int) ($_GET['page'] ?? 1);
+ $listingId = (int) ($_GET['id'] ?? 0);
+ $filter    = $_GET['filter'] ?? 'all';
+ $page      = (int) ($_GET['page'] ?? 1);
 
-$backLink = '/webprogg/admin/listingapplication.php?' . http_build_query([
+ $backLink = '/webprogg/admin/listingapplication.php?' . http_build_query([
     'filter' => $filter,
     'page'   => $page,
     'id'     => $listingId,
@@ -56,11 +100,21 @@ $backLink = '/webprogg/admin/listingapplication.php?' . http_build_query([
 
 /* ---------------------------------------------------------
    HANDLE APPROVE / REJECT
-   Same effect as the buttons on listingapplication.php — kept
-   here too so the admin doesn't have to leave the photo/detail
-   view just to make the call.
+   CSRF-verified; the host is notified of the decision
+   (matching listingapplication.php's behaviour so the
+   decision is identical from either screen).
 --------------------------------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+
+    /* CSRF gate */
+    if (!isset($_POST['csrf_token']) || !hash_equals($csrfToken, $_POST['csrf_token'])) {
+        header('Location: /webprogg/admin/listingapplicationeye.php?' . http_build_query([
+            'filter' => $filter,
+            'page'   => $page,
+            'id'     => $listingId,
+        ]));
+        exit();
+    }
 
     $targetId = (int) $_POST['id'];
     $action   = $_POST['action'];
@@ -69,12 +123,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 
         $newStatus = $action === 'approve' ? 'approved' : 'rejected';
 
+        /* owner + title needed for the notification */
+        $ownerStmt = $pdo->prepare(
+            "SELECT user_id, title FROM listings WHERE id = :id LIMIT 1"
+        );
+        $ownerStmt->execute(['id' => $targetId]);
+        $listingRow = $ownerStmt->fetch();
+
         $pdo->prepare(
             "UPDATE listings SET status = :status, updated_at = NOW() WHERE id = :id"
         )->execute([
             'status' => $newStatus,
             'id'     => $targetId,
         ]);
+
+        /* Notify the host of the decision */
+        if ($listingRow) {
+            if ($newStatus === 'approved') {
+                admin_notify_user(
+                    $pdo,
+                    (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was approved and is now live on RoomHive.',
+                    '/webprogg/Listings/listing-detail.php?id=' . $targetId
+                );
+            } else {
+                admin_notify_user(
+                    $pdo,
+                    (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was not approved. Edit and resubmit it from My Listings.',
+                    '/webprogg/user/mylistings.php'
+                );
+            }
+        }
 
         header('Location: /webprogg/admin/listingapplicationeye.php?' . http_build_query([
             'filter' => $filter,
@@ -87,11 +167,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 
 /* ---------------------------------------------------------
    LOAD WHAT WAS FILLED IN ON host-step2.php ("Add Your Space")
-   Straight from `listings`, joined to `users` for the host's
-   contact details and `host_applications` for the applicant
-   name captured back in Step 1.
 --------------------------------------------------------- */
-$listingStmt = $pdo->prepare(
+ $listingStmt = $pdo->prepare(
     "SELECT l.id, l.title, l.category, l.property_type, l.location, l.exact_address,
             l.price, l.capacity, l.bedrooms, l.bathrooms, l.size_sqm, l.floor,
             l.parking, l.amenities, l.description, l.house_rules, l.status,
@@ -102,8 +179,8 @@ $listingStmt = $pdo->prepare(
      WHERE l.id = :id
      LIMIT 1"
 );
-$listingStmt->execute(['id' => $listingId]);
-$listing = $listingStmt->fetch();
+ $listingStmt->execute(['id' => $listingId]);
+ $listing = $listingStmt->fetch();
 
 if (!$listing) {
     header('Location: /webprogg/admin/listingapplication.php');
@@ -112,24 +189,21 @@ if (!$listing) {
 
 /* ---------------------------------------------------------
    LOAD WHAT WAS UPLOADED ON host-step3.php ("Upload Photos")
-   Cover photo (photo_type = 'cover') pulled separately from
-   the additional gallery so the layout can feature it, same
-   as it's featured on the listing wizard itself.
 --------------------------------------------------------- */
-$coverStmt = $pdo->prepare(
+ $coverStmt = $pdo->prepare(
     "SELECT photo_path FROM listing_photos WHERE listing_id = :id AND photo_type = 'cover' LIMIT 1"
 );
-$coverStmt->execute(['id' => $listingId]);
-$coverPhoto = $coverStmt->fetchColumn();
+ $coverStmt->execute(['id' => $listingId]);
+ $coverPhoto = $coverStmt->fetchColumn();
 
-$additionalStmt = $pdo->prepare(
+ $additionalStmt = $pdo->prepare(
     "SELECT photo_path FROM listing_photos WHERE listing_id = :id AND photo_type = 'additional' ORDER BY sort_order ASC"
 );
-$additionalStmt->execute(['id' => $listingId]);
-$additionalPhotos = $additionalStmt->fetchAll(PDO::FETCH_COLUMN);
+ $additionalStmt->execute(['id' => $listingId]);
+ $additionalPhotos = $additionalStmt->fetchAll(PDO::FETCH_COLUMN);
 
 /* ---------- Amenity labels (same keys/labels as host-step2.php) ---------- */
-$amenityLabels = [
+ $amenityLabels = [
     "wifi"             => "Wi-fi",
     "aircon"           => "Aircon",
     "pet-friendly"     => "Pet Friendly",
@@ -138,29 +212,21 @@ $amenityLabels = [
     "security"         => "24/7 Security",
 ];
 
-$selectedAmenities = json_decode($listing['amenities'] ?? '[]', true) ?? [];
+ $selectedAmenities = json_decode($listing['amenities'] ?? '[]', true) ?? [];
 
 function statusBadgeClass($status) {
     $map = ['Pending' => 'badge-pending', 'Approved' => 'badge-approved', 'Rejected' => 'badge-rejected'];
     return $map[$status] ?? '';
 }
 
-$statusLabel = ucfirst($listing['status']);
+ $statusLabel = ucfirst($listing['status']);
 
 /* -----------------------------------------------------
    PHOTO PATH FIX
    listing_photos.photo_path is saved relative to /webprogg —
-   e.g. "uploads/listing_photos/cover/abc.jpg" or
-   "uploads/listing_photos/additional/xyz.jpg". Printed as-is
-   (as this file previously did, with no fix applied at all),
-   the browser resolves that against the CURRENT page's folder
-   (/webprogg/admin/) instead of the site root, so both the
-   cover photo and every gallery thumbnail 404'd here — even
-   though the same photo_path values render fine on pages that
-   already apply this fix (mylistings.php, pendingtenants.php,
-   listingpayment.php, booking-details.php, hostprofile.php).
-   This forces every photo path back to an absolute, site-root
-   path so it loads correctly from any page.
+   printed raw, the browser resolves it against the CURRENT
+   page's folder (/webprogg/admin/) and every photo 404s.
+   This forces every photo path to an absolute site-root path.
 ----------------------------------------------------- */
 function resolve_photo($path, $fallback) {
     if (empty($path)) {
@@ -189,7 +255,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -219,6 +285,75 @@ function icon($name, $class = '') {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/webprogg/assets/admin.css">
 <style>
+    /* =====================================================
+       NAV ALIGNMENT — working admin dropdown + mobile sidebar
+       toggle + topbar shadow (inlined so this file is
+       self-sufficient; safe even if admin.css also has them).
+    ====================================================== */
+    .sidebar .nav { padding-top: 10px; }
+    .admin-chip { position: relative; cursor: pointer; }
+    .admin-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #EEF1F6;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(20, 20, 43, 0.12);
+        padding: 8px;
+        z-index: 50;
+    }
+    .admin-chip.open .admin-menu { display: block; }
+    .admin-menu-header {
+        display: flex;
+        flex-direction: column;
+        padding: 8px 10px 10px;
+        border-bottom: 1px solid #EEF1F6;
+        margin-bottom: 6px;
+    }
+    .admin-menu-name { font-weight: 600; font-size: 13px; color: #14142B; }
+    .admin-menu-email { font-size: 12px; color: #8B93A6; margin-top: 2px; }
+    .admin-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: #14142B;
+        text-decoration: none;
+    }
+    .admin-menu-item:hover { background: #F6F7FB; }
+    .admin-menu-item .icon { width: 16px; height: 16px; }
+    .admin-logout { color: #E14B4B; }
+
+    /* ---- mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
+
+    /* =====================================================
+       EYE PAGE STYLES
+    ====================================================== */
     .eye-back-link {
         display: inline-flex;
         align-items: center;
@@ -387,18 +522,13 @@ function icon($name, $class = '') {
 </head>
 <body>
 
-<div class="layout">
+<div class="layout" id="adminLayout">
 
-    <!-- ============ SIDEBAR ============ -->
+    <!-- Mobile overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============ SIDEBAR (aligned: nav only) ============ -->
     <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark"><?= icon('home', 'brand-icon') ?></div>
-            <div class="brand-text">
-                <span class="brand-name">RoomHive</span>
-                <span class="brand-tag">FIND. STAY. FEEL AT HOME.</span>
-            </div>
-        </div>
-
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href']) ?>" class="nav-item <?= !empty($item['active']) ? 'active' : '' ?>">
@@ -407,19 +537,12 @@ function icon($name, $class = '') {
                 </a>
             <?php endforeach; ?>
         </nav>
-
-        <div class="help-card">
-            <div class="help-icon"><?= icon('headphones') ?></div>
-            <p class="help-title">Need Help?</p>
-            <p class="help-text">Our support team is here to assist you.</p>
-            <button class="btn-support">Contact Support</button>
-        </div>
     </aside>
 
     <!-- ============ MAIN ============ -->
     <div class="main">
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
             <div class="search-box">
                 <?= icon('search') ?>
                 <input type="text" placeholder="Search users, bookings, properties...">
@@ -429,13 +552,27 @@ function icon($name, $class = '') {
                     <?= icon('bell') ?>
                     <?php if ($notificationCount > 0): ?><span class="bell-badge"><?= $notificationCount ?></span><?php endif; ?>
                 </button>
-                <div class="admin-chip">
-                    <div class="admin-avatar admin-avatar-fallback">A</div>
+                <!-- Working dropdown (aligned with the rest of the suite) -->
+                <div class="admin-chip" id="adminChip">
+                    <div class="admin-avatar admin-avatar-fallback"><?= htmlspecialchars(strtoupper(substr($adminName, 0, 1))) ?></div>
                     <div class="admin-info">
-                        <span class="admin-name">Admin User</span>
+                        <span class="admin-name"><?= htmlspecialchars($adminName) ?></span>
                         <span class="admin-role">Administrator</span>
                     </div>
                     <?= icon('chevron-down', 'chevron') ?>
+
+                    <div class="admin-menu" id="adminMenu">
+                        <div class="admin-menu-header">
+                            <span class="admin-menu-name"><?= htmlspecialchars($adminName) ?></span>
+                            <?php if ($adminEmail): ?>
+                                <span class="admin-menu-email"><?= htmlspecialchars($adminEmail) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <a href="/webprogg/auth/logout.php" class="admin-menu-item admin-logout">
+                            <?= icon('lock') ?>
+                            <span>Log Out</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </header>
@@ -556,14 +693,16 @@ function icon($name, $class = '') {
                     <?php if ($listing['status'] === 'pending'): ?>
                         <div class="detail-actions">
                             <form method="POST" action="<?= htmlspecialchars('/webprogg/admin/listingapplicationeye.php?' . http_build_query(['filter' => $filter, 'page' => $page, 'id' => $listing['id']])) ?>" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                 <input type="hidden" name="id" value="<?= $listing['id'] ?>">
                                 <input type="hidden" name="action" value="reject">
-                                <button type="submit" class="btn-reject" onclick="return confirm('Reject the listing \'<?= htmlspecialchars(addslashes($listing['title'])) ?>\'?')">Reject Listing</button>
+                                <button type="submit" class="btn-reject" onclick="return confirm('Reject the listing \'<?= htmlspecialchars(addslashes($listing['title'])) ?>\'? The host will be notified.')">Reject Listing</button>
                             </form>
                             <form method="POST" action="<?= htmlspecialchars('/webprogg/admin/listingapplicationeye.php?' . http_build_query(['filter' => $filter, 'page' => $page, 'id' => $listing['id']])) ?>" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                 <input type="hidden" name="id" value="<?= $listing['id'] ?>">
                                 <input type="hidden" name="action" value="approve">
-                                <button type="submit" class="btn-approve" onclick="return confirm('Approve the listing \'<?= htmlspecialchars(addslashes($listing['title'])) ?>\'?')">Approve Listing</button>
+                                <button type="submit" class="btn-approve" onclick="return confirm('Approve the listing \'<?= htmlspecialchars(addslashes($listing['title'])) ?>\'? The host will be notified.')">Approve Listing</button>
                             </form>
                         </div>
                         <div class="detail-note"><?= icon('lock') ?>Approving publishes this listing on RoomHive. The host will be notified of your decision.</div>
@@ -618,6 +757,59 @@ function icon($name, $class = '') {
         </div>
     </div>
 </div>
+
+<script>
+/* =====================================================
+   NAV ALIGNMENT — shared admin UI script
+   (chip dropdown, mobile sidebar toggle, topbar shadow)
+====================================================== */
+(function () {
+    "use strict";
+
+    /* ---- Admin chip dropdown ---- */
+    var chip = document.getElementById('adminChip');
+    if (chip) {
+        chip.addEventListener('click', function (e) {
+            chip.classList.toggle('open');
+            e.stopPropagation();
+        });
+        document.addEventListener('click', function () {
+            chip.classList.remove('open');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
+    }
+
+    /* ---- Mobile sidebar toggle (menu button now works) ---- */
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
+    });
+
+    /* ---- Topbar shadow on scroll ---- */
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
+})();
+</script>
 
 </body>
 </html>

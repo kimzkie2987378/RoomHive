@@ -1,26 +1,24 @@
 <?php
+/* =========================================================
+   ROOMHIVE — CANCEL HIVE CLUB MEMBERSHIP
+   user/cancelmembership.php
+
+   Called by "STOP SUBSCRIBE" on hiveclub.php. Flips
+   membership_status to 'inactive' so member perks stop.
+
+   POINTS ARE NEVER LOST — both buckets persist forever
+   (locked Phase 0 rule). The user keeps earning from
+   completed stays and can still redeem; only the tier
+   DISCOUNTS pause until they rejoin/renew.
+
+   Wrapped in a transaction + notification. POST-only.
+========================================================= */
 
 session_start();
-
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
 
-
-// =====================================================
-// ROOMHIVE - HIVE CLUB
-// STOP SUBSCRIBE (cancel Hive Club membership)
-// =====================================================
-//
-// Called by the "STOP SUBSCRIBE" button on hiveclub.php.
-// It does NOT delete the member's row or their points
-// history — it just flips membership_status to "inactive"
-// so $isHiveMember becomes false again on hiveclub.php,
-// which brings back the JOIN HIVE CLUB / HOW IT WORKS
-// buttons. If they rejoin later, membership.php can flip
-// membership_status back to "active" (and update the tier)
-// on the same row instead of creating a new one.
-// =====================================================
-
-$isLoggedIn = (
+ $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
@@ -30,47 +28,48 @@ if (!$isLoggedIn) {
     exit;
 }
 
-
-// Only accept this as a real form submission, not a
-// plain link click / GET request.
-
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: /webprogg/hiveclub.php");
     exit;
 }
 
+ $userId = $_SESSION["user_id"] ?? $_SESSION["id"] ?? null;
 
-$userId = $_SESSION["user_id"] ?? null;
-
-if (!$userId && isset($_SESSION["id"])) {
-    $userId = $_SESSION["id"];
+if (!$userId) {
+    header("Location: /webprogg/auth/loginform.php");
+    exit;
 }
 
+try {
+    $pdo->beginTransaction();
 
-if ($userId) {
+    $cancel = $pdo->prepare(
+        "UPDATE hive_members
+         SET membership_status = 'inactive'
+         WHERE user_id = ?
+           AND membership_status = 'active'"
+    );
+    $cancel->execute([$userId]);
 
-    try {
+    $pdo->commit();
 
-        $cancel = $pdo->prepare("
-            UPDATE hive_members
-            SET membership_status = 'inactive'
-            WHERE user_id = ?
-            AND membership_status = 'active'
-        ");
-
-        $cancel->execute([$userId]);
-
-    } catch (PDOException $e) {
-
-        error_log(
-            "Hive Club cancel error: " .
-            $e->getMessage()
+    if ($cancel->rowCount() > 0) {
+        hive_notify(
+            $pdo,
+            (int) $userId,
+            'Your Hive Club subscription has been stopped. Your points are safe — '
+                . 'you keep every point earned and can still redeem rewards. '
+                . 'Rejoin anytime to reactivate your tier discounts.',
+            '/webprogg/hiveclub.php'
         );
-
     }
 
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log("Hive Club cancel error: " . $e->getMessage());
 }
-
 
 header("Location: /webprogg/hiveclub.php?cancelled=1");
 exit;

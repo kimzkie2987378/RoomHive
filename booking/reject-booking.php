@@ -7,24 +7,21 @@
    pendingtenants.php when a host clicks "Reject" on a tenant's
    application. Moves bookings.status from 'pending' to
    'rejected' AND refunds whatever the tenant has paid into this
-   booking so far (bookings.amount_paid) back to the tenant, as a
-   wallet credit.
+   booking so far (bookings.amount_paid) back to the tenant, as
+   a wallet credit.
 
-   REQUIRES (run once, same as accept-booking.php):
-     ALTER TABLE users
-       ADD COLUMN wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+   GUEST NOTIFICATION: after the reject + refund COMMIT
+   succeeds, the guest is notified:
+     "[Host] declined your booking for "[Listing]". Your ₱X
+      payment has been refunded to your RoomHive wallet."
+   linked to their Booking Details page. The notification is
+   written OUTSIDE the transaction and wrapped in its own
+   try/catch — a failed notification can never roll back the
+   refund or break the rejection response.
 
-     ALTER TABLE bookings
-       ADD COLUMN refunded_amount DECIMAL(10,2) NULL AFTER amount_paid,
-       ADD COLUMN refunded_at DATETIME NULL AFTER refunded_amount;
-
-   NOTE: there's no real payment gateway wired up here (see
-   process-payment.php's own note) — GCash/Maya/card were never
-   actually charged, so this can't push money back out to a real
-   mobile wallet or card. It refunds into the tenant's RoomHive
-   wallet balance instead, the same "simulated money" model
-   process-payment.php already uses for charging in the first
-   place. Swap for a real gateway refund call when one exists.
+   SCHEMA (already present in your DB):
+     users.wallet_balance,
+     bookings.refunded_amount / refunded_at
 
    Expects POST: booking_id
    Responds JSON: { success: bool, message?: string }
@@ -41,7 +38,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$bookingId = isset($_POST['booking_id']) && is_numeric($_POST['booking_id'])
+ $bookingId = isset($_POST['booking_id']) && is_numeric($_POST['booking_id'])
     ? (int) $_POST['booking_id']
     : 0;
 
@@ -51,15 +48,16 @@ if ($bookingId <= 0) {
     exit;
 }
 
-$pdo->beginTransaction();
+ $pdo->beginTransaction();
 
 try {
     /* FOR UPDATE locks this row for the duration of the
-       transaction — a double-click or a race with an accept click
-       on the same booking can't both go through, and can't both
-       trigger a refund/payout. */
+       transaction — a double-click or a race with an accept
+       click on the same booking can't both go through. */
     $ownershipStmt = $pdo->prepare(
-        "SELECT b.id, b.status, b.amount_paid, b.user_id AS tenant_id, l.user_id AS host_id
+        "SELECT b.id, b.status, b.amount_paid,
+                b.user_id AS tenant_id,
+                l.user_id AS host_id, l.title AS listing_title
          FROM bookings b
          JOIN listings l ON l.id = b.listing_id
          WHERE b.id = :booking_id
@@ -107,15 +105,13 @@ try {
     ]);
 
     if ($updateStmt->rowCount() === 0) {
-        // Someone else / another tab already decided this booking
-        // between our SELECT and our UPDATE.
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
         exit;
     }
 
-    /* Refund whatever was paid — normally the ₱1,000 reservation
-       fee — back into the tenant's RoomHive wallet balance. */
+    /* Refund whatever was paid — normally the 50% reserve —
+       back into the tenant's RoomHive wallet balance. */
     if ($amountPaid > 0) {
         $pdo->prepare(
             "UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :tenant_id"
@@ -128,10 +124,53 @@ try {
     $pdo->commit();
 
 } catch (Exception $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Could not reject this application. Please try again.']);
     exit;
+}
+
+/* -----------------------------------------------------
+   NOTIFY THE GUEST (after the refund COMMIT; failure here
+   can never affect the rejection above)
+----------------------------------------------------- */
+try {
+    $guestId      = (int) $booking['tenant_id'];
+    $hostName     = $_SESSION['user_name'] ?? 'The host';
+    $listingTitle = (string) $booking['listing_title'];
+
+    $message = $hostName . ' declined your booking for "' . $listingTitle . '".';
+    if ($amountPaid > 0) {
+        $message .= ' Your ₱' . number_format($amountPaid, 2) .
+                    ' payment has been refunded to your RoomHive wallet.';
+    }
+    $link = '/webprogg/booking/booking-details.php?id=' . $bookingId;
+
+    $notifyHelper = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notify.php';
+    if (file_exists($notifyHelper)) {
+        include_once $notifyHelper;
+    }
+
+    $notified = false;
+    if (function_exists('roomhive_notify')) {
+        $notified = roomhive_notify($pdo, $guestId, $message, $link);
+    }
+
+    if (!$notified) {
+        $n = $pdo->prepare(
+            "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+             VALUES (:u, :m, :l, 0, NOW())"
+        );
+        $n->execute([
+            'u' => $guestId,
+            'm' => mb_substr($message, 0, 240),
+            'l' => $link,
+        ]);
+    }
+} catch (Exception $e) {
+    error_log('reject-booking guest notification failed: ' . $e->getMessage());
 }
 
 echo json_encode(['success' => true]);

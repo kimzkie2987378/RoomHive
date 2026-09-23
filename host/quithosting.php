@@ -4,8 +4,18 @@
    quithosting.php
 
    Lets a host stop hosting: is_host flips back to 0, all
-   their listings are unlisted, and they land on the guest
-   dashboard. Account, bookings history, and reviews are kept.
+   their listings are unlisted, and they land on the regular
+   user dashboard. Account, bookings history, and reviews are
+   kept.
+
+   FIXED:
+   1. The unlist query used WHERE host_id = :id — listings has
+      NO host_id column (it's user_id). The SQL threw AFTER
+      is_host was already flipped, leaving a half-quit account
+      with live listings. Now: user_id + wrapped in a
+      transaction so both steps succeed or both roll back.
+   2. Non-hosts are now bounced (quitting as a non-host was a
+      silent no-op).
 
    Loads ONLY host_init.php (same as every other host page),
    so it never collides with functions.php.
@@ -13,9 +23,17 @@
 
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/host/host_init.php';
 
-/* host_init.php now provides: session, $pdo, auth guard,
-   $host (including 'id'), $navAvatar, $notification_count,
-   $pending_tenants_count, and h(). */
+/* host_init.php provides: session, $pdo, auth guard,
+   $dbUser, $host (including 'id'), $navAvatar,
+   $notification_count, $pending_tenants_count, and h(). */
+
+/* -----------------------------------------------------
+   HOST GUARD — quitting as a non-host is meaningless.
+----------------------------------------------------- */
+if (!$dbUser['is_host']) {
+    header("Location: /webprogg/user/userprofile.php");
+    exit;
+}
 
 /* ---- CSRF (guarded, prefixed — safe from collisions) ---- */
 if (!function_exists('qh_csrf_token')) {
@@ -67,24 +85,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
 
+            $pdo->beginTransaction();
+
             /* 1. Flip the account back to a regular user */
             $pdo->prepare("UPDATE users SET is_host = 0 WHERE id = :id")
                 ->execute(['id' => $hostId]);
 
-            /* 2. Unlist all their listings so tenants can't book them.
-                  Delete this block to leave listings untouched. */
+            /* 2. Unlist all their listings so tenants can't book
+                  them. FIXED: the real column is user_id, not
+                  host_id. */
             $pdo->prepare(
-                "UPDATE listings SET status = 'unlisted' WHERE host_id = :id"
+                "UPDATE listings SET status = 'unlisted' WHERE user_id = :id"
             )->execute(['id' => $hostId]);
 
+            $pdo->commit();
+
             /* 3. Clear host session flag, then send them to the
-                  guest dashboard — still logged in. */
+                  regular-user dashboard — still logged in. */
             unset($_SESSION['is_host']);
 
             header("Location: /webprogg/user/userprofile.php?quit_hosting=1");
             exit;
 
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $errors[] = 'Something went wrong. Please try again.';
             error_log('quithosting failed: ' . $e->getMessage());
         }
@@ -98,8 +124,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quit Hosting — RoomHive</title>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
-<!-- If your host pages use an extra stylesheet, add it here,
-     e.g. <link rel="stylesheet" href="/webprogg/assets/host.css"> -->
 <style>
     /* Self-contained so this page renders regardless of host CSS */
     .qh-layout {
@@ -206,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="qh-layout">
 
-    <!-- SHARED HOST SIDEBAR (with the Settings group + Quit Hosting link) -->
+    <!-- SHARED HOST SIDEBAR -->
     <?php
     $sidebarFile = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/hostsidebar.php';
     if (is_file($sidebarFile)) {

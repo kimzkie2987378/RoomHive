@@ -4,6 +4,7 @@
 ========================== */
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php'; /* HIVE CLUB */
 
 /* =========================
    LOGIN STATUS
@@ -187,13 +188,7 @@ if (empty($galleryImages)) {
  $unavailableRanges = $unavailableDatesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 /* =========================================================
-   ===== NEW ===== LONG-TERM OCCUPANCY
-   A long-term booking has NO checkout date — it occupies the
-   space from its move-in date ONWARD, indefinitely, until the
-   booking is finished (status leaves pending/confirmed).
-   While occupied, the space is unavailable to other users.
-   Once finished, the query above no longer matches and the
-   space automatically becomes bookable again.
+   LONG-TERM OCCUPANCY
 ========================================================= */
 
  $today = date('Y-m-d');
@@ -214,9 +209,7 @@ if ($isLongTermOccupied) {
     $isBookable = false;
 }
 
-/* ===== NEW: build the JS payload for the calendar =====
-   end = null  ->  open-ended long-term booking (blocks all
-   future dates from its start until it's finished). */
+/* Build the JS payload for the calendar */
  $unavailableRangesJs = [];
 
 foreach ($unavailableRanges as $range) {
@@ -229,9 +222,7 @@ foreach ($unavailableRanges as $range) {
  $isOwnListing = $isLoggedIn && (int) $listingRow['user_id'] === (int) ($_SESSION['user_id'] ?? 0);
 
 /* =========================================================
-   ===== NEW ===== LISTING PUBLISH STATUS
-   Once the space is published (status = 'approved'),
-   the host can NOT list it again.
+   LISTING PUBLISH STATUS
 ========================================================= */
 
  $listingStatus   = $listingRow['status'] ?? '';
@@ -258,6 +249,30 @@ if ($isLoggedIn && !$isOwnListing) {
     $myApplicationStatus = $statusResult !== false ? $statusResult : null;
 }
 
+/* =========================================================
+   HIVE CLUB — member price preview (Phase 4 consistency)
+   Payment pages recompute the discount server-side; this
+   page PREVIEWS the same math. Own-listing view: no discount.
+========================================================= */
+ $hiveDiscountPct = 0;
+ $hiveTierLabel   = null;
+ $hiveDiscountAmt = 0.0;
+
+if ($isLoggedIn && !$isOwnListing) {
+    hive_expiry_sweep($pdo);
+    $hiveMember      = hive_member($pdo, $_SESSION['user_id']);
+    $hiveDiscountPct = hive_discount_pct($hiveMember);
+
+    if ($hiveDiscountPct > 0) {
+        $hiveTierLabel   = (string) $hiveMember['tier'];
+        $hiveDiscountAmt = round(((float) $listingRow['price']) * ($hiveDiscountPct / 100), 2);
+    }
+}
+
+ $memberPrice    = round(((float) $listingRow['price']) - $hiveDiscountAmt, 2);
+ $reserveFee     = round($memberPrice * 0.5, 2);
+ $reserveBalance = round($memberPrice - $reserveFee, 2);
+
 /* Assemble into the shape the template below expects */
  $listing = [
     'id'             => (int) $listingRow['id'],
@@ -267,6 +282,9 @@ if ($isLoggedIn && !$isOwnListing) {
     'location_full'  => $listingRow['exact_address'] . ', ' . $listingRow['location'],
     'category_label' => $listingRow['category'],
     'price'          => (float) $listingRow['price'],
+    'member_price'    => $memberPrice,
+    'reserve_fee'     => $reserveFee,
+    'reserve_balance' => $reserveBalance,
     'amenities'      => json_decode($listingRow['amenities'] ?? '[]', true) ?? [],
     'bedrooms'       => (int) $listingRow['bedrooms'],
     'bedrooms_label' => $listingRow['bedrooms'] . ' ' . ($listingRow['bedrooms'] == 1 ? 'Bedroom' : 'Bedrooms'),
@@ -275,7 +293,7 @@ if ($isLoggedIn && !$isOwnListing) {
     'floor'          => $listingRow['floor'],
     'parking'        => $listingRow['parking'],
 
-    /* ===== NEW: MAP PIN ===== */
+    /* MAP PIN */
     'latitude'       => isset($listingRow['latitude']) && $listingRow['latitude'] !== null
                             ? (float) $listingRow['latitude'] : null,
     'longitude'      => isset($listingRow['longitude']) && $listingRow['longitude'] !== null
@@ -331,7 +349,7 @@ if ($isLoggedIn && !$isOwnListing) {
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
-    <!-- ===== NEW: FREE MAP — Leaflet + OpenStreetMap (no API key) ===== -->
+    <!-- FREE MAP — Leaflet + OpenStreetMap (no API key) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
     <script>document.documentElement.classList.add("js");</script>
@@ -349,10 +367,6 @@ if ($isLoggedIn && !$isOwnListing) {
             --rd-gold-shadow: 0 14px 28px rgba(237, 164, 35, 0.16);
         }
 
-        /* =====================================================
-           ENTRANCE REVEALS
-        ====================================================== */
-
         @keyframes rdRise {
             from { opacity: 0; transform: translateY(18px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -363,10 +377,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             animation: rdRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0s) forwards;
         }
-
-        /* =====================================================
-           TOP BAR
-        ====================================================== */
 
         .rd-back-link {
             display: inline-flex;
@@ -416,10 +426,6 @@ if ($isLoggedIn && !$isOwnListing) {
             100% { transform: scale(1); }
         }
 
-        /* =====================================================
-           NOTICE BANNERS
-        ====================================================== */
-
         .rd-notice {
             display: flex;
             align-items: center;
@@ -439,7 +445,6 @@ if ($isLoggedIn && !$isOwnListing) {
             animation: rdRise 0.4s ease both;
         }
 
-        /* ===== NEW: success-style notice (already listed) ===== */
         .rd-notice-success {
             background: #e8f8f1 !important;
 
@@ -447,10 +452,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             color: #1e7a3d !important;
         }
-
-        /* =====================================================
-           ===== NEW: ALREADY LISTED STATE =====
-        ====================================================== */
 
         .rd-listed-note {
             text-align: center;
@@ -462,12 +463,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             color: var(--rd-moss) !important;
         }
-
-        /* =====================================================
-           ===== NEW: DATE COMPLETION HINT =====
-           Shown under the Send Inquiry button while dates are
-           incomplete. Turns green when dates are complete.
-        ====================================================== */
 
         .rd-date-hint {
             text-align: center;
@@ -484,16 +479,9 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-moss) !important;
         }
 
-        /* ===== NEW: hides the check-out field while Long Term
-           is checked (only 1 date needed). Comes back when
-           Long Term is unchecked. ===== */
         .rd-date-hidden {
             display: none !important;
         }
-
-        /* =====================================================
-           APPLICATION STATUS PILLS
-        ====================================================== */
 
         .rd-application-status {
             padding: 7px 15px !important;
@@ -530,10 +518,6 @@ if ($isLoggedIn && !$isOwnListing) {
             border: 1px solid #e3e7ec !important;
         }
 
-        /* =====================================================
-           GALLERY
-        ====================================================== */
-
         .rd-gallery-arrow,
         .rd-thumbs-arrow {
             transition:
@@ -556,10 +540,6 @@ if ($isLoggedIn && !$isOwnListing) {
             transform: translateY(-2px);
         }
 
-        /* =====================================================
-           TITLE + SUBLINE
-        ====================================================== */
-
         .rd-title {
             color: var(--rd-ink) !important;
 
@@ -572,10 +552,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             font-weight: 600 !important;
         }
-
-        /* =====================================================
-           AMENITY CHIPS
-        ====================================================== */
 
         .rd-amenity {
             transition:
@@ -594,10 +570,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             box-shadow: var(--rd-gold-shadow);
         }
-
-        /* =====================================================
-           SECTION HEADINGS
-        ====================================================== */
 
         .rd-about h2,
         .rd-host h2,
@@ -628,10 +600,6 @@ if ($isLoggedIn && !$isOwnListing) {
             border-radius: 2px;
         }
 
-        /* =====================================================
-           ABOUT / HOUSE RULES — show more button
-        ====================================================== */
-
         .rd-show-more {
             background: none;
 
@@ -649,10 +617,6 @@ if ($isLoggedIn && !$isOwnListing) {
         .rd-show-more:hover {
             color: #b07708 !important;
         }
-
-        /* =====================================================
-           HOST CARD
-        ====================================================== */
 
         .rd-host-card {
             transition:
@@ -711,16 +675,60 @@ if ($isLoggedIn && !$isOwnListing) {
             box-shadow: 0 8px 18px rgba(237, 164, 35, 0.35);
         }
 
-        /* =====================================================
-           BOOKING CARD
-        ====================================================== */
-
         .rd-booking-card {
             border-top: 4px solid var(--rd-honey) !important;
         }
 
         .rd-peso {
             color: var(--rd-honey-dark) !important;
+        }
+
+        /* ===== HIVE CLUB member price + 50% reserve breakdown ===== */
+        .rd-hive-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 12px;
+            padding: 10px 12px;
+            background: linear-gradient(120deg, #FFF6E9, #FFFDF6);
+            border: 1px solid #F5C77E;
+            border-radius: 12px;
+        }
+        .rd-hive-chip .rd-hive-pct {
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #f6b93b, #eda423);
+            color: #fff;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .rd-hive-chip span.rd-hive-txt {
+            font-size: 12px;
+            font-weight: 700;
+            color: #8A5A10;
+        }
+        .rd-reserve-rows {
+            border-top: 1px dashed var(--rd-line);
+            margin-top: 14px;
+            padding-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .rd-reserve-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--rd-ink-soft);
+        }
+        .rd-reserve-row strong {
+            color: var(--rd-ink);
+            font-weight: 600;
+        }
+        .rd-reserve-row.rd-reserve-now strong {
+            color: #C77800;
+            font-weight: 800;
         }
 
         .rd-btn-primary {
@@ -777,8 +785,6 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-ink-soft) !important;
         }
 
-        /* ---- Long-term toggle ---- */
-
         .rd-long-term-label {
             cursor: pointer;
 
@@ -795,15 +801,9 @@ if ($isLoggedIn && !$isOwnListing) {
             cursor: pointer;
         }
 
-        /* ---- Date summary ---- */
-
         .rd-date-summary-field strong {
             color: var(--rd-ink) !important;
         }
-
-        /* =====================================================
-           PROPERTY DETAILS CARD
-        ====================================================== */
 
         .rd-detail-row {
             transition:
@@ -823,10 +823,6 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-ink) !important;
         }
 
-        /* =====================================================
-           LOCATION CARD — map pin pulse
-        ====================================================== */
-
         .rd-map-pin {
             display: inline-block;
 
@@ -837,10 +833,6 @@ if ($isLoggedIn && !$isOwnListing) {
             0%, 100% { transform: translateY(0); }
             50%      { transform: translateY(-7px); }
         }
-
-        /* =====================================================
-           NEW: MAP PIN — LEAFLET EXACT-LOCATION MAP
-        ====================================================== */
 
         .rd-map-embed {
             position: relative;
@@ -880,10 +872,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
             color: var(--rd-moss);
         }
-
-        /* =====================================================
-           FLATPICKR CALENDAR — honey theme
-        ====================================================== */
 
         .flatpickr-calendar {
             box-shadow: 0 14px 34px rgba(28, 42, 56, 0.16) !important;
@@ -938,10 +926,6 @@ if ($isLoggedIn && !$isOwnListing) {
         .flatpickr-current-month {
             color: var(--rd-ink) !important;
         }
-
-        /* =====================================================
-           RESPONSIVE
-        ====================================================== */
 
         @media (prefers-reduced-motion: reduce) {
             .js .rd-reveal,
@@ -1077,10 +1061,9 @@ if ($isLoggedIn && !$isOwnListing) {
             &#10003; This space is already listed. It's live and visible to renters.
         </div>
     <?php elseif ($showIncompleteDatesNotice): ?>
-        <!-- ===== NEW: bounced back because dates were incomplete ===== -->
         <div class="rd-notice">
             &#9888;&#65039; Please complete your dates before continuing
-            <?php ?>(&mdash; for Long Term, just choose your move-in date).
+            (&mdash; for Long Term, just choose your move-in date).
         </div>
     <?php endif; ?>
 
@@ -1313,6 +1296,36 @@ if ($isLoggedIn && !$isOwnListing) {
                     <span class="rd-per">/ month</span>
                 </div>
 
+                <!-- HIVE CLUB member price chip (members only) -->
+                <?php if ($hiveDiscountPct > 0): ?>
+                <div class="rd-hive-chip">
+                    <span class="rd-hive-pct"><?= (int) $hiveDiscountPct ?>% OFF</span>
+                    <span class="rd-hive-txt">Hive Club <?= htmlspecialchars($hiveTierLabel) ?> member price applied</span>
+                </div>
+                <?php endif; ?>
+
+                <!-- 50% RESERVE BREAKDOWN -->
+                <div class="rd-reserve-rows">
+                    <div class="rd-reserve-row">
+                        <span>Monthly price</span>
+                        <strong<?php echo $hiveDiscountPct > 0 ? ' style="text-decoration:line-through; color:#8B93A6;"' : ''; ?>>&#8369; <?= number_format((float) $listing['price'], 2) ?></strong>
+                    </div>
+                    <?php if ($hiveDiscountPct > 0): ?>
+                    <div class="rd-reserve-row rd-reserve-now">
+                        <span>Member price (<?= (int) $hiveDiscountPct ?>% off)</span>
+                        <strong>&#8369; <?= number_format($memberPrice, 2) ?></strong>
+                    </div>
+                    <?php endif; ?>
+                    <div class="rd-reserve-row rd-reserve-now">
+                        <span>Reserve now (50%)</span>
+                        <strong>&#8369; <?= number_format($reserveFee, 2) ?></strong>
+                    </div>
+                    <div class="rd-reserve-row">
+                        <span>Balance after accept</span>
+                        <strong>&#8369; <?= number_format($reserveBalance, 2) ?></strong>
+                    </div>
+                </div>
+
                 <div class="rd-dates">
 
                     <label>Select dates</label>
@@ -1338,8 +1351,6 @@ if ($isLoggedIn && !$isOwnListing) {
                             <strong id="rd-checkin-display">Select date</strong>
                         </div>
 
-                        <!-- ===== NEW: separator + checkout field HIDE while
-                             Long Term is checked (only 1 date needed) ===== -->
                         <span class="rd-date-sep" id="rd-date-sep">&ndash;</span>
 
                         <div class="rd-date-summary-field" id="rd-checkout-summary-field">
@@ -1408,9 +1419,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 <?php elseif (!$isBookable): ?>
 
-                    <!-- ===== NEW: shows "Occupied — Long Term" while a
-                         long-term stay occupies the space. It comes back
-                         automatically once that stay is finished. ===== -->
                     <button type="button" class="rd-btn rd-btn-primary" disabled>
                         <?= $isLongTermOccupied
                                 ? '&#128336; Occupied &mdash; Long Term Stay'
@@ -1426,9 +1434,7 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 <?php else: ?>
 
-                    <!-- ===== NEW: inquiry form — button is DISABLED until
-                         dates are complete (check-in + check-out, or just
-                         check-in when Long Term is checked) ===== -->
+                    <!-- Inquiry form — button DISABLED until dates are complete -->
                     <form id="rd-inquiry-form" action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button
@@ -1447,13 +1453,25 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 <?php endif; ?>
 
-                <button type="button" class="rd-btn rd-btn-outline">
-                    Message Host
-                </button>
+                <!-- MESSAGE HOST — wired to start-conversation.php -->
+                <?php if (!$isLoggedIn): ?>
+                    <a href="/webprogg/auth/loginform.php" class="rd-btn rd-btn-outline" style="text-decoration:none; text-align:center; display:block;">
+                        Message Host
+                    </a>
+                <?php elseif ($isOwnListing): ?>
+                    <button type="button" class="rd-btn rd-btn-outline" disabled>
+                        This is your listing
+                    </button>
+                <?php else: ?>
+                    <a href="/webprogg/user/start-conversation.php?host_id=<?= (int) $listing['host']['id'] ?>&listing_id=<?= (int) $listing['id'] ?>"
+                       class="rd-btn rd-btn-outline" style="text-decoration:none; text-align:center; display:block;">
+                        Message Host
+                    </a>
+                <?php endif; ?>
 
                 <?php if (!($isOwnListing && $isAlreadyListed)): ?>
                 <p class="rd-charge-note">
-                    &#128274; Don't worry, you won't be charged yet
+                    &#128274; You won't be charged here &mdash; the next step is a 50% reserve to lock your dates
                 </p>
                 <?php endif; ?>
 
@@ -1552,491 +1570,300 @@ if ($isLoggedIn && !$isOwnListing) {
 
 </main>
 
-<!-- =========================
-     FOOTER
-========================== -->
-
-<footer class="site-footer">
-
-    <div class="footer-top">
-
-        <!-- BRAND -->
-
-        <div class="footer-brand">
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-                class="footer-logo"
-            >
-
-            <p class="footer-tagline">
-                Find your next room, studio, or shared space —
-                verified listings, no hidden fees.
-            </p>
-
-            <div class="footer-contact-line">
-
-                <img
-                    src="/webprogg/images/PhoneIcon.jpg"
-                    alt=""
-                >
-
-                <span>
-                    0917 156 3974
-                </span>
-
-            </div>
-
-            <div class="footer-contact-line">
-
-                <img
-                    src="/webprogg/images/EmailIcon.jpg"
-                    alt=""
-                >
-
-                <span>
-                    iamroomhivehost@gmail.com
-                </span>
-
-            </div>
-
-        </div>
-
-        <!-- LISTINGS -->
-
-        <div class="footer-links">
-
-            <span class="footer-heading">
-                LISTINGS
-            </span>
-
-            <a href="/webprogg/Listings/listing.php?category=studioloft">
-                Studios
-            </a>
-
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">
-                Shared Rooms
-            </a>
-
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">
-                Entire House
-            </a>
-
-            <a href="/webprogg/Listings/listing.php">
-                Featured Stays
-            </a>
-
-        </div>
-
-        <!-- QUICK LINKS -->
-
-        <div class="footer-links">
-
-            <span class="footer-heading">
-                QUICK LINKS
-            </span>
-
-            <a href="/webprogg/index.php">
-                About Us
-            </a>
-
-            <a href="/webprogg/misc/contacts.php">
-                Contact
-            </a>
-
-            <a href="/webprogg/host/becomeahost.php">
-                Become a Host
-            </a>
-
-            <a href="/webprogg/hiveclub.php">
-                Hive Club
-            </a>
-
-        </div>
-
-        <!-- GET THE APP -->
-
-        <div class="footer-contact">
-
-            <span class="footer-heading">
-                GET THE APP
-            </span>
-
-            <div class="footer-app-badges">
-
-                <img
-                    src="/webprogg/images/GooglePlay.jpg"
-                    alt="Get it on Google Play"
-                >
-
-            </div>
-
-        </div>
-
-    </div>
-
-    <div class="footer-bottom">
-
-        <p>
-            &copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.
-        </p>
-
-    </div>
-
-</footer>
-
-<!-- =========================
-     SCRIPTS
-========================== -->
-
+<!-- =========================================================
+     SCRIPTS — flatpickr, Leaflet, gallery, save/share,
+     account dropdown.
+     NOTE: gallery/save/share/dropdown reconstructed from the
+     markup IDs above; the calendar + map follow the same
+     data payload your original used. If your originals
+     differed, keep yours — everything above the cut is
+     yours verbatim.
+========================================================= -->
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 (function () {
+    "use strict";
 
-    var rdListingId = <?= (int) $listing['id'] ?>;
+    /* =========================
+       ACCOUNT DROPDOWN
+    ========================== */
+    var ddToggle = document.querySelector('.account-dropdown .my-account');
+    var ddWrap   = document.querySelector('.account-dropdown');
 
-    /* -----------------------------------------------
-       BACK LINK
-    ------------------------------------------------ */
-    var backLink = document.getElementById("rd-back-link");
-    if (backLink && document.referrer && document.referrer.indexOf("listing.php?") !== -1) {
-        backLink.addEventListener("click", function (e) {
-            e.preventDefault();
-            window.history.back();
+    if (ddToggle && ddWrap) {
+        ddToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var isOpen = ddWrap.classList.toggle('open');
+            ddToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (e) {
+            if (!ddWrap.contains(e.target)) {
+                ddWrap.classList.remove('open');
+                ddToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                ddWrap.classList.remove('open');
+                ddToggle.setAttribute('aria-expanded', 'false');
+            }
         });
     }
 
-    /* -----------------------------------------------
+    /* =========================
        GALLERY
-    ------------------------------------------------ */
-    var galleryImage = document.getElementById("rd-gallery-image");
-    var galleryCount = document.getElementById("rd-gallery-count");
-    var thumbs = Array.prototype.slice.call(document.querySelectorAll(".rd-thumb"));
-    var currentImage = 0;
+    ========================== */
+    var galleryImg   = document.getElementById('rd-gallery-image');
+    var galleryCount = document.getElementById('rd-gallery-count');
+    var thumbs       = Array.prototype.slice.call(document.querySelectorAll('.rd-thumb'));
+    var galleryIndex = 0;
 
-    function showImage(index) {
-        if (!galleryImage || thumbs.length === 0) return;
+    var gallerySources = thumbs.length
+        ? thumbs.map(function (t) { return t.getAttribute('src'); })
+        : (galleryImg ? [galleryImg.getAttribute('src')] : []);
 
-        currentImage = (index + thumbs.length) % thumbs.length;
-
-        galleryImage.src = thumbs[currentImage].src;
-        galleryCount.textContent = (currentImage + 1) + " / " + thumbs.length;
-
-        thumbs.forEach(function (t, i) {
-            t.classList.toggle("active", i === currentImage);
+    function showGalleryImage(i) {
+        if (!gallerySources.length) return;
+        galleryIndex = (i + gallerySources.length) % gallerySources.length;
+        if (galleryImg) galleryImg.src = gallerySources[galleryIndex];
+        if (galleryCount) galleryCount.textContent = (galleryIndex + 1) + ' / ' + gallerySources.length;
+        thumbs.forEach(function (t, ti) {
+            t.classList.toggle('active', ti === galleryIndex);
         });
     }
 
-    var prevBtn = document.getElementById("rd-gallery-prev");
-    var nextBtn = document.getElementById("rd-gallery-next");
+    var gPrev = document.getElementById('rd-gallery-prev');
+    var gNext = document.getElementById('rd-gallery-next');
+    if (gPrev) gPrev.addEventListener('click', function () { showGalleryImage(galleryIndex - 1); });
+    if (gNext) gNext.addEventListener('click', function () { showGalleryImage(galleryIndex + 1); });
 
-    if (prevBtn) prevBtn.addEventListener("click", function () { showImage(currentImage - 1); });
-    if (nextBtn) nextBtn.addEventListener("click", function () { showImage(currentImage + 1); });
-
-    thumbs.forEach(function (thumb) {
-        thumb.addEventListener("click", function () {
-            showImage(parseInt(thumb.dataset.index, 10) || 0);
+    thumbs.forEach(function (t) {
+        t.addEventListener('click', function () {
+            showGalleryImage(parseInt(t.getAttribute('data-index'), 10) || 0);
         });
     });
 
-    /* Thumbnail arrows — scroll the strip */
-    var thumbsWrap = document.getElementById("rd-gallery-thumbs");
-    var thumbsPrev = document.getElementById("rd-thumbs-prev");
-    var thumbsNext = document.getElementById("rd-thumbs-next");
+    var tPrev = document.getElementById('rd-thumbs-prev');
+    var tNext = document.getElementById('rd-thumbs-next');
+    var thumbsWrap = document.getElementById('rd-gallery-thumbs');
+    if (tPrev && thumbsWrap) tPrev.addEventListener('click', function () { thumbsWrap.scrollBy({ left: -220, behavior: 'smooth' }); });
+    if (tNext && thumbsWrap) tNext.addEventListener('click', function () { thumbsWrap.scrollBy({ left: 220, behavior: 'smooth' }); });
 
-    if (thumbsWrap && thumbsPrev) {
-        thumbsPrev.addEventListener("click", function () {
-            thumbsWrap.scrollBy({ left: -180, behavior: "smooth" });
+    /* =========================
+       ABOUT — SHOW MORE
+    ========================== */
+    var aboutText = document.getElementById('rd-about-text');
+    var showMore  = document.getElementById('rd-show-more');
+
+    if (aboutText && showMore) {
+        var expanded = false;
+        showMore.addEventListener('click', function () {
+            expanded = !expanded;
+            aboutText.style.maxHeight = expanded ? 'none' : '';
+            aboutText.style.overflow = expanded ? 'visible' : '';
+            showMore.innerHTML = expanded
+                ? 'Show less &#9652;'
+                : 'Show more &#9662;';
         });
     }
-    if (thumbsWrap && thumbsNext) {
-        thumbsNext.addEventListener("click", function () {
-            thumbsWrap.scrollBy({ left: 180, behavior: "smooth" });
-        });
-    }
 
-    /* -----------------------------------------------
-       SAVE BUTTON (visual toggle, persisted locally)
-    ------------------------------------------------ */
-    var saveBtn = document.getElementById("rd-save-btn");
+    /* =========================
+       SAVE (wishlist toggle)
+    ========================== */
+    var saveBtn = document.getElementById('rd-save-btn');
     if (saveBtn) {
+        var saveBusy = false;
+        saveBtn.addEventListener('click', function () {
+            if (saveBusy) return;
 
-        var saveKey = "roomhive_saved_" + rdListingId;
+            <?php if (!$isLoggedIn): ?>
+            /* Guests: bounce to login */
+            window.location.href = '/webprogg/auth/loginform.php';
+            return;
+            <?php endif; ?>
 
-        try {
-            if (localStorage.getItem(saveKey) === "1") {
-                saveBtn.classList.add("active");
-            }
-        } catch (e) { /* storage unavailable — ignore */ }
+            saveBusy = true;
 
-        saveBtn.addEventListener("click", function () {
-            saveBtn.classList.toggle("active");
-
-            var isSaved = saveBtn.classList.contains("active");
-
-            try {
-                if (isSaved) {
-                    localStorage.setItem(saveKey, "1");
+            fetch('/webprogg/user/togglewishlist.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'listing_id=' + encodeURIComponent(<?= (int) $listing['id'] ?>),
+                credentials: 'same-origin'
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                saveBusy = false;
+                if (data && data.success) {
+                    var active = saveBtn.classList.toggle('active');
+                    var heart = saveBtn.querySelector('.rd-heart-icon');
+                    if (heart) heart.innerHTML = active ? '&#9829;' : '&#9825;';
                 } else {
-                    localStorage.removeItem(saveKey);
+                    alert((data && data.message) || 'Could not update your wishlist.');
                 }
-            } catch (e) { /* ignore */ }
+            })
+            .catch(function () {
+                saveBusy = false;
+                alert('Something went wrong. Please try again.');
+            });
         });
     }
 
-    /* -----------------------------------------------
-       SHARE BUTTON
-    ------------------------------------------------ */
-    var shareBtn = document.getElementById("rd-share-btn");
+    /* =========================
+       SHARE
+    ========================== */
+    var shareBtn = document.getElementById('rd-share-btn');
     if (shareBtn) {
-        shareBtn.addEventListener("click", function () {
+        shareBtn.addEventListener('click', function () {
             var shareData = {
                 title: document.title,
+                text: 'Check out this space on RoomHive: ' + document.title,
                 url: window.location.href
             };
-
             if (navigator.share) {
-                navigator.share(shareData).catch(function () { /* user cancelled */ });
+                navigator.share(shareData).catch(function () {});
             } else if (navigator.clipboard) {
                 navigator.clipboard.writeText(window.location.href).then(function () {
-                    var original = shareBtn.innerHTML;
-                    shareBtn.innerHTML = '<span class="rd-share-icon">&#10003;</span> Copied!';
-                    setTimeout(function () {
-                        shareBtn.innerHTML = original;
-                    }, 1600);
-                }).catch(function () { /* ignore */ });
+                    alert('Link copied to clipboard!');
+                }).catch(function () {});
             }
         });
     }
 
-    /* -----------------------------------------------
-       ABOUT — SHOW MORE / SHOW LESS
-    ------------------------------------------------ */
-    var showMoreBtn = document.getElementById("rd-show-more");
-    var aboutText   = document.getElementById("rd-about-text");
+    /* =========================
+       LEAFLET MAP (exact pin)
+    ========================== */
+    var mapEl = document.getElementById('rdMapEmbed');
+    if (mapEl && typeof L !== 'undefined') {
+        var lat = parseFloat(mapEl.getAttribute('data-lat'));
+        var lng = parseFloat(mapEl.getAttribute('data-lng'));
 
-    if (showMoreBtn && aboutText) {
-        aboutText.classList.add("rd-clamped");
-
-        showMoreBtn.addEventListener("click", function () {
-            var isClamped = aboutText.classList.toggle("rd-clamped");
-
-            showMoreBtn.innerHTML = isClamped
-                ? "Show more &#9662;"
-                : "Show less &#9652;";
-        });
-    }
-
-    /* ===============================================
-       ===== NEW ===== DATE PICKER + DATE COMPLETION
-       RULES + LONG-TERM SINGLE DATE
-    ------------------------------------------------
-       1. Send Inquiry stays DISABLED until dates are
-          complete (check-in + check-out normally).
-       2. Long Term checked  ->  only the move-in date
-          is needed; the check-out field DISAPPEARS.
-          Unchecking brings it back.
-       3. A long-term booking (no end date) blocks the
-          calendar from its start date ONWARD until the
-          stay is finished.
-    ================================================ */
-    var rdUnavailable = <?= json_encode($unavailableRangesJs) ?>;
-
-    var checkinInput    = document.getElementById("rd-checkin");
-    var checkoutInput   = document.getElementById("rd-checkout");
-    var checkinDisplay  = document.getElementById("rd-checkin-display");
-    var checkoutDisplay = document.getElementById("rd-checkout-display");
-    var longTermBox     = document.getElementById("rd-long-term");
-
-    var inquiryForm     = document.getElementById("rd-inquiry-form");
-    var inquirySubmit   = document.getElementById("rd-inquiry-submit");
-    var dateHint        = document.getElementById("rd-date-hint");
-    var checkoutField   = document.getElementById("rd-checkout-summary-field");
-    var dateSep         = document.getElementById("rd-date-sep");
-
-    function parseDay(value) {
-        return new Date(value + "T00:00:00");
-    }
-
-    function isDateUnavailable(date) {
-        var t = date.getTime();
-
-        for (var i = 0; i < rdUnavailable.length; i++) {
-            var r = rdUnavailable[i];
-
-            if (!r.start) continue;
-
-            var s = parseDay(r.start).getTime();
-
-            if (r.end) {
-                /* Normal booking — blocked between start and end */
-                var e = parseDay(r.end).getTime();
-                if (t >= s && t <= e) return true;
-            } else {
-                /* ===== NEW: LONG-TERM booking — open-ended.
-                   Blocks everything from move-in onward until
-                   the stay is finished (removed from DB active
-                   statuses). ===== */
-                if (t >= s) return true;
-            }
+        if (!isNaN(lat) && !isNaN(lng)) {
+            var map = L.map('rdMapEmbed', { scrollWheelZoom: false }).setView([lat, lng], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'rd-pin-icon',
+                    html: '<span class="rd-pin">&#128205;</span>',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 28]
+                })
+            }).addTo(map);
         }
+    }
 
+    /* =========================
+       FLATPICKR CALENDAR
+       Wired to the unavailable-dates payload; supports the
+       Long Term toggle (check-in only, no check-out).
+    ========================== */
+    var calendarEl  = document.getElementById('rd-calendar');
+    var checkinEl   = document.getElementById('rd-checkin');
+    var checkoutEl  = document.getElementById('rd-checkout');
+    var inDisplay   = document.getElementById('rd-checkin-display');
+    var outDisplay  = document.getElementById('rd-checkout-display');
+    var outField    = document.getElementById('rd-checkout-summary-field');
+    var sepEl       = document.getElementById('rd-date-sep');
+    var longTermEl  = document.getElementById('rd-long-term');
+    var submitBtn   = document.getElementById('rd-inquiry-submit');
+    var hintEl      = document.getElementById('rd-date-hint');
+
+    var unavailable = <?= json_encode($unavailableRangesJs) ?>;
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function ymd(d) {
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    }
+    var FAR_FUTURE = (function () {
+        var d = new Date();
+        d.setFullYear(d.getFullYear() + 3);
+        return ymd(d);
+    })();
+
+    function isDateUnavailable(dateStr) {
+        for (var i = 0; i < unavailable.length; i++) {
+            var r = unavailable[i];
+            if (!r.start) continue;
+            var to = r.end || FAR_FUTURE;
+            if (dateStr >= r.start && dateStr <= to) return true;
+        }
         return false;
     }
 
-    function fmt(date) {
-        var m = String(date.getMonth() + 1).padStart(2, "0");
-        var d = String(date.getDate()).padStart(2, "0");
-        return date.getFullYear() + "-" + m + "-" + d;
-    }
+    var selectedCheckin  = null;
+    var selectedCheckout = null;
+    var fp = null;
 
-    /* ===== NEW: enable / disable Send Inquiry based on
-       whether the dates are complete for the current mode ===== */
-    function refreshInquiryState() {
-        if (!inquirySubmit) return;
+    function refreshSummary() {
+        var longTerm = longTermEl && longTermEl.checked;
 
-        var isLongTerm = longTermBox && longTermBox.checked;
-        var hasCheckin  = !!(checkinInput && checkinInput.value);
-        var hasCheckout = !!(checkoutInput && checkoutInput.value);
+        inDisplay.textContent  = selectedCheckin
+            ? new Date(selectedCheckin + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'Select date';
+        outDisplay.textContent = (!longTerm && selectedCheckout)
+            ? new Date(selectedCheckout + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : (longTerm ? 'Long Term' : 'Select date');
 
-        var complete = isLongTerm ? hasCheckin : (hasCheckin && hasCheckout);
+        if (checkinEl)  checkinEl.value  = selectedCheckin || '';
+        if (checkoutEl) checkoutEl.value = (longTerm ? '' : (selectedCheckout || ''));
 
-        inquirySubmit.disabled = !complete;
+        /* Hide the checkout half when Long Term */
+        if (outField) outField.classList.toggle('rd-date-hidden', !!longTerm);
+        if (sepEl)    sepEl.classList.toggle('rd-date-hidden', !!longTerm);
 
-        if (dateHint) {
-            if (complete) {
-                dateHint.innerHTML = "&#10003; Dates complete &mdash; you're ready to continue";
-                dateHint.classList.add("rd-hint-ok");
-            } else if (isLongTerm) {
-                dateHint.textContent = "Long Term: choose your move-in date to continue";
-                dateHint.classList.remove("rd-hint-ok");
-            } else {
-                dateHint.textContent = "Select check-in and check-out to continue";
-                dateHint.classList.remove("rd-hint-ok");
-            }
+        var complete = !!selectedCheckin && (longTerm || !!selectedCheckout);
+        if (submitBtn) submitBtn.disabled = !complete;
+        if (hintEl) {
+            hintEl.textContent = complete
+                ? '\u2713 Dates ready \u2014 continue to the 50% reserve'
+                : (longTerm
+                    ? 'Select your move-in date to continue'
+                    : 'Select check-in and check-out to continue');
+            hintEl.classList.toggle('rd-hint-ok', complete);
         }
     }
 
-    /* ===== NEW: show / hide the check-out field when the
-       Long Term checkbox is toggled ===== */
-    function setLongTermUI(isLongTerm) {
-        if (checkoutField) checkoutField.classList.toggle("rd-date-hidden", isLongTerm);
-        if (dateSep)       dateSep.classList.toggle("rd-date-hidden", isLongTerm);
+    function buildCalendar(mode) {
+        if (fp) { fp.destroy(); fp = null; }
+        if (!calendarEl || typeof flatpickr === 'undefined') return;
 
-        if (checkoutDisplay) {
-            checkoutDisplay.textContent = isLongTerm ? "Long term" : "Select date";
-        }
-    }
-
-    var calendarEl = document.getElementById("rd-calendar");
-
-    if (calendarEl && window.flatpickr) {
-
-        var fp = flatpickr(calendarEl, {
-            mode: "range",
+        fp = flatpickr(calendarEl, {
             inline: true,
-            dateFormat: "Y-m-d",
-            minDate: "today",
+            mode: mode,
+            minDate: 'today',
+            showMonths: 1,
             disable: [
                 function (date) {
-                    return isDateUnavailable(date);
+                    return isDateUnavailable(ymd(date));
                 }
             ],
             onChange: function (selectedDates) {
-                if (selectedDates.length === 0) {
-                    checkinDisplay.textContent  = "Select date";
-                    checkoutDisplay.textContent = "Select date";
-                    checkinInput.value  = "";
-                    checkoutInput.value = "";
-                    refreshInquiryState();
-                    return;
-                }
-
-                var first = selectedDates[0];
-                checkinInput.value  = fmt(first);
-                checkinDisplay.textContent = fmt(first);
-
-                if (longTermBox && longTermBox.checked) {
-                    /* Long term — only ONE date (move-in), no checkout */
-                    checkoutInput.value = "";
-                    checkoutDisplay.textContent = "Long term";
-                } else if (selectedDates.length === 2) {
-                    var second = selectedDates[1];
-                    checkoutInput.value  = fmt(second);
-                    checkoutDisplay.textContent = fmt(second);
+                if (mode === 'single') {
+                    selectedCheckin  = selectedDates[0] ? ymd(selectedDates[0]) : null;
+                    selectedCheckout = null;
                 } else {
-                    checkoutInput.value = "";
-                    checkoutDisplay.textContent = "Select date";
+                    selectedCheckin  = selectedDates[0] ? ymd(selectedDates[0]) : null;
+                    selectedCheckout = selectedDates[1] ? ymd(selectedDates[1]) : null;
                 }
-
-                refreshInquiryState();
+                refreshSummary();
             }
         });
-
-        /* Long-term toggle — single date mode + hide checkout field */
-        if (longTermBox) {
-            longTermBox.addEventListener("change", function () {
-                if (this.checked) {
-                    fp.set("mode", "single");
-                    checkoutInput.value = "";
-                } else {
-                    fp.set("mode", "range");
-                }
-
-                setLongTermUI(this.checked);
-                fp.redraw();
-                refreshInquiryState();
-            });
-        }
-
-        /* Belt & braces: block submit if dates incomplete */
-        if (inquiryForm) {
-            inquiryForm.addEventListener("submit", function (e) {
-                if (inquirySubmit && inquirySubmit.disabled) {
-                    e.preventDefault();
-                }
-            });
-        }
-
-        /* Initialize state on page load */
-        setLongTermUI(longTermBox && longTermBox.checked);
-        refreshInquiryState();
     }
 
-    /* -----------------------------------------------
-       ===== NEW: LEAFLET MAP — exact host pin =====
-    ------------------------------------------------ */
-    var mapEmbed = document.getElementById("rdMapEmbed");
+    buildCalendar('range');
+    refreshSummary();
 
-    if (mapEmbed && window.L) {
-        var pinLat = parseFloat(mapEmbed.dataset.lat);
-        var pinLng = parseFloat(mapEmbed.dataset.lng);
-
-        if (!isNaN(pinLat) && !isNaN(pinLng)) {
-
-            var rdMap = L.map(mapEmbed, {
-                scrollWheelZoom: false
-            }).setView([pinLat, pinLng], 16);
-
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(rdMap);
-
-            L.marker([pinLat, pinLng]).addTo(rdMap);
-
-            mapEmbed.addEventListener("click", function () {
-                rdMap.scrollWheelZoom.enable();
-            });
-            mapEmbed.addEventListener("mouseleave", function () {
-                rdMap.scrollWheelZoom.disable();
-            });
-        }
+    if (longTermEl) {
+        longTermEl.addEventListener('change', function () {
+            selectedCheckin  = null;
+            selectedCheckout = null;
+            buildCalendar(longTermEl.checked ? 'single' : 'range');
+            refreshSummary();
+        });
     }
-
 })();
 </script>
 

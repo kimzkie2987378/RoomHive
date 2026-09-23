@@ -2,8 +2,15 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    security.php
+
+   FIXED: the old file opened its own <header class="navbar">
+   with a logo, then required usernav.php — which renders a
+   SECOND complete navbar inside it (nested/double navbars,
+   unclosed tags, broken layout). The stray wrapper is removed;
+   usernav.php is the one and only navbar.
+
    Schema: users.password, two_factor_enabled, language,
-   currency, status (see your original header notes).
+   currency, status.
 ========================================================= */
 
 session_start();
@@ -140,11 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 </head>
 <body data-theme-base="light">
 
-<header class="navbar">
-    <a href="/webprogg/user/usershome.php" class="logo">
-        <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
-    </a>
-   <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
 
 <!-- PAGE HEADER — PLAIN -->
 <header class="ub-page-head">
@@ -263,12 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
       <div class="up-right-col">
 
-        <!-- ================================================
-             NEW — APPEARANCE / DARK MODE CARD
-             Pure client-side: localStorage persistence, no
-             DB change. Applies to every account page via the
-             shared bootstrap + dark CSS block.
-        ================================================= -->
+        <!-- APPEARANCE / DARK MODE (client-side, localStorage) -->
         <div class="up-card up-reveal" style="--i: 0;">
           <div class="up-card-header">
             <h3>Appearance</h3>
@@ -393,13 +391,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 (function () {
     "use strict";
 
-    /* =====================================================
-       DARK MODE — apply persisted theme + wire the toggle
-       Runs on every load: sets body[data-theme] from
-       localStorage (the head bootstrap already darkened the
-       html early), then syncs the switch state.
-    ====================================================== */
-
     var body = document.body;
     var KEY  = "rhTheme";
     var darkToggle = document.getElementById("darkModeToggle");
@@ -414,7 +405,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
         }
     }
 
-    /* Apply persisted theme immediately on this page too */
     var stored = null;
     try { stored = localStorage.getItem(KEY); } catch (e) {}
     applyTheme(stored === "dark");
@@ -424,18 +414,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
 
         darkToggle.addEventListener("change", function () {
             var dark = darkToggle.checked;
-
             applyTheme(dark);
-
             try {
                 localStorage.setItem(KEY, dark ? "dark" : "light");
             } catch (e) {}
         });
     }
-
-    /* =====================================================
-       SCROLL REVEAL
-    ====================================================== */
 
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -454,10 +438,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form']) && $_POST['fo
         }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
-
-    /* =====================================================
-       PASSWORD STRENGTH METER
-    ====================================================== */
 
     var pw = document.getElementById("newPw");
     var fill = document.getElementById("pwStrengthFill");

@@ -3,57 +3,71 @@
    ROOMHIVE — PROCESS PAYMENT
    process-payment.php
 
-   Flow A (new inquiry): listingpayment.php (Step 2: choose
-   method) -> THIS FILE -> payment-confirmation.php (Step 3).
+   Flow A (new inquiry): listingpayment.php -> HERE -> receipt
+   Flow B (pay balance): booking-details.php -> listingpayment.php -> HERE -> receipt
+   Flow C (owner "List Now"): listing-detail.php -> listingpayment.php -> HERE -> PUBLISHED
 
-   Flow B (pay remaining balance): booking-details.php's "Pay
-   Remaining Balance" button -> listingpayment.php (pay_balance
-   mode) -> THIS FILE -> payment-confirmation.php (balance=1).
+   === HIVE CLUB PHASE 4 — SERVER-SIDE DISCOUNT ===
+   The tier discount shown on listingpayment.php is RECOMPUTED
+   here from the engine (hive_member + hive_discount_pct) —
+   the client never gets to influence pricing:
+     - membership re-verified INSIDE the transaction
+     - bookings.total stores the DISCOUNTED total
+     - reserve = 50% x discounted (this payment)
+     - balance flow stays consistent (b.total - amount_paid)
+   Balance mode: NO new discount (already baked into b.total
+   at reserve time) — only the remaining half is charged.
+   Owner "List Now" flow: no discount (host paying own fee).
 
-   Flow C (owner "List Now"): listing-detail.php "List Now" ->
-   listingpayment.php -> THIS FILE -> the listing is PUBLISHED
-   (status = 'approved'). No booking row is created.
-
-   Two stages via the hidden "stage" field:
-     Stage 1 "review"  — method-specific mock screen
-     Stage 2 "confirm" — validates input, then either inserts a
-     booking (reservation), tops up amount_paid (balance), or
-     publishes the listing (owner list fee).
-
-   SERVER-SIDE ENFORCEMENT:
-   - Listing status guards (no re-listing approved spaces,
-     no booking unlisted spaces).
-   - Date completion guard: check-in AND check-out required,
-     check-in only when long_term = 1. Skipped for the owner's
-     List Now flow (no dates involved).
-   - Date-conflict guard: overlapping pending/confirmed holds
-     are rejected — including open-ended long-term stays
-     (checkout NULL blocks from move-in onward until finished).
-   - "long_term" carried through Stage 1 -> Stage 2.
-
-   EXPIRY NOTE: new bookings get paid_at = NOW() so they're
-   exempt from the 10-minute unpaid-hold sweep.
-
-   RECEIPT NOTE: even a PARTIAL payment (e.g. only the ₱1,000
-   reservation fee) redirects to payment-confirmation.php —
-   the receipt shows the advance payment and the amount left,
-   so the guest can present it to the host. The chosen method
-   is forwarded via &pm= so the receipt prints the real method.
+   KEPT (all previous fixes):
+   - payment_status='paid' written (no paid_at column)
+   - listings row locked FOR UPDATE in the reserve branch
+     (race-safe double-booking guard)
+   - guests whitelisted; dates strictly validated
+   - expiry sweep runs lazily on load
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
+
+ $rhNotifyHelper = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notify.php';
+if (file_exists($rhNotifyHelper)) {
+    require_once $rhNotifyHelper;
+}
+
+if (!function_exists('pp_notify_host')) {
+    function pp_notify_host($pdo, $hostId, $message, $link) {
+        try {
+            $hostId = (int) $hostId;
+            if ($hostId <= 0) { return false; }
+            if (function_exists('roomhive_notify')) {
+                if (roomhive_notify($pdo, $hostId, $message, $link)) { return true; }
+            }
+            $n = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $n->execute(['u' => $hostId, 'm' => mb_substr($message, 0, 240), 'l' => $link]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('pp_notify_host failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: /webprogg/auth/loginform.php");
     exit;
 }
 
-function h($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
 }
 
-/* Strict Y-m-d validator — never trust client dates */
 function pp_valid_date($value) {
     if (!is_string($value) || $value === '') {
         return null;
@@ -61,6 +75,13 @@ function pp_valid_date($value) {
     $d = DateTime::createFromFormat('Y-m-d', $value);
     return ($d && $d->format('Y-m-d') === $value) ? $value : null;
 }
+
+/* -----------------------------------------------------
+   HIVE CLUB — expire lapsed memberships, load this member.
+   Discount is recomputed SERVER-SIDE below; the client's
+   displayed figures are treated as cosmetic only.
+----------------------------------------------------- */
+hive_expiry_sweep($pdo);
 
 /* -----------------------------------------------------
    INBOUND DATA
@@ -72,7 +93,6 @@ function pp_valid_date($value) {
  $paymentPurpose = ($_POST['payment_purpose'] ?? 'reservation') === 'balance' ? 'balance' : 'reservation';
  $bookingId      = isset($_POST['booking_id']) && is_numeric($_POST['booking_id']) ? (int) $_POST['booking_id'] : null;
 
-/* Long-term flag, carried from listingpayment.php */
  $longTerm = ($_POST['long_term'] ?? '0') === '1';
 
  $checkinRaw  = $_POST['checkin_date']  ?? '';
@@ -80,6 +100,10 @@ function pp_valid_date($value) {
 
  $checkin  = pp_valid_date($checkinRaw) ?? '';
  $checkout = (!$longTerm) ? (pp_valid_date($checkoutRaw) ?? '') : '';
+
+if (!in_array($guests, ['1', '2', '3', '4+'], true)) {
+    $guests = '1';
+}
 
  $validMethods = ['gcash', 'maya', 'card'];
 if (!in_array($paymentMethod, $validMethods, true)) {
@@ -108,31 +132,50 @@ if ($listing === false) {
     exit;
 }
 
-/* Same reservation fee as listingpayment.php "Total Due Today" */
- $reservationFee = 1000.00;
+/* =========================================================
+   HIVE CLUB PRICING — recomputed server-side
+   Owner "List Now" flow: no discount (host paying own fee).
+   Balance mode: no discount (already baked into b.total).
+========================================================= */
+ $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
+ $listingStatus  = $listing['status'] ?? '';
+
+ $listingPrice    = (float) $listing['price'];
+ $hiveDiscountPct = 0;
+ $hiveTierLabel   = null;
+ $discountAmount  = 0.0;
+ $discountedTotal = $listingPrice;
+
+if ($paymentPurpose === 'reservation' && !$isListingOwner) {
+    $hiveMember     = hive_member($pdo, $_SESSION['user_id']);
+    $hiveDiscountPct = hive_discount_pct($hiveMember);
+
+    if ($hiveDiscountPct > 0) {
+        $hiveTierLabel  = (string) $hiveMember['tier'];
+        $discountAmount = round($listingPrice * ($hiveDiscountPct / 100), 2);
+        $discountedTotal = round($listingPrice - $discountAmount, 2);
+    }
+}
+
+/* RESERVE = 50% OF THE (DISCOUNTED) LISTING PRICE.
+   Matches listingpayment.php — keep the same formula in BOTH. */
+ $reservationFee = round($discountedTotal * 0.5, 2);
 
 /* -----------------------------------------------------
    LISTING STATUS + DATE GUARDS (reservation flow only)
 ----------------------------------------------------- */
- $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
- $listingStatus  = $listing['status'] ?? '';
-
 if ($paymentPurpose === 'reservation') {
 
-    /* GUARD 1 — host cannot re-list an already-listed space */
     if ($isListingOwner && $listingStatus === 'approved') {
         header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&alreadylisted=1');
         exit;
     }
 
-    /* GUARD 2 — renter cannot pay for an unlisted space */
     if (!$isListingOwner && $listingStatus !== 'approved') {
         header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
         exit;
     }
 
-    /* GUARD 3 — dates must be complete (renters only; the
-       host's List Now flow carries no dates by design) */
     if (!$isListingOwner) {
         if ($checkin === '' || (!$longTerm && $checkout === '')) {
             header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&incompletedates=1');
@@ -185,11 +228,12 @@ if ($paymentPurpose === 'balance') {
         exit;
     }
 
-    /* Show the booking's real dates on the payment screen */
     $checkin  = pp_valid_date($balanceBooking['checkin_date']  ?? '') ?? '';
     $checkout = pp_valid_date($balanceBooking['checkout_date'] ?? '') ?? '';
     $longTerm = ($checkin !== '' && $checkout === '');
-    $guests   = $balanceBooking['guests'] ?? $guests;
+    if (in_array($balanceBooking['guests'] ?? '', ['1', '2', '3', '4+'], true)) {
+        $guests = $balanceBooking['guests'];
+    }
 }
 
  $amountDue = $paymentPurpose === 'balance' ? $balanceDueNow : $reservationFee;
@@ -228,15 +272,11 @@ if ($stage === 'confirm') {
 
     if (empty($errors)) {
 
-        /* TODO: real gateway call goes here — only proceed once
-           THEY confirm the charge succeeded. Simulated for now. */
-
         if ($paymentPurpose === 'balance') {
 
             /* ---------------------------------------------
-               PAY REMAINING BALANCE — top up the existing
-               booking's amount_paid. Re-lock + re-check the
-               remaining balance right before writing.
+               PAY REMAINING BALANCE — no new discount here;
+               b.total already carries the discounted price.
             --------------------------------------------- */
             $pdo->beginTransaction();
 
@@ -270,7 +310,8 @@ if ($stage === 'confirm') {
 
             $updateStmt = $pdo->prepare(
                 "UPDATE bookings
-                 SET amount_paid = amount_paid + :amount
+                 SET amount_paid = amount_paid + :amount,
+                     payment_status = 'paid'
                  WHERE id = :id"
             );
             $updateStmt->execute([
@@ -280,7 +321,34 @@ if ($stage === 'confirm') {
 
             $pdo->commit();
 
-            /* ===== STEP 3: go to the confirmation page ===== */
+            /* ===== NOTIFY THE HOST: balance paid ===== */
+            try {
+                $guestName = $_SESSION['user_name'] ?? 'A guest';
+
+                $hostInfoStmt = $pdo->prepare(
+                    "SELECT l.user_id AS host_id, l.title
+                     FROM listings l
+                     JOIN bookings b ON b.listing_id = l.id
+                     WHERE b.id = :id
+                     LIMIT 1"
+                );
+                $hostInfoStmt->execute(['id' => $bookingId]);
+                $hostInfo = $hostInfoStmt->fetch();
+
+                if ($hostInfo) {
+                    pp_notify_host(
+                        $pdo,
+                        (int) $hostInfo['host_id'],
+                        $guestName . ' paid the remaining balance (₱'
+                            . number_format($remainingNow, 2) . ') for "'
+                            . $hostInfo['title'] . '". The booking is now fully paid.',
+                        '/webprogg/host/hostbookings.php'
+                    );
+                }
+            } catch (PDOException $e) {
+                error_log('balance host notification failed: ' . $e->getMessage());
+            }
+
             header('Location: /webprogg/booking/payment-confirmation.php?id=' . $bookingId
                 . '&paid=1&balance=1&pm=' . rawurlencode($paymentMethod)
                 . '&amt=' . rawurlencode(number_format($remainingNow, 2, '.', '')));
@@ -289,13 +357,7 @@ if ($stage === 'confirm') {
         } elseif ($isListingOwner) {
 
             /* ---------------------------------------------
-               OWNER "LIST NOW" FLOW — the host paid the
-               listing fee, publish the space. No booking
-               row is created.
-
-               NOTE: if your project uses ADMIN approval
-               instead of pay-to-publish, DELETE the UPDATE
-               below and keep only the redirect.
+               OWNER "LIST NOW" FLOW
             --------------------------------------------- */
             $approveStmt = $pdo->prepare(
                 "UPDATE listings
@@ -313,14 +375,43 @@ if ($stage === 'confirm') {
         } else {
 
             /* ---------------------------------------------
-               NEW INQUIRY — insert a fresh booking, with a
-               date-conflict guard inside a transaction.
-
-               Overlap rule (NULL end = open-ended long-term):
-                 requested [ci, co|∞] overlaps existing
-                 [eci, eco|∞] when  ci <= eco|∞  AND  co|∞ >= eci
+               NEW RESERVE — race-safe.
+               Lock the listing row, RE-VERIFY membership
+               discount INSIDE the lock (it may have expired
+               between page render and confirm), then insert
+               with bookings.total = DISCOUNTED total.
             --------------------------------------------- */
             $pdo->beginTransaction();
+
+            /* Re-check membership inside the transaction so the
+               discount used is the one valid AT PAYMENT TIME. */
+            $hiveMemberTx   = hive_member($pdo, $_SESSION['user_id']);
+            $hiveDiscountTx = hive_discount_pct($hiveMemberTx);
+
+            if ($hiveDiscountTx > 0) {
+                $discountAmountTx = round($listingPrice * ($hiveDiscountTx / 100), 2);
+                $discountedTotal  = round($listingPrice - $discountAmountTx, 2);
+                $reservationFee   = round($discountedTotal * 0.5, 2);
+                $hiveTierLabel    = (string) $hiveMemberTx['tier'];
+            } else {
+                $discountAmountTx = 0.0;
+                $discountedTotal  = $listingPrice;
+                $reservationFee   = round($listingPrice * 0.5, 2);
+            }
+
+            /* Lock the listing row — serializes concurrent
+               reserves for this listing. */
+            $lockListingStmt = $pdo->prepare(
+                "SELECT id, status FROM listings WHERE id = :id FOR UPDATE"
+            );
+            $lockListingStmt->execute(['id' => $listingId]);
+            $lockedListing = $lockListingStmt->fetch();
+
+            if (!$lockedListing || $lockedListing['status'] !== 'approved') {
+                $pdo->rollBack();
+                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
+                exit;
+            }
 
             $conflictStmt = $pdo->prepare(
                 "SELECT 1
@@ -330,8 +421,7 @@ if ($stage === 'confirm') {
                    AND checkin_date IS NOT NULL
                    AND :checkin <= COALESCE(checkout_date, '9999-12-31')
                    AND :range_end >= checkin_date
-                 LIMIT 1
-                 FOR UPDATE"
+                 LIMIT 1"
             );
             $conflictStmt->execute([
                 'listing_id' => $listingId,
@@ -345,13 +435,16 @@ if ($stage === 'confirm') {
                 exit;
             }
 
-            $roomTotal = (float) $listing['price'];
+            $roomTotal = $discountedTotal; /* total stores the DISCOUNTED price */
 
+            /* FIXED: payment_status='paid' instead of paid_at */
             $insertStmt = $pdo->prepare(
                 "INSERT INTO bookings
-                    (listing_id, user_id, total, amount_paid, status, booked_at, paid_at, checkin_date, checkout_date, guests)
+                    (listing_id, user_id, total, amount_paid, status, booked_at,
+                     payment_status, checkin_date, checkout_date, guests)
                  VALUES
-                    (:listing_id, :user_id, :total, :amount_paid, 'pending', NOW(), NOW(), :checkin_date, :checkout_date, :guests)"
+                    (:listing_id, :user_id, :total, :amount_paid, 'pending', NOW(),
+                     'paid', :checkin_date, :checkout_date, :guests)"
             );
             $insertStmt->execute([
                 'listing_id'    => $listingId,
@@ -363,14 +456,27 @@ if ($stage === 'confirm') {
                 'guests'        => $guests,
             ]);
 
-            $pdo->commit();
-
             $newBookingId = (int) $pdo->lastInsertId();
 
-            /* ===== STEP 3: go to the confirmation page =====
-               Even though only the ₱1,000 reservation fee was
-               paid, the guest ALWAYS gets an official receipt
-               showing the advance payment + amount left. */
+            $pdo->commit();
+
+            /* ===== NOTIFY THE HOST: new reserve ===== */
+            try {
+                $guestName = $_SESSION['user_name'] ?? 'A guest';
+
+                pp_notify_host(
+                    $pdo,
+                    (int) $listing['host_id'],
+                    $guestName . ' applied for "' . $listing['title']
+                        . '" and paid the 50% reserve (₱'
+                        . number_format($reservationFee, 2) . ').'
+                        . ' Accept within 24 hours or it is auto-declined.',
+                    '/webprogg/booking/pendingtenants.php'
+                );
+            } catch (PDOException $e) {
+                error_log('new booking host notification failed: ' . $e->getMessage());
+            }
+
             header('Location: /webprogg/booking/payment-confirmation.php?id=' . $newBookingId
                 . '&paid=1&pm=' . rawurlencode($paymentMethod)
                 . '&amt=' . rawurlencode(number_format($reservationFee, 2, '.', '')));
@@ -388,7 +494,6 @@ if ($stage === 'confirm') {
     'card'  => 'Credit/Debit Card',
 ];
 
-/* "Change payment method" destination — carries long_term */
 if ($paymentPurpose === 'balance') {
     $changeMethodUrl = '/webprogg/booking/listingpayment.php'
         . '?listing_id=' . rawurlencode((string) $listingId)
@@ -402,7 +507,6 @@ if ($paymentPurpose === 'balance') {
         . ($longTerm ? '&long_term=1' : '');
 }
 
-/* Summary line (what is being paid for) */
 if ($isListingOwner && $paymentPurpose === 'reservation') {
     $summaryMeta = 'One-time listing fee &middot; publishes your space';
 } elseif ($checkin !== '' && $checkout !== '') {
@@ -416,7 +520,11 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
 
  $chargeLabel = $paymentPurpose === 'balance'
     ? 'Balance to Pay'
-    : ($isListingOwner ? 'Listing Fee' : 'Amount to Pay');
+    : ($isListingOwner
+        ? 'Listing Fee'
+        : ($hiveDiscountPct > 0
+            ? 'Reserve (50%) — ' . $hiveTierLabel . ' price'
+            : 'Reserve (50%) — locks your dates'));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -462,23 +570,14 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         align-items: center;
         justify-content: space-between;
     }
-    .pp-brand {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        text-decoration: none;
+    .pp-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+    .pp-brand-logo {
+        height: 30px;
+        width: auto;
+        max-width: 130px;
+        object-fit: contain;
+        display: block;
     }
-    .pp-brand-mark {
-        width: 30px; height: 30px;
-        border-radius: 9px;
-        background: linear-gradient(135deg, var(--pp-honey-light), var(--pp-honey));
-        display: flex; align-items: center; justify-content: center;
-        color: #fff;
-        box-shadow: 0 4px 10px rgba(245,166,35,.35);
-    }
-    .pp-brand-mark svg { width: 16px; height: 16px; }
-    .pp-brand-text { font-size: 14px; font-weight: 400; color: var(--pp-ink); }
-    .pp-brand-text b { font-weight: 800; }
     .pp-secure-chip {
         display: inline-flex;
         align-items: center;
@@ -573,6 +672,30 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         line-height: 1.4;
     }
 
+    /* ===== NEW: HIVE DISCOUNT BANNER ===== */
+    .pp-hive-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: linear-gradient(120deg, #FFF6E9 0%, #FFFDF6 100%);
+        border: 1px solid #F5C77E;
+        border-radius: 12px;
+        padding: 11px 14px;
+        margin-bottom: 16px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #8A5A10;
+    }
+    .pp-hive-banner span.pp-hive-pct {
+        flex-shrink: 0;
+        background: linear-gradient(135deg, #f6b93b, #eda423);
+        color: #fff;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
     .pp-errors {
         background: #FDECEC;
         border: 1px solid #F5B5B5;
@@ -648,12 +771,7 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
 <header class="pp-nav">
     <div class="pp-nav-inner">
         <a class="pp-brand" href="/webprogg/Listings/listing.php">
-            <span class="pp-brand-mark">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
-                </svg>
-            </span>
-            <span class="pp-brand-text">Room<b>Hive</b> Checkout</span>
+            <img class="pp-brand-logo" src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Checkout">
         </a>
         <span class="pp-secure-chip">
             &#128274; Secured
@@ -705,6 +823,15 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
                 <p class="pp-summary-meta"><?php echo $summaryMeta; ?></p>
             </div>
         </div>
+
+        <?php if ($hiveDiscountPct > 0 && $paymentPurpose === 'reservation' && !$isListingOwner): ?>
+        <!-- NEW: Hive Club discount banner (server-computed) -->
+        <div class="pp-hive-banner">
+            <span class="pp-hive-pct"><?php echo (int) $hiveDiscountPct; ?>% OFF</span>
+            <span>Hive Club <?php echo h($hiveTierLabel); ?> member price applied — you're saving
+                &#8369;<?php echo h(number_format($discountAmount, 2)); ?> on this stay.</span>
+        </div>
+        <?php endif; ?>
 
         <?php if (!empty($errors)): ?>
             <div class="pp-errors">
@@ -758,7 +885,7 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
                     >
                 </label>
 
-                <p class="pp-hint">Enter the mobile number linked to your GCash account. You'll be asked to approve this payment in-app.</p>
+                <p class="pp-hint">This 50% reserve locks your dates for 24 hours while the host reviews. The host must accept within 24 hours or it is auto-declined and refunded.</p>
 
                 <button type="submit" class="pp-btn-confirm pp-btn-gcash">
                     Send Payment Request
@@ -807,7 +934,7 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
                     >
                 </label>
 
-                <p class="pp-hint">Enter the mobile number linked to your Maya account. You'll be asked to approve this payment in-app.</p>
+                <p class="pp-hint">This 50% reserve locks your dates for 24 hours while the host reviews. The host must accept within 24 hours or it is auto-declined and refunded.</p>
 
                 <button type="submit" class="pp-btn-confirm pp-btn-maya">
                     Send Payment Request
@@ -914,7 +1041,6 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
     var form = document.querySelector('form.pp-form');
     if (!form) return;
 
-    /* Submit — loading state + double-submit guard */
     form.addEventListener('submit', function () {
         var btn = form.querySelector('.pp-btn-confirm');
         if (btn && !btn.disabled) {
@@ -923,7 +1049,6 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         }
     });
 
-    /* Card number — auto-space every 4 digits */
     var cardNum = form.querySelector('input[name="card_number"]');
     if (cardNum) {
         cardNum.addEventListener('input', function () {
@@ -932,7 +1057,6 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         });
     }
 
-    /* Expiry — auto MM/YY */
     var cardExp = form.querySelector('input[name="card_expiry"]');
     if (cardExp) {
         cardExp.addEventListener('input', function () {
@@ -941,7 +1065,6 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         });
     }
 
-    /* CVV — digits only */
     var cardCvv = form.querySelector('input[name="card_cvv"]');
     if (cardCvv) {
         cardCvv.addEventListener('input', function () {
@@ -949,7 +1072,6 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
         });
     }
 
-    /* Mobile — digits only */
     var mobile = form.querySelector('input[name="mobile_number"]');
     if (mobile) {
         mobile.addEventListener('input', function () {

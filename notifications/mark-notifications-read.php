@@ -7,7 +7,8 @@
    POST:  all=1    → mark ALL of this user's notifications read
 
    Session-guarded; only ever touches the logged-in user's
-   own rows (user_id is always bound to the session).
+   own rows. Returns the remaining unread count so the badge
+   can stay accurate.
 ========================================================= */
 
 session_start();
@@ -29,7 +30,10 @@ try {
         );
         $stmt->execute(['u' => $_SESSION['user_id']]);
 
-        echo json_encode(['success' => true, 'marked' => 'all']);
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0");
+        $cnt->execute(['u' => $_SESSION['user_id']]);
+
+        echo json_encode(['success' => true, 'marked' => 'all', 'unread' => (int) $cnt->fetchColumn()]);
         exit;
     }
 
@@ -48,7 +52,10 @@ try {
     );
     $stmt->execute(['id' => $id, 'u' => $_SESSION['user_id']]);
 
-    echo json_encode(['success' => true, 'marked' => $id]);
+    $cnt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0");
+    $cnt->execute(['u' => $_SESSION['user_id']]);
+
+    echo json_encode(['success' => true, 'marked' => $id, 'unread' => (int) $cnt->fetchColumn()]);
     exit;
 
 } catch (PDOException $e) {

@@ -8,12 +8,17 @@
  * when you click Approve / Reject. Also supports deleting an
  * application outright from the 3-dot row menu.
  *
- * NAV FIX: sidebar now points every menu item at its real page
- * (was 7 dead '#' links) and the top-right admin chip is the
- * working dropdown (real name/email + Log Out) matching admin.php.
+ * KEPT: CSRF on every POST form, approve/reject notify the
+ * applicant, is_host flip on approve + demote on reject, ID
+ * link resolved site-root absolute, dynamic action-menu
+ * (detached dropdown), working admin chip.
  *
- * SIDEBAR CHANGE: RoomHive brand block and the
- * "Need Help / Contact Support" card removed.
+ * NEW (this version):
+ *   - NAV ALIGNMENT: working ☰ menu button (off-canvas sidebar
+ *     + overlay under 1000px), topbar shadow on scroll.
+ *   - "Hive Club" nav entry added (adminhiveclub.php).
+ *   - Bell badge aligned to the standard count: pending HOST
+ *     applications + pending LISTINGS (was hosts-only).
  */
 
 session_start();
@@ -30,7 +35,35 @@ if (
  $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
  $adminEmail = $_SESSION['admin_email'] ?? '';
 
-/* ---------- Sidebar navigation (FIXED: every link resolves) ---------- */
+/* ---------- CSRF token (per-session) ---------- */
+if (empty($_SESSION['admin_csrf'])) {
+    $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
+}
+ $csrfToken = $_SESSION['admin_csrf'];
+
+/* ---------- Shared notifier ---------- */
+if (!function_exists('admin_notify_user')) {
+    function admin_notify_user($pdo, $userId, $message, $link) {
+        try {
+            if ((int) $userId <= 0 || trim((string) $message) === '') { return false; }
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'm' => mb_substr(trim((string) $message), 0, 240),
+                'l' => (string) $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('hostapplication notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+/* ---------- Sidebar navigation (Hive Club added) ---------- */
  $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
@@ -39,18 +72,29 @@ if (
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php', 'active' => true],
     ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Hive Club',            'icon' => 'tag',        'href' => '/webprogg/admin/adminhiveclub.php'],
     ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
     ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
     ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
- $notificationCount = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
+/* NAV ALIGNMENT: standard count — pending host apps + pending listings */
+ $notificationCount = (int) $pdo->query(
+    "SELECT (SELECT COUNT(*) FROM host_applications WHERE status = 'pending')
+           + (SELECT COUNT(*) FROM listings WHERE status = 'pending')"
+)->fetchColumn();
 
 /* =========================================================
    HANDLE APPROVE / REJECT / DELETE
    ========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+
+    /* CSRF gate — every form on this page now carries the token */
+    if (!isset($_POST['csrf_token']) || !hash_equals($csrfToken, $_POST['csrf_token'])) {
+        header('Location: /webprogg/admin/hostapplication.php');
+        exit();
+    }
 
     $targetId = (int) $_POST['id'];
     $action   = $_POST['action'];
@@ -77,26 +121,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 
         /*
          * Approving here is the ONLY place is_host gets set to
-         * true. host-step4.php no longer flips it on its own —
-         * the applicant just sees "awaiting approval" until an
-         * admin does this.
-         *
-         * Rejecting explicitly demotes the account back to a
-         * regular user (is_host = 0). This matters for the case
-         * where an already-approved host somehow has a new
-         * pending application rejected — without this, is_host
-         * would stay 1 and they'd keep landing on
-         * hostprofile.php instead of userprofile.php. For a
-         * first-time applicant this is a no-op since is_host is
-         * already 0.
+         * true. Rejecting explicitly demotes the account back to a
+         * regular user (is_host = 0).
          */
         if ($applicantUserId) {
             if ($newStatus === 'approved') {
                 $pdo->prepare("UPDATE users SET is_host = 1 WHERE id = :id")
                     ->execute(['id' => $applicantUserId]);
+
+                admin_notify_user(
+                    $pdo,
+                    (int) $applicantUserId,
+                    'Congratulations! Your host application was approved. You can now list your space on RoomHive.',
+                    '/webprogg/host/hostprofile.php'
+                );
             } elseif ($newStatus === 'rejected') {
                 $pdo->prepare("UPDATE users SET is_host = 0 WHERE id = :id")
                     ->execute(['id' => $applicantUserId]);
+
+                admin_notify_user(
+                    $pdo,
+                    (int) $applicantUserId,
+                    'Your host application was not approved this time. You can reapply anytime from the Become a Host page.',
+                    '/webprogg/host/becomeahost.php'
+                );
             }
         }
 
@@ -198,6 +246,17 @@ function eyeLink($id, $filter, $page) {
     return '/webprogg/admin/hostapplicationeye.php?' . http_build_query(['filter' => $filter, 'page' => $page, 'id' => $id]);
 }
 
+/* ---------- ID photo resolver (guarded — same fix as the eye page) ---------- */
+if (!function_exists('admin_resolve_photo')) {
+    function admin_resolve_photo($path, $fallback = '') {
+        if (empty($path)) { return $fallback; }
+        if (preg_match('#^https?://#i', $path)) { return $path; }
+        $n = ltrim((string) $path, '/');
+        if (stripos($n, 'webprogg/') === 0) { $n = substr($n, strlen('webprogg/')); }
+        return '/webprogg/' . $n;
+    }
+}
+
 /* ---------- Inline icon helper (same set as admin.php) ---------- */
 function icon($name, $class = '') {
     $icons = [
@@ -211,7 +270,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -295,11 +354,36 @@ function emptyState($text) {
     .admin-menu-item:hover { background: #F6F7FB; }
     .admin-menu-item .icon { width: 16px; height: 16px; }
     .admin-logout { color: #E14B4B; }
+
+    /* ---- NAV ALIGNMENT: mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
 </style>
 </head>
 <body>
 
-<div class="layout">
+<div class="layout" id="adminLayout">
+
+    <!-- Mobile overlay (NAV ALIGNMENT) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
@@ -315,8 +399,8 @@ function emptyState($text) {
 
     <!-- ============ MAIN ============ -->
     <div class="main">
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
             <div class="search-box">
                 <?= icon('search') ?>
                 <input type="text" placeholder="Search users, bookings, properties...">
@@ -438,6 +522,7 @@ function emptyState($text) {
 
                                                             <!-- ACCEPT -->
                                                             <form method="POST" action="<?= appLink($a['id'], $filter, $page) ?>" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $a['id'] ?>">
                                                                 <input type="hidden" name="action" value="approve">
 
@@ -453,6 +538,7 @@ function emptyState($text) {
 
                                                             <!-- REJECT -->
                                                             <form method="POST" action="<?= appLink($a['id'], $filter, $page) ?>" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $a['id'] ?>">
                                                                 <input type="hidden" name="action" value="reject">
 
@@ -468,6 +554,7 @@ function emptyState($text) {
 
                                                             <!-- DELETE -->
                                                             <form method="POST" action="<?= appLink($a['id'], $filter, $page) ?>" onclick="event.stopPropagation()">
+                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                                                 <input type="hidden" name="id" value="<?= $a['id'] ?>">
                                                                 <input type="hidden" name="action" value="delete">
 
@@ -545,7 +632,7 @@ function emptyState($text) {
                                 <h3>Uploaded Document</h3>
                                 <div class="doc-list">
                                     <?php if (!empty($selected['idFile'])): ?>
-                                        <a class="doc-item" href="<?= htmlspecialchars($selected['idFile']) ?>" target="_blank" rel="noopener">
+                                        <a class="doc-item" href="<?= htmlspecialchars(admin_resolve_photo($selected['idFile'], '')) ?>" target="_blank" rel="noopener">
                                             <?= icon('file') ?>View Uploaded ID
                                         </a>
                                     <?php else: ?>
@@ -562,11 +649,13 @@ function emptyState($text) {
                             <?php if ($selected['status'] === 'Pending'): ?>
                                 <div class="detail-actions">
                                     <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                         <input type="hidden" name="id" value="<?= $selected['id'] ?>">
                                         <input type="hidden" name="action" value="reject">
                                         <button type="submit" class="btn-reject" onclick="return confirm('Reject <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Reject Application</button>
                                     </form>
                                     <form method="POST" action="<?= appLink($selected['id'], $filter, $page) ?>" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                                         <input type="hidden" name="id" value="<?= $selected['id'] ?>">
                                         <input type="hidden" name="action" value="approve">
                                         <button type="submit" class="btn-approve" onclick="return confirm('Approve <?= htmlspecialchars(addslashes($selected['name'])) ?>\'s host application?')">Approve Application</button>
@@ -587,7 +676,6 @@ function emptyState($text) {
 <script>
 /*
  * Action menu (the "..." three-dot button on each row).
- *
  * The dropdown is detached to <body> the moment it opens so
  * `position: fixed` is guaranteed to be relative to the real
  * viewport instead of some positioned ancestor in the table, then
@@ -610,14 +698,10 @@ function toggleActionMenu(button) {
 }
 
 function openActionMenu(menu, button) {
-    // Remember where this dropdown actually lives in the table so we
-    // can put it back later.
     menu._homeParent = menu.parentNode;
     menu._homeNext   = menu.nextSibling;
     menu._homeButton = button;
 
-    // Detach it to <body> so `position: fixed` is guaranteed to be
-    // relative to the real viewport, not some ancestor in the table.
     document.body.appendChild(menu);
 
     menu.classList.add('show');
@@ -632,7 +716,6 @@ function positionActionMenu(menu, button) {
     let left = rect.right - menuWidth;
     let top = rect.bottom + 7;
 
-    // Keep it on-screen if the button is near the left/bottom edge.
     if (left < 8) left = 8;
     if (top + menuHeight > window.innerHeight - 8) {
         top = rect.top - menuHeight - 7; // flip above the button
@@ -648,7 +731,6 @@ function closeAllActionMenus() {
         menu.style.left = '';
         menu.style.top = '';
 
-        // Put it back exactly where it came from in the table row.
         if (menu._homeParent) {
             if (menu._homeNext && menu._homeNext.parentNode === menu._homeParent) {
                 menu._homeParent.insertBefore(menu, menu._homeNext);
@@ -677,17 +759,55 @@ window.addEventListener('resize', function () {
     closeAllActionMenus();
 });
 
-/* Admin chip dropdown (same behavior as admin.php) */
+/* =====================================================
+   NAV ALIGNMENT — canonical shared admin UI script
+   (chip dropdown, mobile sidebar toggle, topbar shadow)
+====================================================== */
 (function () {
-    const chip = document.getElementById('adminChip');
-    if (!chip) return;
-    chip.addEventListener('click', function (e) {
-        chip.classList.toggle('open');
-        e.stopPropagation();
+    "use strict";
+
+    /* ---- Admin chip dropdown ---- */
+    var chip = document.getElementById('adminChip');
+    if (chip) {
+        chip.addEventListener('click', function (e) {
+            chip.classList.toggle('open');
+            e.stopPropagation();
+        });
+        document.addEventListener('click', function () {
+            chip.classList.remove('open');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
+    }
+
+    /* ---- Mobile sidebar toggle (menu button now works) ---- */
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
     });
-    document.addEventListener('click', function () {
-        chip.classList.remove('open');
-    });
+
+    /* ---- Topbar shadow on scroll ---- */
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
 })();
 </script>
 

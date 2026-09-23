@@ -1,4 +1,20 @@
 <?php
+/* =========================================================
+   ROOMHIVE ADMIN — BOOKINGS
+   adminbookings.php
+
+   FIXED: 'rejected' was missing from the filter whitelist,
+   tabs, and the status-override select — bookings declined by
+   hosts (via the unified reject flow) only ever appeared
+   under "All". Now a first-class tab, and admins can set it
+   when correcting a stuck row.
+
+   NOTE: this is an admin override tool — flipping a PAID
+   booking to cancelled/rejected here moves no money (no
+   wallet refund, no host clawback). It's for fixing stuck
+   rows, not for normal cancellations.
+========================================================= */
+
 require_once __DIR__ . '/admin_init.php';
 
 /* ---- Status update action ---- */
@@ -6,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'], $_PO
     if (hash_equals($csrfToken, $_POST['csrf_token'])) {
         $bookingId = (int) $_POST['booking_id'];
         $newStatus = $_POST['update_status'];
-        if (in_array($newStatus, ['pending', 'confirmed', 'cancelled', 'completed'], true)) {
+        if (in_array($newStatus, ['pending', 'confirmed', 'cancelled', 'completed', 'rejected'], true)) {
             $pdo->prepare("UPDATE bookings SET status = :s WHERE id = :id")
                 ->execute(['s' => $newStatus, 'id' => $bookingId]);
             admin_flash_set('success', "Booking #$bookingId marked " . ucfirst($newStatus) . '.');
@@ -22,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'], $_PO
 
 /* ---- Filters ---- */
  $status = $_GET['status'] ?? 'all';
- $valid  = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
+ $valid  = ['all', 'pending', 'confirmed', 'completed', 'cancelled', 'rejected'];
 if (!in_array($status, $valid, true)) $status = 'all';
  $q = trim($_GET['q'] ?? '');
  $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -49,8 +65,8 @@ if ($q !== '') {
  $page = min($page, $totalPages);
  $offset = ($page - 1) * $perPage;
 
-/* NOTE: bookings has NO `payment_method` column — the real column
-   is `payment_status` (enum: pending/paid/failed/cancelled). */
+/* NOTE: bookings has NO payment_method column — the real column
+   is payment_status (enum: pending/paid/failed/cancelled). */
  $stmt = $pdo->prepare(
     "SELECT b.id, b.status, b.amount_paid, b.checkin_date, b.checkout_date, b.guests,
             b.created_at, b.payment_status,
@@ -95,6 +111,7 @@ if ($q !== '') {
         <a class="filter-tab tab-approved <?= $status === 'confirmed' ? 'active' : '' ?>" href="?<?= h(http_build_query(['status' => 'confirmed', 'q' => $q])) ?>"><?= icon('check-circle') ?> Confirmed (<?= $cnt('confirmed') ?>)</a>
         <a class="filter-tab <?= $status === 'completed' ? 'active' : '' ?>" href="?<?= h(http_build_query(['status' => 'completed', 'q' => $q])) ?>"><?= icon('check-circle') ?> Completed (<?= $cnt('completed') ?>)</a>
         <a class="filter-tab tab-rejected <?= $status === 'cancelled' ? 'active' : '' ?>" href="?<?= h(http_build_query(['status' => 'cancelled', 'q' => $q])) ?>"><?= icon('x-circle') ?> Cancelled (<?= $cnt('cancelled') ?>)</a>
+        <a class="filter-tab tab-rejected <?= $status === 'rejected' ? 'active' : '' ?>" href="?<?= h(http_build_query(['status' => 'rejected', 'q' => $q])) ?>"><?= icon('x-circle') ?> Rejected (<?= $cnt('rejected') ?>)</a>
     </div>
 
     <form method="get" style="display:flex; gap:10px; margin-bottom:18px; align-items:center;">
@@ -144,7 +161,7 @@ if ($q !== '') {
                                 <input type="hidden" name="ret_q" value="<?= h($q) ?>">
                                 <input type="hidden" name="ret_page" value="<?= $page ?>">
                                 <select name="update_status" class="period-select">
-                                    <?php foreach (['pending', 'confirmed', 'completed', 'cancelled'] as $opt): ?>
+                                    <?php foreach (['pending', 'confirmed', 'completed', 'cancelled', 'rejected'] as $opt): ?>
                                         <option value="<?= $opt ?>" <?= $b['status'] === $opt ? 'selected' : '' ?>><?= ucfirst($opt) ?></option>
                                     <?php endforeach; ?>
                                 </select>

@@ -2,21 +2,15 @@
 /**admin.php
  * RoomHive Admin Dashboard — backed by real queries.
  *
- * CHART FIX (this version):
- *   - Bookings by Status is now DYNAMIC: every status that actually
- *     exists in the DB gets a donut slice + color + legend row.
- *     Previously a hard-coded 4-status list meant bookings with any
- *     other status made the donut show a total but NO slices.
- *   - Revenue Overview now sums amount_paid from ALL bookings (any
- *     status). Previously only confirmed/completed counted, so a
- *     dashboard full of pending bookings showed zero-height bars.
- *   - Donut sizing CSS is defined inline so the chart renders even
- *     if .donut-wrap / .donut-center are missing from admin.css.
- *   - Chart.js load guard: if the CDN fails, panels show a message
- *     instead of silently blank canvases.
+ * KEPT: dynamic donuts, all-status revenue, Chart.js guard,
+ * CSRF-verified host-app actions, reject demotes is_host,
+ * both decisions notify the applicant.
  *
- * SIDEBAR: RoomHive brand block and the
- * "Need Help / Contact Support" card are removed.
+ * NEW (this version):
+ *   - NAV ALIGNMENT: working ☰ menu button (off-canvas
+ *     sidebar + overlay under 1000px), topbar shadow on
+ *     scroll — matching the rest of the admin suite.
+ *   - "Hive Club" nav entry added (adminhiveclub.php).
  */
 
 session_start();
@@ -38,6 +32,12 @@ if (
  $adminName  = $_SESSION['admin_name']  ?? 'Admin User';
  $adminEmail = $_SESSION['admin_email'] ?? '';
 
+/* ---- CSRF token (per-session) — used by the host-app forms ---- */
+if (empty($_SESSION['admin_csrf'])) {
+    $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
+}
+ $adminCsrf = $_SESSION['admin_csrf'];
+
 /* =========================================================
    PHOTO RESOLVER
 ========================================================= */
@@ -57,12 +57,43 @@ if (!function_exists('resolve_photo')) {
     }
 }
 
+/* ---------- Shared notifier for dashboard actions ---------- */
+if (!function_exists('admin_notify_user')) {
+    function admin_notify_user($pdo, $userId, $message, $link) {
+        try {
+            if ((int) $userId <= 0 || trim((string) $message) === '') { return false; }
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'm' => mb_substr(trim((string) $message), 0, 240),
+                'l' => (string) $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('admin.php notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
 /*
  * =========================================================
  * HOST APPLICATION ACTIONS (Approve / Reject)
+ * CSRF-verified; reject DEMOTES is_host to 0; both
+ * decisions notify the applicant.
  * =========================================================
  */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_POST['application_id'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST'
+    && isset($_POST['host_app_action'], $_POST['application_id'], $_POST['csrf_token'])) {
+
+    if (!hash_equals($adminCsrf, $_POST['csrf_token'])) {
+        header('Location: /webprogg/admin/admin.php');
+        exit();
+    }
+
     $applicationId = (int) $_POST['application_id'];
     $action        = $_POST['host_app_action'];
 
@@ -74,25 +105,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
         $application = $stmt->fetch();
 
         if ($application) {
+            $newStatus = $action === 'approve' ? 'approved' : 'rejected';
+
             $pdo->beginTransaction();
             try {
-                if ($action === 'approve') {
-                    $pdo->prepare(
-                        "UPDATE host_applications SET status = 'approved' WHERE id = :id"
-                    )->execute(['id' => $applicationId]);
+                $pdo->prepare(
+                    "UPDATE host_applications SET status = :status, updated_at = NOW() WHERE id = :id"
+                )->execute(['status' => $newStatus, 'id' => $applicationId]);
 
-                    $pdo->prepare(
-                        "UPDATE users SET is_host = 1 WHERE id = :user_id"
-                    )->execute(['user_id' => $application['user_id']]);
-                } else {
-                    $pdo->prepare(
-                        "UPDATE host_applications SET status = 'rejected' WHERE id = :id"
-                    )->execute(['id' => $applicationId]);
-                }
+                $pdo->prepare(
+                    "UPDATE users SET is_host = :v WHERE id = :user_id"
+                )->execute([
+                    'v'       => $action === 'approve' ? 1 : 0,
+                    'user_id' => $application['user_id'],
+                ]);
 
                 $pdo->commit();
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            }
+
+            if ($action === 'approve') {
+                admin_notify_user(
+                    $pdo, (int) $application['user_id'],
+                    'Congratulations! Your host application was approved. You can now list your space on RoomHive.',
+                    '/webprogg/host/hostprofile.php'
+                );
+            } else {
+                admin_notify_user(
+                    $pdo, (int) $application['user_id'],
+                    'Your host application was not approved this time. You can reapply anytime from the Become a Host page.',
+                    '/webprogg/host/becomeahost.php'
+                );
             }
         }
     }
@@ -101,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
     exit();
 }
 
-/* ---------- Sidebar navigation ---------- */
+/* ---------- Sidebar navigation (Hive Club added) ---------- */
  $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'active' => true, 'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
@@ -110,6 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
     ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Hive Club',            'icon' => 'tag',        'href' => '/webprogg/admin/adminhiveclub.php'],
     ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
     ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
     ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
@@ -148,7 +193,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
 
 /* =========================================================
    BOOKINGS BY STATUS (donut) — DYNAMIC
-   Every status that exists in the DB gets a slice.
    ========================================================= */
  $statusCountsRaw = $pdo->query(
     "SELECT status, COUNT(*) AS cnt FROM bookings GROUP BY status"
@@ -161,6 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['host_app_action'], $_
     'completed' => '#2F7DE1',
     'cancelled' => '#E14B4B',
     'pending'   => '#F5A623',
+    'rejected'  => '#B03A3A',
     'failed'    => '#B03A3A',
     'refunded'  => '#9B6BC3',
 ];
@@ -277,15 +322,13 @@ foreach ($statusCountsRaw as $rawStatus => $count) {
     ['label' => 'New Conversations',  'value' => number_format($newConversationsThisMonth), 'icon' => 'message'],
 ];
 
-/* ---------- Notifications: count of pending applications ---------- */
+/* ---------- Notifications: pending applications ---------- */
  $pendingHostApps = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
  $pendingListings = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
  $notificationCount = $pendingHostApps + $pendingListings;
 
 /* =========================================================
    CHART DATA — last 7 days of bookings / revenue
-   FIX: revenue now counts amount_paid from ALL bookings
-   (any status), so pending bookings still draw real bars.
    ========================================================= */
  $chartLabels   = [];
  $bookingSeries = [];
@@ -394,7 +437,7 @@ foreach ($listingStatusRaw as $rawStatus => $count) {
  $locLabels = array_keys($topLocations);
  $locSeries = array_map('intval', array_values($topLocations));
 
-/* ---------- Inline icon helper (lucide-style strokes) ---------- */
+/* ---------- Inline icon helper ---------- */
 function icon($name, $class = '') {
     $icons = [
         'home' => '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
@@ -407,7 +450,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -434,7 +477,6 @@ function statusBadgeClass($status) {
     return $map[$status] ?? '';
 }
 
-/** Renders a small "nothing here yet" placeholder inside a list panel. */
 function emptyState($text) {
     echo '<div class="empty-state">';
     echo '<div class="empty-icon">'.icon('inbox').'</div>';
@@ -442,10 +484,6 @@ function emptyState($text) {
     echo '</div>';
 }
 
-/**
- * Renders an <img> with an onerror fallback so a file missing
- * on disk shows the placeholder image instead of a broken icon.
- */
 function listImage($src, $alt, $class = '') {
     $safeSrc = htmlspecialchars($src);
     $safeAlt = htmlspecialchars($alt);
@@ -503,6 +541,28 @@ function listImage($src, $alt, $class = '') {
     .admin-menu-item .icon { width: 16px; height: 16px; }
     .admin-logout { color: #E14B4B; }
 
+    /* ---- NAV ALIGNMENT: mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
+
     .host-app-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .host-app-form { margin: 0; }
     .host-app-btn {
@@ -525,10 +585,6 @@ function listImage($src, $alt, $class = '') {
         object-fit: cover;
     }
 
-    /* ==========================================================
-       DONUT RENDERING FALLBACK — guaranteed correct even if
-       .donut-wrap / .donut-center are missing from admin.css.
-       ========================================================== */
     .donut-wrap {
         position: relative;
         width: 180px;
@@ -552,7 +608,6 @@ function listImage($src, $alt, $class = '') {
     .donut-total { font-size: 22px; font-weight: 800; color: #14142B; line-height: 1; }
     .donut-label { font-size: 11px; color: #8B93A6; margin-top: 3px; }
 
-    /* Visible message if the Chart.js CDN fails to load */
     .chart-fallback {
         display: none;
         padding: 40px 16px;
@@ -566,7 +621,10 @@ function listImage($src, $alt, $class = '') {
 </head>
 <body>
 
-<div class="layout">
+<div class="layout" id="adminLayout">
+
+    <!-- Mobile overlay (NAV ALIGNMENT) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
@@ -583,9 +641,8 @@ function listImage($src, $alt, $class = '') {
     <!-- ============ MAIN ============ -->
     <div class="main">
 
-        <!-- Topbar -->
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
 
             <div class="search-box">
                 <?= icon('search') ?>
@@ -652,7 +709,7 @@ function listImage($src, $alt, $class = '') {
                 <?php endforeach; ?>
             </div>
 
-            <!-- Row 1: Bookings Overview / Bookings by Status -->
+            <!-- Row 1 -->
             <div class="grid-3">
                 <div class="panel span-2">
                     <div class="panel-header">
@@ -690,7 +747,7 @@ function listImage($src, $alt, $class = '') {
                 </div>
             </div>
 
-            <!-- Row 2: Revenue Overview + Platform Summary / lists -->
+            <!-- Row 2 -->
             <div class="grid-3">
                 <div class="panel span-2 stack">
                     <div>
@@ -742,14 +799,16 @@ function listImage($src, $alt, $class = '') {
                                         <?php if ($h['raw_status'] === 'pending'): ?>
                                             <div class="host-app-actions">
                                                 <form method="post" action="/webprogg/admin/admin.php" class="host-app-form">
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($adminCsrf) ?>">
                                                     <input type="hidden" name="application_id" value="<?= $h['id'] ?>">
                                                     <input type="hidden" name="host_app_action" value="approve">
-                                                    <button type="submit" class="host-app-btn host-app-approve">Approve</button>
+                                                    <button type="submit" class="host-app-btn host-app-approve" onclick="return confirm('Approve <?= htmlspecialchars(addslashes($h['name'])) ?>\'s host application?');">Approve</button>
                                                 </form>
                                                 <form method="post" action="/webprogg/admin/admin.php" class="host-app-form">
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($adminCsrf) ?>">
                                                     <input type="hidden" name="application_id" value="<?= $h['id'] ?>">
                                                     <input type="hidden" name="host_app_action" value="reject">
-                                                    <button type="submit" class="host-app-btn host-app-reject">Reject</button>
+                                                    <button type="submit" class="host-app-btn host-app-reject" onclick="return confirm('Reject <?= htmlspecialchars(addslashes($h['name'])) ?>\'s host application?');">Reject</button>
                                                 </form>
                                             </div>
                                         <?php else: ?>
@@ -817,7 +876,7 @@ function listImage($src, $alt, $class = '') {
                 </div>
             </div>
 
-            <!-- Row 3: User & Listing Growth / Listings by Status -->
+            <!-- Row 3 -->
             <div class="grid-3">
                 <div class="panel span-2">
                     <div class="panel-header">
@@ -855,7 +914,7 @@ function listImage($src, $alt, $class = '') {
                 </div>
             </div>
 
-            <!-- Row 4: Rating Distribution / Top Locations -->
+            <!-- Row 4 -->
             <div class="grid-3">
                 <div class="panel">
                     <div class="panel-header">
@@ -887,23 +946,56 @@ function listImage($src, $alt, $class = '') {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
+/* =====================================================
+   NAV ALIGNMENT — canonical shared admin UI script
+   (chip dropdown, mobile sidebar toggle, topbar shadow)
+====================================================== */
 (function () {
-    const chip = document.getElementById('adminChip');
-    if (!chip) return;
+    "use strict";
 
-    chip.addEventListener('click', function (e) {
-        chip.classList.toggle('open');
-        e.stopPropagation();
+    var chip = document.getElementById('adminChip');
+    if (chip) {
+        chip.addEventListener('click', function (e) {
+            chip.classList.toggle('open');
+            e.stopPropagation();
+        });
+        document.addEventListener('click', function () {
+            chip.classList.remove('open');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
+    }
+
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
     });
 
-    document.addEventListener('click', function () {
-        chip.classList.remove('open');
-    });
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
 })();
 </script>
 <script>
-/* Guard: if the Chart.js CDN failed, show fallback messages
-   in every panel instead of silently blank canvases. */
+/* Chart.js load guard */
 if (typeof Chart === 'undefined') {
     document.querySelectorAll('.chart-fallback').forEach(function (el) {
         el.style.display = 'block';
@@ -914,7 +1006,7 @@ const chartLabels = <?= json_encode($chartLabels) ?>;
 const bookingSeries = <?= json_encode($bookingSeries) ?>;
 const revenueSeries = <?= json_encode($revenueSeries) ?>;
 
-/* ===== 1. Bookings Overview (line, last 7 days) ===== */
+/* ===== 1. Bookings Overview ===== */
 new Chart(document.getElementById('bookingsChart'), {
     type: 'line',
     data: {
@@ -946,7 +1038,7 @@ new Chart(document.getElementById('bookingsChart'), {
     }
 });
 
-/* ===== 2. Bookings by Status (doughnut — dynamic) ===== */
+/* ===== 2. Bookings by Status (doughnut) ===== */
 const statusEl = document.getElementById('statusChart');
 if (statusEl) {
     new Chart(statusEl, {
@@ -968,7 +1060,7 @@ if (statusEl) {
     });
 }
 
-/* ===== 3. Revenue Overview (bar, last 7 days — ALL bookings) ===== */
+/* ===== 3. Revenue Overview ===== */
 new Chart(document.getElementById('revenueChart'), {
     type: 'bar',
     data: {
@@ -1005,7 +1097,7 @@ new Chart(document.getElementById('revenueChart'), {
     }
 });
 
-/* ===== 4. User & Listing Growth (dual line, 6 months) ===== */
+/* ===== 4. User & Listing Growth ===== */
 new Chart(document.getElementById('growthChart'), {
     type: 'line',
     data: {
@@ -1043,7 +1135,7 @@ new Chart(document.getElementById('growthChart'), {
     }
 });
 
-/* ===== 5. Listings by Status (doughnut — dynamic) ===== */
+/* ===== 5. Listings by Status (doughnut) ===== */
 const listingStatusEl = document.getElementById('listingStatusChart');
 if (listingStatusEl) {
     new Chart(listingStatusEl, {
@@ -1065,7 +1157,7 @@ if (listingStatusEl) {
     });
 }
 
-/* ===== 6. Rating Distribution (horizontal bar) ===== */
+/* ===== 6. Rating Distribution ===== */
 const ratingCtx = document.getElementById('ratingChart');
 if (ratingCtx) {
     new Chart(ratingCtx, {
@@ -1092,7 +1184,7 @@ if (ratingCtx) {
     });
 }
 
-/* ===== 7. Top Locations by Bookings (horizontal bar) ===== */
+/* ===== 7. Top Locations by Bookings ===== */
 const locationCtx = document.getElementById('locationChart');
 if (locationCtx) {
     new Chart(locationCtx, {
@@ -1101,7 +1193,7 @@ if (locationCtx) {
             labels: <?= json_encode($locLabels) ?>,
             datasets: [{
                 data: <?= json_encode($locSeries) ?>,
-                backgroundColor: '#2F7DE1',
+                backgroundColor: '#EDA423',
                 borderRadius: 4,
                 maxBarThickness: 16,
                 label: 'Bookings'
@@ -1119,7 +1211,8 @@ if (locationCtx) {
     });
 }
 
-} /* end Chart.js guard */
+}
 </script>
+
 </body>
 </html>

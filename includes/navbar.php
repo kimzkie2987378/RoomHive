@@ -12,12 +12,20 @@
      - Both     → Profile Settings + Messages (each side's
                   own inbox) + Logout
 
+   HOME + LOGO (CHANGED):
+     - Guest            → /webprogg/index.php (public landing)
+     - Logged-in (ANY)  → /webprogg/user/usershome.php
+   The old role-crossing logic (hosts → hostprofile.php) was
+   REMOVED. HOME now goes to userhome only, never to
+   hostprofile.php or userprofile.php. A page can still
+   override by setting $homeHref BEFORE including this file.
+
    Before including, set:
      $isLoggedIn (bool), $navigation (array),
      $currentPage (string)
    Optional (safe defaults):
      $navAvatar, $notification_count, $isHost,
-     $logoHref, $guestCtaHref, $guestCtaLabel
+     $logoHref, $homeHref, $guestCtaHref, $guestCtaLabel
 ========================================================= */
 
 /* Fallback: derive login state from the session if the page
@@ -25,29 +33,52 @@
    pages" bug). */
  $isLoggedIn = $isLoggedIn ?? (($_SESSION['logged_in'] ?? false) === true);
 
+/* Derive host flag from the session as a fallback too, so
+   role-aware dropdown links work even on pages that never
+   set $isHost. */
+ $isHost = $isHost ?? false;
+if (!$isHost && (($_SESSION['is_host'] ?? false) === true)) {
+    $isHost = true;
+}
+
  $navigation  = $navigation  ?? [];
  $currentPage = $currentPage ?? '';
 
- $isHost        = $isHost        ?? false;
- $logoHref      = $logoHref      ?? ($isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php');
+/* =========================================================
+   HOME LINK (CHANGED — no more role crossing)
+   Logged-in users ALWAYS go to userhome. Guests get the
+   public landing page. Override per page via $homeHref.
+========================================================= */
+ $navHomeHref = '/webprogg/index.php';
+if ($isLoggedIn) {
+    $navHomeHref = '/webprogg/user/usershome.php';
+}
+/* Optional per-page override (wins over the default) */
+if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
+    $navHomeHref = $homeHref;
+}
+
+/* Logo follows HOME unless the page explicitly set one */
+ $logoHref = $logoHref ?? $navHomeHref;
+
  $guestCtaHref  = $guestCtaHref  ?? '/webprogg/auth/loginform.php';
  $guestCtaLabel = $guestCtaLabel ?? 'LIST YOUR SPACE';
 
  $navAvatar          = $navAvatar          ?? '/webprogg/images/default-avatar.png';
  $notification_count = $notification_count ?? 0;
 
-/* ---- Role-aware dropdown links ---- */
+/* ---- Role-aware dropdown links (dropdown unchanged) ---- */
  $messagesHref = $isHost
     ? '/webprogg/host/hostmessages.php'
     : '/webprogg/user/usermessages.php';
 
- $profileHref     = $isHost
+ $profileHref  = $isHost
     ? '/webprogg/host/hostprofile.php'
     : '/webprogg/user/userprofile.php';
 
- $profileLabel    = $isHost ? 'Host Dashboard' : 'User Profile';
+ $profileLabel = $isHost ? 'Host Dashboard' : 'User Profile';
 
- $settingsHref    = $isHost
+ $settingsHref = $isHost
     ? '/webprogg/host/hosteditprofile.php'
     : '/webprogg/user/editprofile.php';
 ?>
@@ -216,7 +247,7 @@
 
 <header class="navbar">
 
-    <!-- LOGO -->
+    <!-- LOGO — same target as HOME (userhome for logged-in) -->
     <a href="<?php echo htmlspecialchars($logoHref); ?>" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
@@ -225,9 +256,18 @@
     <nav class="nav-links">
 
         <?php foreach ($navigation as $name => $link): ?>
+            <?php
+                /* HOME is always forced to the fixed target
+                   (userhome for logged-in users), regardless of
+                   what the page's $navigation array hardcoded. */
+                $effectiveLink = $link;
+                if (strcasecmp((string) $name, 'HOME') === 0) {
+                    $effectiveLink = $navHomeHref;
+                }
+            ?>
             <a
-                href="<?php echo htmlspecialchars($link); ?>"
-                class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
+                href="<?php echo htmlspecialchars($effectiveLink); ?>"
+                class="<?php echo ($effectiveLink === $currentPage) ? 'active' : ''; ?>"
             >
                 <?php echo htmlspecialchars($name); ?>
             </a>

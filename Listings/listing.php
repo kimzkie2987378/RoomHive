@@ -1,56 +1,117 @@
 <?php
     /* =========================
     listing.php
+
+    === CHANGES ===
+    1-10. (previous fixes: layout, filters synced with host form)
+    11. HEARTS = WISHLIST (one source of truth):
+        - Saved IDs loaded from the wishlist table on load;
+          hearts render already-filled for saved listings.
+        - Heart click POSTs to /webprogg/user/togglewishlist.php
+          (same endpoint the wishlist page uses) — no more
+          localStorage, so favorites and My Wishlist match.
+        - Guests clicking a heart get the login modal.
+    12. ACTIVE-FILTER CHIP ROW HIDDEN — javaScript.js injects
+        the "Wi-fi x Parking x ..." row; its gold styles live
+        in listings-interactive.css which this page doesn't
+        load, so it rendered as default blue links. Now
+        display:none via CSS kill switch.
     ========================== */
     session_start();
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
-    /* =========================
-    STALE BOOKING HOLD CLEANUP
-    Free up any 'pending' bookings that were never paid within
-    the hold window (10 minutes), so those listings reappear
-    here automatically. Paid holds and confirmed bookings are
-    left untouched — see booking_helpers.php for the full rule.
-    Must run BEFORE the $allListings query below, since that
-    query is what decides which listings currently count as
-    "taken".
-    ========================== */
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/booking_helpers.php';
     roomhive_expire_stale_bookings($pdo);
 
-    /* =========================
-    NEGROS ORIENTAL LOCATION DATA
-    ========================== */
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/negros-oriental-locations.php';
-    // Provides: $province (string) and $negrosOrientalLocations (array)
 
-    /* =========================
-    LOGIN STATUS
-    ========================== */
+    /* =========================================================
+       AMENITY NORMALIZERS
+    ========================================================== */
+
+    function roomhive_normalize_amenity($value)
+    {
+        $v = strtolower(trim((string) $value));
+        $v = preg_replace('/[^a-z0-9]+/', '-', $v);
+        return trim($v, '-');
+    }
+
+    function roomhive_canonical_amenity($value)
+    {
+        static $synonyms = [
+            'wifi'                 => 'wifi',
+            'wi-fi'                => 'wifi',
+            'wireless-internet'    => 'wifi',
+            'internet'             => 'wifi',
+
+            'parking'              => 'parking',
+            'parking-space'        => 'parking',
+            'car-parking'          => 'parking',
+            'free-parking'         => 'parking',
+
+            'aircon'               => 'aircon',
+            'air-con'              => 'aircon',
+            'air-conditioning'     => 'aircon',
+            'ac'                   => 'aircon',
+
+            'pet-friendly'         => 'pet-friendly',
+            'pets-allowed'         => 'pet-friendly',
+            'pets'                 => 'pet-friendly',
+
+            'free-water'           => 'free-water',
+            'water-included'       => 'free-water',
+            'water'                => 'free-water',
+
+            'free-electricity'     => 'free-electricity',
+            'electricity-included' => 'free-electricity',
+            'free-electric'        => 'free-electricity',
+            'electricity'          => 'free-electricity',
+
+            'security'             => 'security',
+            '24-7-security'        => 'security',
+            'security-guard'       => 'security',
+            'cctv'                 => 'security',
+        ];
+
+        $key = roomhive_normalize_amenity($value);
+        return $synonyms[$key] ?? $key;
+    }
+
+    function roomhive_amenity_keys($raw)
+    {
+        if (is_array($raw)) {
+            $values = $raw;
+        } else {
+            $decoded = json_decode((string) $raw, true);
+            if (is_array($decoded)) {
+                $values = $decoded;
+            } elseif ((string) $raw !== '') {
+                $values = explode(',', (string) $raw);
+            } else {
+                $values = [];
+            }
+        }
+
+        $keys = [];
+        foreach ($values as $v) {
+            $k = roomhive_canonical_amenity($v);
+            if ($k !== '') {
+                $keys[] = $k;
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
     $isLoggedIn = (
         isset($_SESSION["logged_in"]) &&
         $_SESSION["logged_in"] === true
     );
 
-    /* NEW — FLOATING LOGIN MODAL
-    Guests get the login card popped over the page once per
-    browser session. Flip to false to disable auto-open
-    (the modal still opens from BECOME A HOST / Save-search links). */
     $autoOpenLoginPopup = !$isLoggedIn && empty($_SESSION['admin_logged_in']);
 
-    /* =========================
-    USER
-    ========================== */
     $userName = $_SESSION['user_name'] ?? 'Guest';
 
-    /* =========================
-    KEEP is_host IN SYNC WITH THE DATABASE
-    $_SESSION['is_host'] is only set at login time, so if a
-    host application gets approved (or status otherwise
-    changes) mid-session, the flag goes stale and the nav
-    keeps showing a Host Profile link that's missing (or vice
-    versa). Re-check the real column on every load.
-    ========================== */
     if ($isLoggedIn && isset($_SESSION['user_id'])) {
         $hostCheckStmt = $pdo->prepare("SELECT is_host, avatar_path FROM users WHERE id = :id LIMIT 1");
         $hostCheckStmt->execute(['id' => $_SESSION['user_id']]);
@@ -59,18 +120,42 @@
         $_SESSION['avatar_path'] = $hostRow['avatar_path'] ?? null;
     }
 
-    /* Same staleness reasoning as is_host above: the navbar's
-    account icon should reflect a freshly-uploaded profile photo
-    without requiring the user to log out and back in. */
     $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-    /* Notification bell badge count — same placeholder used across
-       every logged-in page's navbar until real notifications land. */
     $notification_count = 0;
+    if ($isLoggedIn && isset($_SESSION['user_id'])) {
+        $ncStmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = :u");
+        $ncStmt->execute(['u' => $_SESSION['user_id']]);
+        $notification_count = (int) $ncStmt->fetchColumn();
+    }
 
-    /* =========================
-    NAVIGATION
-    ========================== */
+    /* =========================================================
+       CHANGE #11 — WISHLIST (same table userwishlist.php reads)
+    ========================================================== */
+    $savedListingIds = [];
+    if ($isLoggedIn && isset($_SESSION['user_id'])) {
+        try {
+            $wStmt = $pdo->prepare(
+                "SELECT listing_id FROM wishlist WHERE user_id = :u"
+            );
+            $wStmt->execute(['u' => $_SESSION['user_id']]);
+            $savedListingIds = array_map(
+                'intval',
+                $wStmt->fetchAll(PDO::FETCH_COLUMN)
+            );
+        } catch (PDOException $e) {
+            /* table missing — hearts still work because
+               togglewishlist.php self-heals it */
+            $savedListingIds = [];
+        }
+    }
+
+    function rh_is_saved($id)
+    {
+        global $savedListingIds;
+        return in_array((int) $id, $savedListingIds, true);
+    }
+
     $navigation = [
         "HOME" => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
         "LISTINGS" => "/webprogg/Listings/listing.php",
@@ -82,57 +167,18 @@
     $currentPage = $navigation['LISTINGS'];
     $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
 
-    /* =========================
-    LISTINGS DATA (category tiles at top of page — unrelated
-    to the real $allListings query below, kept as-is)
-    ========================== */
     $listings = [
-        [
-            'name'  => 'STUDIO LOFT',
-            'image' => '/webprogg/images/StudioLoft.png',
-            'slug'  => 'studioloft'
-        ],
-        [
-            'name'  => 'SHARED ROOM',
-            'image' => '/webprogg/images/SharedBedroom.png',
-            'slug'  => 'sharedbedroom'
-        ],
-        [
-            'name'  => 'ENTIRE HOUSE',
-            'image' => '/webprogg/images/EntireHouse.png',
-            'slug'  => 'entirehouse'
-        ],
-        [
-            'name'  => 'PRIVATE ROOM',
-            'image' => '/webprogg/images/PrivateRoom.png',
-            'slug'  => 'privateroom'
-        ],
-        [
-            'name'  => 'BOARDING HOUSE',
-            'image' => '/webprogg/images/BoardingHouse.png',
-            'slug'  => 'boardinghouse'
-        ],
-        [
-            'name'  => 'APARTMENT',
-            'image' => '/webprogg/images/Apartment.png',
-            'slug'  => 'apartment'
-        ],
+        ['name' => 'STUDIO LOFT',    'image' => '/webprogg/images/StudioLoft.png',    'slug' => 'studio-loft'],
+        ['name' => 'SHARED ROOM',    'image' => '/webprogg/images/SharedBedroom.png', 'slug' => 'shared-bedroom'],
+        ['name' => 'ENTIRE HOUSE',   'image' => '/webprogg/images/EntireHouse.png',   'slug' => 'entire-house'],
+        ['name' => 'PRIVATE ROOM',   'image' => '/webprogg/images/PrivateRoom.png',   'slug' => 'private-room'],
+        ['name' => 'BOARDING HOUSE', 'image' => '/webprogg/images/BoardingHouse.png', 'slug' => 'boarding-house'],
+        ['name' => 'APARTMENT',      'image' => '/webprogg/images/Apartment.png',     'slug' => 'apartment'],
     ];
-
-    /* =========================
-    ALL LISTINGS
-    Pulled from the real `listings` table (joined against
-    listing_photos for the cover image). Only approved
-    listings with no active booking show up here — the
-    moment a listing gets booked, it disappears from this
-    page automatically. Stale unpaid holds were already
-    swept above, so this NOT EXISTS check now only matches
-    real (paid-pending or confirmed) holds.
-    ========================== */
 
     $listingsStmt = $pdo->query(
         "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
-                l.bedrooms, l.amenities, l.created_at,
+                l.bedrooms, l.parking, l.amenities, l.created_at,
                 p.photo_path AS cover_photo
         FROM listings l
         LEFT JOIN listing_photos p
@@ -142,6 +188,7 @@
             SELECT 1 FROM bookings b
             WHERE b.listing_id = l.id
                 AND b.status = 'pending'
+                AND b.payment_status = 'paid'
         )
         ORDER BY l.created_at DESC"
     );
@@ -149,27 +196,20 @@
         return [
             'id'             => (int) $row['id'],
             'title'          => $row['title'],
-            /*
-             * FIX: cover photos are written to disk by
-             * host-step3.php using an ABSOLUTE path built from
-             * $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/listing_photos/cover/'
-             * — there is no "host/" segment in that real
-             * directory. The old code here hardcoded
-             * '/webprogg/host/uploads/listing_photos/cover/',
-             * which pointed at a folder that doesn't exist, so
-             * every cover photo 404'd on this page (both the
-             * "Explore More Spaces" carousel and the main
-             * listing grid).
-             */
             'image' => !empty($row['cover_photo'])
-                ? '/webprogg/uploads/listing_photos/cover/' . basename($row['cover_photo'])
+                ? (preg_match('#^https?://#i', (string) $row['cover_photo'])
+                    ? $row['cover_photo']
+                    : (stripos(ltrim((string) $row['cover_photo'], '/'), 'webprogg/') === 0
+                        ? '/' . ltrim((string) $row['cover_photo'], '/')
+                        : '/webprogg/uploads/listing_photos/cover/' . basename((string) $row['cover_photo'])))
                 : '/webprogg/images/ListingPlaceholder.png',
             'location'       => $row['location'],
             'location_label' => $row['location'],
             'category'       => $row['category'],
             'price'          => (float) $row['price'],
             'bedrooms'       => (int) $row['bedrooms'],
-            'amenities'      => json_decode($row['amenities'] ?? '[]', true) ?? [],
+            'parking_available' => strtolower(trim((string) ($row['parking'] ?? ''))) === 'yes',
+            'amenities'      => roomhive_amenity_keys($row['amenities'] ?? null),
             'rating'         => 0,
             'reviews'        => 0,
             'verified'       => false,
@@ -177,32 +217,19 @@
         ];
     }, $listingsStmt->fetchAll());
 
-    /* =========================
-    LOCATIONS
-    (derived from negros-oriental-locations.php — all 25
-    cities/municipalities in the province, since RoomHive
-    currently serves Negros Oriental only)
-    ========================== */
     $locations = [];
     foreach ($negrosOrientalLocations as $citySlug => $cityData) {
         $locations[$citySlug] = ($cityData['type'] === 'city' ? 'City of ' : '') . $cityData['label'];
     }
 
-    /* =========================
-    CATEGORIES
-    ========================== */
     $categories = [
-        'apartment'     => 'Apartment',
-        'boardinghouse' => 'Boarding House',
-        'privateroom'   => 'Private Room',
-        'entirehouse'   => 'Entire House',
-        'sharedbedroom' => 'Shared Bedroom',
-        'studioloft'    => 'Studio Loft',
+        'shared-bedroom' => 'Shared Bedroom',
+        'private-room'   => 'Private Room',
+        'entire-house'   => 'Entire House',
+        'boarding-house' => 'Boarding House',
+        'studio-loft'    => 'Studio Loft',
     ];
 
-    /* =========================
-    AMENITIES
-    ========================== */
     $amenityOptions = [
         'wifi'             => 'Wi-fi',
         'parking'          => 'Parking',
@@ -210,11 +237,18 @@
         'pet-friendly'     => 'Pet Friendly',
         'free-water'       => 'Free Water',
         'free-electricity' => 'Free Electricity',
+        'security'         => '24/7 Security',
     ];
 
-    /* =========================
-    FILTER INPUT
-    ========================== */
+    $amenityIcons = [
+        'wifi'             => '/webprogg/images/wifiicon.png',
+        'parking'          => '/webprogg/images/parkingicon.png',
+        'aircon'           => '/webprogg/images/airconicon.png',
+        'pet-friendly'     => '/webprogg/images/petsicon.png',
+        'free-water'       => '/webprogg/images/watericon.png',
+        'free-electricity' => '/webprogg/images/elcetricityicon.png',
+        'security'         => '/webprogg/images/SecurityIcon.png',
+    ];
 
     $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
         ? trim($_GET['location'])
@@ -228,7 +262,6 @@
         ? trim($_GET['q'])
         : '';
 
-    /* PRICE */
     $priceMin = isset($_GET['price_min']) && is_numeric($_GET['price_min'])
         ? (int) $_GET['price_min']
         : 0;
@@ -237,52 +270,33 @@
         ? (int) $_GET['price_max']
         : 20000;
 
-    /* Keep price values inside allowed range */
     $priceMin = max(0, min($priceMin, 20000));
     $priceMax = max(0, min($priceMax, 20000));
 
-    /* Prevent minimum from being greater than maximum */
     if ($priceMin > $priceMax) {
         $priceMin = 0;
     }
 
-    /* =========================
-    AMENITIES INPUT
-    ---------------------------------------------------
-    FIX: unchecked checkboxes are never sent by the
-    browser, so "amenities[]" being absent from $_GET
-    is ambiguous — it could mean "fresh page load" OR
-    "user unchecked/cleared every amenity". Both forms
-    that touch amenities send a hidden
-    "amenities_submitted" flag, so we can tell those two
-    cases apart:
-        - flag NOT present  -> first visit, use the
-                                default ('wifi' preselected)
-        - flag present       -> trust exactly what was sent,
-                                even if that's nothing at all
-    ========================== */
-
     if (isset($_GET['amenities_submitted'])) {
         $selectedAmenities = $_GET['amenities'] ?? [];
     } else {
-        $selectedAmenities = ['wifi'];
+        $selectedAmenities = [];
     }
 
     if (!is_array($selectedAmenities)) {
         $selectedAmenities = [$selectedAmenities];
     }
 
-    /* Only allow valid amenities */
-    $selectedAmenities = array_values(
-        array_intersect(
-            $selectedAmenities,
-            array_keys($amenityOptions)
-        )
+    $selectedAmenities = array_map(
+        'roomhive_canonical_amenity',
+        $selectedAmenities
     );
+    $selectedAmenities = array_values(array_intersect(
+        array_unique($selectedAmenities),
+        array_keys($amenityOptions)
+    ));
 
-    /* =========================
-    FILTER LOGIC
-    ========================== */
+    $amenityMatchMode = 'all';
 
     $filteredListings = array_filter(
         $allListings,
@@ -292,26 +306,18 @@
             $searchQuery,
             $priceMin,
             $priceMax,
-            $selectedAmenities
+            $selectedAmenities,
+            $amenityMatchMode,
+            $locations
         ) {
 
-            /* LOCATION
-            NOTE: listings.location is free text typed by the
-            host on host-step2.php, while $selectedLocation is
-            a city SLUG from the filter dropdown. These won't
-            match with strict equality once real hosts start
-            typing their own location text — switch host-step2.php's
-            Location field to a <select> of the same slugs, or
-            change this to a stripos() partial match, to make
-            the location filter actually work end-to-end. */
-            if (
-                $selectedLocation !== '' &&
-                $listing['location'] !== $selectedLocation
-            ) {
-                return false;
+            if ($selectedLocation !== '' && isset($locations[$selectedLocation])) {
+                $coreCity = preg_replace('/^City of\s+/i', '', $locations[$selectedLocation]);
+                if (stripos($listing['location'], $coreCity) === false) {
+                    return false;
+                }
             }
 
-            /* CATEGORY */
             if (
                 $selectedCategory !== '' &&
                 $listing['category'] !== $selectedCategory
@@ -319,7 +325,6 @@
                 return false;
             }
 
-            /* PRICE */
             if (
                 $listing['price'] < $priceMin ||
                 $listing['price'] > $priceMax
@@ -327,7 +332,6 @@
                 return false;
             }
 
-            /* SEARCH */
             if ($searchQuery !== '') {
 
                 $searchText =
@@ -341,19 +345,32 @@
                 }
             }
 
-            /* AMENITIES */
             if (!empty($selectedAmenities)) {
 
-                $hasAllAmenities =
-                    count(
-                        array_diff(
-                            $selectedAmenities,
-                            $listing['amenities']
-                        )
-                    ) === 0;
+                $wantsParking = in_array('parking', $selectedAmenities, true);
+                $rest = array_values(array_diff($selectedAmenities, ['parking']));
 
-                if (!$hasAllAmenities) {
-                    return false;
+                if ($wantsParking) {
+                    $hasParking = $listing['parking_available']
+                        || in_array('parking', $listing['amenities'], true);
+
+                    if (!$hasParking) {
+                        return false;
+                    }
+                }
+
+                if (!empty($rest)) {
+                    $listingAmenities = $listing['amenities'];
+
+                    if ($amenityMatchMode === 'any') {
+                        if (count(array_intersect($rest, $listingAmenities)) === 0) {
+                            return false;
+                        }
+                    } else {
+                        if (count(array_diff($rest, $listingAmenities)) !== 0) {
+                            return false;
+                        }
+                    }
                 }
             }
 
@@ -361,17 +378,7 @@
         }
     );
 
-    /* =========================
-    NORMALIZE FILTERED RESULTS
-    ========================== */
-
     $filteredListings = array_values($filteredListings);
-
-    /* =========================
-    ACTIVE FILTER CHIPS
-    (lets the user see and remove one filter at a time
-    instead of hunting back through the whole bar)
-    ========================== */
 
     $activeFilters = [];
 
@@ -414,9 +421,6 @@
 
         $activeFilters[] = [
             'label' => $amenityOptions[$amenity],
-            /* Always keep amenities_submitted=1 so an empty
-            remaining list is respected as "cleared" rather
-            than falling back to the wifi default. */
             'url'   => roomhive_url([
                 'amenities'           => $remainingAmenities ?: null,
                 'amenities_submitted' => 1,
@@ -428,11 +432,7 @@
 
     $clearFiltersUrl = '/webprogg/Listings/listing.php';
 
-    /* =========================
-    PAGINATION
-    ========================== */
-
-    $perPage = 6;
+    $perPage = 16;
 
     $totalItems = count($filteredListings);
 
@@ -456,18 +456,12 @@
         $perPage
     );
 
-    /* "New" badge window: listings added in the last 14 days */
-    $todayTimestamp = strtotime('2026-09-03');
-
-    /* =========================
-    QUERY URL HELPER
-    ========================== */
+    $todayTimestamp = time();
 
     function roomhive_url($overrides = [])
     {
         $params = $_GET;
 
-        /* Remove invalid pagination first */
         unset($params['page']);
 
         foreach ($overrides as $key => $value) {
@@ -482,13 +476,6 @@
         return '/webprogg/Listings/listing.php?' . http_build_query($params);
     }
 
-    /* =========================
-    LISTING DETAIL LINK HELPER
-    Some listings have their own dedicated page
-    (e.g. ShairaDumagureApartmentForRent.php); the rest
-    fall back to the generic listing-detail.php?id=
-    ========================== */
-
     function roomhive_detail_url($listing)
     {
         if (!empty($listing['detail_url'])) {
@@ -497,10 +484,6 @@
 
         return '/webprogg/Listings/listing-detail.php?id=' . urlencode($listing['id']);
     }
-
-    /* =========================
-    SAFE CATEGORY LABEL
-    ========================== */
 
     $selectedCategoryLabel =
         $categories[$selectedCategory]
@@ -520,557 +503,116 @@
 
     <title>RoomHive - Listings</title>
 
-    <!-- Poppins (UI type) + Fraunces (display type, used only
-         for the greeting name and section titles) -->
     <link
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap"
         rel="stylesheet"
     >
 
-    <!-- CSS -->
     <link rel="stylesheet" href="/webprogg/assets/style.css">
     <link rel="stylesheet" href="/webprogg/assets/listings-style.css">
 
-    <!-- =========================
-        LISTINGS PAGE ENHANCEMENTS
-        (scoped here so nothing in style.css needs to
-        change; the modernized base rules for this page —
-        tokens, layout, cards, filter bar, etc. — now live
-        in style.css's listings section.)
-
-        NEW: this block now holds the self-contained
-        FLOATING LOGIN MODAL styles (hive-styled).
-    ========================== -->
     <style>
 
+/* ============ LOGIN MODAL ============ */
+.lx-modal{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px;visibility:hidden;pointer-events:none}
+.lx-modal.open{visibility:visible;pointer-events:auto}
+.lx-modal-backdrop{position:absolute;inset:0;background:rgba(22,58,48,.38);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);opacity:0;transition:opacity .3s ease}
+.lx-modal.open .lx-modal-backdrop{opacity:1}
+.lx-modal-card{position:relative;z-index:1;width:362px;max-height:calc(100vh - 48px);overflow-y:auto;background:#fff;border-radius:22px;padding:32px 30px 26px;box-shadow:0 30px 70px rgba(22,58,48,.35);opacity:0;transform:translateY(26px) scale(.96);transition:opacity .32s cubic-bezier(.22,1,.36,1),transform .32s cubic-bezier(.22,1,.36,1)}
+.lx-modal.open .lx-modal-card{opacity:1;transform:translateY(0) scale(1);animation:lxFloat 5s ease-in-out .4s infinite}
+.lx-modal-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#dd930f,#fbf1dc,#dd930f);border-radius:22px 22px 0 0}
+.lx-modal-close{position:absolute;top:12px;right:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#f4f1e7;border:none;border-radius:50%;color:#62705f;font-size:17px;line-height:1;cursor:pointer;transition:background .15s ease,color .15s ease,transform .15s ease}
+.lx-modal-close:hover{background:#dd930f;color:#fff;transform:rotate(90deg)}
+.lx-modal-logo{text-align:center;margin-bottom:10px}
+.lx-modal-logo img{width:96px;display:inline-block}
+.lx-modal-title{margin:0 0 16px;font-family:"Fraunces",serif;font-size:1.45rem;font-weight:600;text-align:center;color:#1c2b24}
+.lx-hint{padding:10px 14px;margin-bottom:14px;background:#fbf1dc;border:1px solid #f0dcb4;border-radius:11px;color:#b8760a;font-size:.8rem;font-weight:600;text-align:center}
+.lx-field{margin-bottom:12px}
+.lx-field label{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#1c2b24;font-size:.82rem;font-weight:500}
+.lx-input{width:100%;height:44px;padding:0 13px;background:#fdfcf8;border:1.5px solid #e8e1cf;border-radius:11px;outline:none;color:#1c2b24;font-family:"Poppins",sans-serif;font-size:.9rem;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
+.lx-input:focus{background:#fff;border-color:#dd930f;box-shadow:0 0 0 4px rgba(221,147,15,.14)}
+.lx-forgot{text-align:center;margin:4px 0 12px}
+.lx-forgot a{color:#1c2b24;font-size:.8rem;font-weight:600;text-decoration:none}
+.lx-forgot a:hover{color:#b8760a}
+.lx-submit{width:100%;height:46px;background:linear-gradient(135deg,#eda423,#dd930f);border:none;border-radius:12px;color:#fff;font-family:"Poppins",sans-serif;font-size:.92rem;font-weight:700;letter-spacing:.02em;cursor:pointer;box-shadow:0 8px 18px rgba(221,147,15,.35);transition:transform .2s ease,box-shadow .2s ease}
+.lx-submit:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(221,147,15,.45)}
+.lx-create{margin:14px 0 0;text-align:center;color:#62705f;font-size:.83rem}
+.lx-create a{color:#b8760a;font-weight:700;text-decoration:none}
+.lx-create a:hover{text-decoration:underline}
+@keyframes lxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@media (max-width:480px){.lx-modal{padding:14px}.lx-modal-card{width:100%;padding:26px 20px 22px}}
+
+.js-hidden{display:none !important}
+
+.listings-page{padding-top:130px}
+
+/* ============ GRID SAFETY NET (4 cols, full width) ============ */
+.listings-content{grid-template-columns:1fr !important}
+#rh-listings-results{display:grid !important;grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:24px !important;width:100% !important}
+#rh-listings-results.rh-list-view{grid-template-columns:1fr !important}
+@media (max-width:1180px){#rh-listings-results{grid-template-columns:repeat(3,minmax(0,1fr)) !important}}
+@media (max-width:900px){#rh-listings-results{grid-template-columns:repeat(2,minmax(0,1fr)) !important}}
+@media (max-width:720px){#rh-listings-results{grid-template-columns:1fr !important}}
+
+/* ============ AMENITY CHIPS ON CARDS ============ */
+.rh-card-amenities{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.rh-chip-mini{font-size:.68rem;font-weight:600;color:#b8760a;background:#fbf1dc;border:1px solid #f0dcb4;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.rh-chip-more{font-size:.68rem;font-weight:600;color:#62705f;align-self:center}
+
 /* =========================================================
-   FLOATING LOGIN MODAL — hive-styled, self-contained
+   CHANGE #12 — KILL ACTIVE-FILTER CHIP ROW
+   javaScript.js injects the "Wi-fi x Parking x ..." row by
+   reading the URL. Its gold styling lives in
+   listings-interactive.css, which this page doesn't load —
+   so the row rendered as default blue underlined links.
+   Hidden entirely; the amenity pill bar + Clear button
+   already provide the same function.
 ========================================================= */
-
-.lx-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 24px;
-
-  visibility: hidden;
-  pointer-events: none;
+.rh-chip-row,
+.rh-chip {
+    display: none !important;
 }
 
-.lx-modal.open {
-  visibility: visible;
-  pointer-events: auto;
-}
+/* ============ FILTER BARS — NON-STICKY ============ */
+.filter-bar{position:static;top:auto}
+.filter-bar.amenities-bar{position:static;top:auto;margin-top:8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:8px 10px}
+.filter-bar.amenities-bar::-webkit-scrollbar{display:none}
+@media (max-width:1180px){.filter-bar.amenities-bar{overflow-x:auto;flex-wrap:nowrap}}
 
-.lx-modal-backdrop {
-  position: absolute;
-  inset: 0;
+.amenities-bar-label{flex:0 0 auto;padding:6px 12px}
+.amenities-bar-title{font-size:.88rem;font-weight:600;color:var(--rh-ink);white-space:nowrap}
+.amenities-bar-label .filter-icon{width:15px;height:15px}
 
-  background: rgba(22, 58, 48, 0.38);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
+.amenity-toggle-form{flex:0 0 auto;margin:0}
 
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
+.amenity-toggle-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--rh-line);background:var(--rh-cloud);border-radius:var(--rh-radius-pill);padding:8px 16px;font-family:inherit;font-size:.85rem;font-weight:500;color:var(--rh-ink-soft);cursor:pointer;white-space:nowrap;transition:border-color .15s ease,color .15s ease,background .15s ease}
+.amenity-toggle-btn:hover{border-color:var(--rh-gold);color:var(--rh-gold-deep)}
+.amenity-toggle-btn.active{background:var(--rh-gold-wash);border-color:var(--rh-gold);color:var(--rh-gold-deep);font-weight:600}
 
-.lx-modal.open .lx-modal-backdrop {
-  opacity: 1;
-}
+.amenity-ico{width:15px;height:15px;object-fit:contain;opacity:.75}
+.amenity-toggle-btn.active .amenity-ico{opacity:1}
 
-.lx-modal-card {
-  position: relative;
-  z-index: 1;
+.amenity-check{font-size:.8rem;line-height:1}
 
-  width: 362px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+.amenity-clear-btn{display:inline-flex;align-items:center;border:1px solid var(--rh-line);background:none;border-radius:var(--rh-radius-pill);padding:8px 16px;font-family:inherit;font-size:.83rem;font-weight:600;color:var(--rh-coral);cursor:pointer;white-space:nowrap;transition:border-color .15s ease,background .15s ease}
+.amenity-clear-btn:hover{border-color:var(--rh-coral);background:#fceaea}
 
-  background: #ffffff;
-
-  border-radius: 22px;
-
-  padding: 32px 30px 26px;
-
-  box-shadow: 0 30px 70px rgba(22, 58, 48, 0.35);
-
-  opacity: 0;
-  transform: translateY(26px) scale(0.96);
-
-  transition:
-    opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.lx-modal.open .lx-modal-card {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-
-  animation: lxFloat 5s ease-in-out 0.4s infinite;
-}
-
-/* Honey accent bar across the top */
-.lx-modal-card::before {
-  content: "";
-
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-
-  height: 5px;
-
-  background: linear-gradient(90deg, #dd930f, #fbf1dc, #dd930f);
-
-  border-radius: 22px 22px 0 0;
-}
-
-.lx-modal-close {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-
-  width: 32px;
-  height: 32px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  background: #f4f1e7;
-
-  border: none;
-  border-radius: 50%;
-
-  color: #62705f;
-
-  font-size: 17px;
-  line-height: 1;
-
-  cursor: pointer;
-
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.lx-modal-close:hover {
-  background: #dd930f;
-
-  color: #ffffff;
-
-  transform: rotate(90deg);
-}
-
-.lx-modal-logo {
-  text-align: center;
-
-  margin-bottom: 10px;
-}
-
-.lx-modal-logo img {
-  width: 96px;
-
-  display: inline-block;
-}
-
-.lx-modal-title {
-  margin: 0 0 16px;
-
-  font-family: "Fraunces", serif;
-  font-size: 1.45rem;
-  font-weight: 600;
-
-  text-align: center;
-
-  color: #1c2b24;
-}
-
-.lx-error {
-  padding: 11px 14px;
-
-  margin-bottom: 14px;
-
-  background: #fdecec;
-
-  border: 1px solid #f3b9b9;
-  border-radius: 11px;
-
-  color: #a4302f;
-
-  font-size: 0.82rem;
-  font-weight: 500;
-
-  text-align: center;
-}
-
-.lx-field {
-  margin-bottom: 12px;
-}
-
-.lx-field label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  margin-bottom: 6px;
-
-  color: #1c2b24;
-
-  font-size: 0.82rem;
-  font-weight: 500;
-}
-
-.lx-field label img {
-  width: 16px;
-  height: 16px;
-
-  object-fit: contain;
-}
-
-.lx-input {
-  width: 100%;
-  height: 44px;
-
-  padding: 0 13px;
-
-  background: #fdfcf8;
-
-  border: 1.5px solid #e8e1cf;
-  border-radius: 11px;
-
-  outline: none;
-
-  color: #1c2b24;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.9rem;
-
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease;
-}
-
-.lx-input:focus {
-  background: #ffffff;
-
-  border-color: #dd930f;
-
-  box-shadow: 0 0 0 4px rgba(221, 147, 15, 0.14);
-}
-
-.lx-forgot {
-  text-align: center;
-
-  margin: 4px 0 12px;
-}
-
-.lx-forgot a {
-  color: #1c2b24;
-
-  font-size: 0.8rem;
-  font-weight: 600;
-
-  text-decoration: none;
-}
-
-.lx-forgot a:hover {
-  color: #b8760a;
-}
-
-.lx-submit {
-  width: 100%;
-  height: 46px;
-
-  background: linear-gradient(135deg, #eda423, #dd930f);
-
-  border: none;
-  border-radius: 12px;
-
-  color: #ffffff;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-
-  cursor: pointer;
-
-  box-shadow: 0 8px 18px rgba(221, 147, 15, 0.35);
-
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.lx-submit:hover {
-  transform: translateY(-2px);
-
-  box-shadow: 0 12px 24px rgba(221, 147, 15, 0.45);
-}
-
-.lx-submit:disabled {
-  opacity: 0.7;
-
-  cursor: not-allowed;
-
-  transform: none;
-}
-
-.lx-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  margin: 16px 0;
-
-  color: #62705f;
-
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.lx-divider::before,
-.lx-divider::after {
-  content: "";
-
-  flex: 1;
-  height: 1px;
-
-  background: #e8e1cf;
-}
-
-.lx-social {
-  width: 100%;
-  height: 44px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-
-  background: #ffffff;
-
-  border: 1.5px solid #e8e1cf;
-  border-radius: 11px;
-
-  color: #1c2b24;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.85rem;
-  font-weight: 500;
-
-  cursor: pointer;
-
-  margin-bottom: 10px;
-
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.2s ease;
-}
-
-.lx-social:hover {
-  border-color: #dd930f;
-
-  background: #fbf1dc;
-
-  transform: translateY(-1px);
-}
-
-.lx-social img {
-  width: 17px;
-  height: 17px;
-
-  object-fit: contain;
-}
-
-.lx-create {
-  margin: 6px 0 0;
-
-  text-align: center;
-
-  color: #62705f;
-
-  font-size: 0.83rem;
-}
-
-.lx-create a {
-  color: #b8760a;
-
-  font-weight: 700;
-
-  text-decoration: none;
-}
-
-.lx-create a:hover {
-  text-decoration: underline;
-}
-
-@keyframes lxFloat {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-@media (max-width: 480px) {
-  .lx-modal {
-    padding: 14px;
-  }
-
-  .lx-modal-card {
-    width: 100%;
-
-    padding: 26px 20px 22px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lx-modal-card,
-  .lx-modal-backdrop {
-    transition: none;
-  }
-
-  .lx-modal.open .lx-modal-card {
-    animation: none;
-  }
-}
+.category-dropdown-panel:not(.open){display:none}
 
     </style>
 
 </head>
 
-<body>
+<body data-logged-in="<?= $isLoggedIn ? '1' : '0' ?>">
 
-    <!-- =========================
-        NAVIGATION BAR
-    ========================== -->
+    <!-- ========================= NAVIGATION BAR ========================= -->
 
  <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
-     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
-    <!-- =========================
-        LISTINGS PAGE
-    ========================== -->
+ <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
     <main class="listings-page">
 
-        <!-- GREETING -->
-        <div class="listings-greeting">
-
-            <div class="greeting-text">
-
-                <p>Hello,</p>
-
-                <h1>
-                    <?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?>
-                </h1>
-
-                <p class="rh-hero-tagline">
-                    A place to call home in <?= htmlspecialchars($province ?? 'Negros Oriental', ENT_QUOTES, 'UTF-8') ?> —
-                    browse verified rooms, studios, and shared spaces near you.
-                </p>
-
-            </div>
-
-            <img
-                src="/webprogg/images/living_room_illustration.png"
-                alt=""
-                class="greeting-illustration"
-            >
-
-        </div>
-
-        <!-- =========================
-            EXPLORE MORE SPACES
-            (horizontally scrollable strip of every listing,
-            independent of the filters/pagination below —
-            scroll or use the arrows to browse them all.
-            Hidden entirely when there are no listings yet.)
-        ========================== -->
-
-        <?php if (!empty($allListings)): ?>
-
-        <section class="rh-carousel-section">
-
-            <div class="rh-carousel-header">
-
-                <h3>Explore More Spaces</h3>
-
-                <div class="rh-carousel-arrows">
-
-                    <button
-                        type="button"
-                        class="rh-carousel-arrow"
-                        id="rh-carousel-prev"
-                        aria-label="Scroll left"
-                    >
-                        &#10094;
-                    </button>
-
-                    <button
-                        type="button"
-                        class="rh-carousel-arrow"
-                        id="rh-carousel-next"
-                        aria-label="Scroll right"
-                    >
-                        &#10095;
-                    </button>
-
-                </div>
-
-            </div>
-
-            <div class="rh-carousel-track" id="rh-carousel-track">
-
-                <?php foreach ($allListings as $listing): ?>
-
-                    <a
-                        href="<?= htmlspecialchars(roomhive_detail_url($listing), ENT_QUOTES, 'UTF-8') ?>"
-                        class="rh-carousel-card"
-                    >
-
-                        <img
-                            src="<?= htmlspecialchars($listing['image'], ENT_QUOTES, 'UTF-8') ?>"
-                            alt="<?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?>"
-                        >
-
-                        <div class="rh-carousel-card-info">
-
-                            <h4><?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?></h4>
-
-                            <p>
-                                <?= htmlspecialchars($listing['location_label'], ENT_QUOTES, 'UTF-8') ?>
-                                &middot; ₱<?= number_format($listing['price']) ?>/month
-                            </p>
-
-                        </div>
-
-                    </a>
-
-                <?php endforeach; ?>
-
-            </div>
-
-        </section>
-
-        <?php endif; ?>
-
-        <!-- =========================
-            FILTER BAR
-        ========================== -->
+        <!-- ========================= MAIN FILTER BAR ========================= -->
 
         <form
             class="filter-bar"
@@ -1078,8 +620,6 @@
             action="/webprogg/Listings/listing.php"
             id="filter-form"
         >
-
-            <!-- LOCATION -->
 
             <div class="filter-group">
 
@@ -1122,8 +662,6 @@
             </div>
 
             <div class="filter-divider"></div>
-
-            <!-- CATEGORY -->
 
             <div
                 class="filter-group category-filter"
@@ -1206,8 +744,6 @@
 
             </div>
 
-            <!-- PRICE RANGE -->
-
             <div class="filter-group price-filter">
 
                 <span class="price-icon">
@@ -1247,8 +783,6 @@
 
             <div class="filter-divider"></div>
 
-            <!-- SEARCH -->
-
             <div class="filter-group search-filter">
 
                 <input
@@ -1277,11 +811,6 @@
 
             </div>
 
-            <!-- PRESERVE AMENITIES STATE
-                (marker flag first, then the actual selected
-                amenities — see the AMENITIES INPUT block above
-                for why the flag matters) -->
-
             <input type="hidden" name="amenities_submitted" value="1">
 
             <?php foreach ($selectedAmenities as $amenity): ?>
@@ -1300,21 +829,107 @@
 
         </form>
 
-        <!-- =========================
-            MAIN LISTINGS + SIDEBAR
-        ========================== -->
+        <!-- ========================= AMENITIES FILTER BAR ========================= -->
+
+        <div class="filter-bar amenities-bar" id="amenities-bar">
+
+            <div class="filter-group amenities-bar-label">
+
+                <img
+                    src="/webprogg/images/HouseIcon.png"
+                    alt=""
+                    class="filter-icon"
+                >
+
+                <span class="amenities-bar-title">Amenities</span>
+
+            </div>
+
+            <div class="filter-divider"></div>
+
+            <?php foreach ($amenityOptions as $value => $label): ?>
+
+                <?php
+                    $isChecked = in_array($value, $selectedAmenities, true);
+                    $remaining = array_values(array_diff($selectedAmenities, [$value]));
+                    $newAmenities = $isChecked ? $remaining : array_merge($selectedAmenities, [$value]);
+                ?>
+
+                <form
+                    method="get"
+                    action="/webprogg/Listings/listing.php"
+                    class="amenity-toggle-form"
+                >
+
+                    <input type="hidden" name="location" value="<?= htmlspecialchars($selectedLocation, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="category" value="<?= htmlspecialchars($selectedCategory, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="price_min" value="<?= (int) $priceMin ?>">
+                    <input type="hidden" name="price_max" value="<?= (int) $priceMax ?>">
+                    <input type="hidden" name="amenities_submitted" value="1">
+
+                    <?php foreach ($newAmenities as $am): ?>
+                        <input type="hidden" name="amenities[]" value="<?= htmlspecialchars($am, ENT_QUOTES, 'UTF-8') ?>">
+                    <?php endforeach; ?>
+
+                    <button
+                        type="submit"
+                        class="amenity-toggle-btn<?= $isChecked ? ' active' : '' ?>"
+                        aria-pressed="<?= $isChecked ? 'true' : 'false' ?>"
+                    >
+                        <?php if (!empty($amenityIcons[$value])): ?>
+                            <img
+                                src="<?= htmlspecialchars($amenityIcons[$value], ENT_QUOTES, 'UTF-8') ?>"
+                                alt=""
+                                class="amenity-ico"
+                            >
+                        <?php endif; ?>
+
+                        <span class="amenity-check"><?= $isChecked ? '&#10003;' : '&#9825;' ?></span>
+
+                        <?= htmlspecialchars($label) ?>
+                    </button>
+
+                </form>
+
+            <?php endforeach; ?>
+
+            <?php if (!empty($selectedAmenities)): ?>
+
+                <form
+                    method="get"
+                    action="/webprogg/Listings/listing.php"
+                    class="amenity-toggle-form"
+                >
+
+                    <input type="hidden" name="location" value="<?= htmlspecialchars($selectedLocation, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="category" value="<?= htmlspecialchars($selectedCategory, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="price_min" value="<?= (int) $priceMin ?>">
+                    <input type="hidden" name="price_max" value="<?= (int) $priceMax ?>">
+                    <input type="hidden" name="amenities_submitted" value="1">
+
+                    <button
+                        type="submit"
+                        class="amenity-clear-btn"
+                    >
+                        Clear
+                    </button>
+
+                </form>
+
+            <?php endif; ?>
+
+        </div>
+
+        <!-- ========================= MAIN LISTINGS ========================= -->
 
         <section class="listings-content">
 
             <div class="listings-main">
 
-                <!-- =========================
-                    SAVED-ONLY TOGGLE + SAVE THIS SEARCH
-                ========================== -->
-
                 <div class="rh-results-bar">
 
-                    <!-- RESULTS TOOLBAR — live count, sort, view switch -->
                     <div
                         class="rh-toolbar"
                         data-shown="<?= count($pageListings) ?>"
@@ -1338,13 +953,6 @@
 
                     <?php if ($isLoggedIn): ?>
 
-                        <!-- SAVE THIS SEARCH
-                            Posts the currently-applied filters (read
-                            straight from the same PHP variables the
-                            filter bar above renders from) to
-                            save-search.php. Guests never see this —
-                            saved_searches.user_id is NOT NULL. -->
-
                         <button
                             type="button"
                             class="rh-saved-toggle rh-save-search-btn"
@@ -1362,10 +970,6 @@
 
                     <?php else: ?>
 
-                        <!-- NEW: for guests this used to navigate to
-                             loginform.php — the floating modal's JS
-                             catches this link and opens the card in
-                             place instead (no markup change needed). -->
                         <a
                             class="rh-saved-toggle"
                             href="/webprogg/auth/loginform.php"
@@ -1376,19 +980,15 @@
 
                     <?php endif; ?>
 
-                    <button
-                        type="button"
+                    <a
+                        href="/webprogg/user/userwishlist.php"
                         class="rh-saved-toggle"
-                        id="rh-saved-toggle"
-                        aria-pressed="false"
                     >
-                        <span class="rh-heart-icon">&#9825;</span>
-                        Saved only
-                    </button>
+                        <span class="rh-heart-icon">&#9829;</span>
+                        My Wishlist
+                    </a>
 
                 </div>
-
-                <!-- LISTING CARDS -->
 
                 <div class="listings-results" id="rh-listings-results">
 
@@ -1419,12 +1019,24 @@
 
                         <?php
                         $isNew = strtotime($listing['date_added']) >= $todayTimestamp - (14 * 86400);
+
+                        $isSaved = rh_is_saved($listing['id']);
+
+                        $chipsForCard = $listing['amenities'];
+
+                        if ($listing['parking_available'] && !in_array('parking', $chipsForCard, true)) {
+                            array_unshift($chipsForCard, 'parking');
+                        }
+
+                        $visibleAmenities = array_slice($chipsForCard, 0, 3);
+                        $extraAmenities   = count($chipsForCard) - count($visibleAmenities);
                         ?>
 
                         <a
                             href="<?= htmlspecialchars(roomhive_detail_url($listing), ENT_QUOTES, 'UTF-8') ?>"
                             class="listing-box"
                             data-listing-id="<?= (int) $listing['id'] ?>"
+                            data-price="<?= (float) $listing['price'] ?>"
                         >
 
                             <div class="rh-card-media">
@@ -1456,12 +1068,12 @@
 
                                 <button
                                     type="button"
-                                    class="rh-save-btn"
+                                    class="rh-save-btn<?= $isSaved ? ' saved' : '' ?>"
                                     data-listing-id="<?= (int) $listing['id'] ?>"
-                                    aria-pressed="false"
+                                    aria-pressed="<?= $isSaved ? 'true' : 'false' ?>"
                                     aria-label="Save <?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?>"
                                 >
-                                    &#9825;
+                                    <?= $isSaved ? '&#9829;' : '&#9825;' ?>
                                 </button>
 
                             </div>
@@ -1507,6 +1119,36 @@
 
                                 </div>
 
+                                <?php if (!empty($visibleAmenities)): ?>
+
+                                    <div class="rh-card-amenities">
+
+                                        <?php foreach ($visibleAmenities as $amKey): ?>
+
+                                            <?php
+                                            $amLabel = isset($amenityOptions[$amKey])
+                                                ? $amenityOptions[$amKey]
+                                                : ucwords(str_replace('-', ' ', $amKey));
+                                            ?>
+
+                                            <span class="rh-chip-mini">
+                                                <?= htmlspecialchars($amLabel, ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+
+                                        <?php endforeach; ?>
+
+                                        <?php if ($extraAmenities > 0): ?>
+
+                                            <span class="rh-chip-more">
+                                                +<?= $extraAmenities ?> more
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </div>
+
+                                <?php endif; ?>
+
                                 <div class="listing-box-price">
 
                                     <span class="peso">
@@ -1529,24 +1171,18 @@
 
                 </div>
 
-                <!-- =========================
-                    PAGINATION
-                ========================== -->
+                <!-- ========================= PAGINATION ========================= -->
 
                 <?php if ($totalPages > 1): ?>
 
                     <div class="listings-pagination">
-
-                        <!-- PREVIOUS -->
 
                         <?php if ($page > 1): ?>
 
                             <a
                                 class="page-arrow"
                                 href="<?= htmlspecialchars(
-                                    roomhive_url([
-                                        'page' => $page - 1
-                                    ]),
+                                    roomhive_url(['page' => $page - 1]),
                                     ENT_QUOTES,
                                     'UTF-8'
                                 ) ?>"
@@ -1576,13 +1212,7 @@
 
                         <?php endif; ?>
 
-                        <!-- PAGE NUMBERS -->
-
-                        <?php for (
-                            $p = 1;
-                            $p <= $totalPages;
-                            $p++
-                        ): ?>
+                        <?php for ($p = 1; $p <= $totalPages; $p++): ?>
 
                             <?php
                             $showPage =
@@ -1614,9 +1244,7 @@
                             <a
                                 class="page-num <?= $p === $page ? 'active' : '' ?>"
                                 href="<?= htmlspecialchars(
-                                    roomhive_url([
-                                        'page' => $p
-                                    ]),
+                                    roomhive_url(['page' => $p]),
                                     ENT_QUOTES,
                                     'UTF-8'
                                 ) ?>"
@@ -1626,16 +1254,12 @@
 
                         <?php endfor; ?>
 
-                        <!-- NEXT -->
-
                         <?php if ($page < $totalPages): ?>
 
                             <a
                                 class="page-arrow"
                                 href="<?= htmlspecialchars(
-                                    roomhive_url([
-                                        'page' => $page + 1
-                                    ]),
+                                    roomhive_url(['page' => $page + 1]),
                                     ENT_QUOTES,
                                     'UTF-8'
                                 ) ?>"
@@ -1671,659 +1295,336 @@
 
             </div>
 
-            <!-- =========================
-                AMENITIES SIDEBAR
-            ========================== -->
-
-            <aside class="amenities-sidebar">
-
-                <h3>
-                    Amenities
-                </h3>
-
-                <form
-                    method="get"
-                    action="/webprogg/Listings/listing.php"
-                    id="amenities-form"
-                >
-
-                    <!-- KEEP LOCATION -->
-
-                    <?php if ($selectedLocation !== ''): ?>
-
-                        <input
-                            type="hidden"
-                            name="location"
-                            value="<?= htmlspecialchars(
-                                $selectedLocation,
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>"
-                        >
-
-                    <?php endif; ?>
-
-                    <!-- KEEP CATEGORY -->
-
-                    <?php if ($selectedCategory !== ''): ?>
-
-                        <input
-                            type="hidden"
-                            name="category"
-                            value="<?= htmlspecialchars(
-                                $selectedCategory,
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>"
-                        >
-
-                    <?php endif; ?>
-
-                    <!-- KEEP SEARCH -->
-
-                    <?php if ($searchQuery !== ''): ?>
-
-                        <input
-                            type="hidden"
-                            name="q"
-                            value="<?= htmlspecialchars(
-                                $searchQuery,
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>"
-                        >
-
-                    <?php endif; ?>
-
-                    <!-- KEEP PRICE -->
-
-                    <input
-                        type="hidden"
-                        name="price_max"
-                        value="<?= htmlspecialchars(
-                            $priceMax,
-                            ENT_QUOTES,
-                            'UTF-8'
-                        ) ?>"
-                    >
-
-                    <!-- MARKER: tells PHP this form was actually
-                        submitted, so zero checked boxes means
-                        "cleared", not "use the wifi default" -->
-
-                    <input type="hidden" name="amenities_submitted" value="1">
-
-                    <?php foreach (
-                        $amenityOptions
-                        as $value => $label
-                    ): ?>
-
-                        <label class="amenity-option">
-
-                            <input
-                                type="checkbox"
-                                name="amenities[]"
-                                value="<?= htmlspecialchars(
-                                    $value,
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                                <?= in_array(
-                                    $value,
-                                    $selectedAmenities,
-                                    true
-                                ) ? 'checked' : '' ?>
-                                onchange="document.getElementById('amenities-form').submit()"
-                            >
-
-                            <span>
-                                <?= htmlspecialchars(
-                                    $label,
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>
-                            </span>
-
-                        </label>
-
-                    <?php endforeach; ?>
-
-                    <button
-                        class="amenities-clear"
-                        type="button"
-                        onclick="roomhiveClearAmenities()"
-                    >
-                        Clear
-                    </button>
-
-                </form>
-
-                <!-- NEED HELP -->
-
-                <div class="need-help">
-
-                    <h4>
-                        Need Help?
-                    </h4>
-
-                    <a href="/webprogg/host/howitworks.php">
-                        How to rent a room?
-                    </a>
-
-                    <a href="/webprogg/Listings/listing.php">
-                        How to search listings?
-                    </a>
-
-                    <a href="/webprogg/host/becomeahost.php">
-                        How to become a host?
-                    </a>
-
-                    <a href="/webprogg/host/howitworks.php">
-                        Payment &amp; booking
-                    </a>
-
-                    <a href="/webprogg/Listings/listing.php">
-                        Location help
-                    </a>
-
-                    <a href="/webprogg/misc/contacts.php">
-                        Contact Support
-                    </a>
-
-                </div>
-
-            </aside>
-
         </section>
 
     </main>
 
-    <!-- =========================
-        FOOTER
-        (NOTE: your original paste was cut off inside this
-        footer — the LISTINGS links, QUICK LINKS, GET THE APP
-        and bottom bar below are a faithful reconstruction.
-        Swap in your real footer if it differs.)
-    ========================== -->
-
+    <!-- ========================= FOOTER ========================= -->
     <footer class="site-footer">
-
         <div class="footer-top">
-
-            <!-- BRAND -->
-
             <div class="footer-brand">
-
-                <img
-                    src="/webprogg/images/RoomHiveLogos.png"
-                    alt="RoomHive Logo"
-                    class="footer-logo"
-                >
-
-                <p class="footer-tagline">
-                    Find your next room, studio, or shared space —
-                    verified listings, no hidden fees.
-                </p>
-
-                <div class="footer-contact-line">
-
-                    <img
-                        src="/webprogg/images/PhoneIcon.jpg"
-                        alt=""
-                    >
-
-                    <span>
-                        0917 156 3974
-                    </span>
-
-                </div>
-
-                <div class="footer-contact-line">
-
-                    <img
-                        src="/webprogg/images/EmailIcon.jpg"
-                        alt=""
-                    >
-
-                    <span>
-                        iamroomhivehost@gmail.com
-                    </span>
-
-                </div>
-
+                <a href="/webprogg/index.php">
+                    <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
+                </a>
+                <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
+                <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+                <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+                <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
             </div>
-
-            <!-- LISTINGS -->
-
             <div class="footer-links">
-
-                <span class="footer-heading">
-                    LISTINGS
-                </span>
-
-                <a href="/webprogg/Listings/listing.php?category=studioloft">
-                    Studios
-                </a>
-
-                <a href="/webprogg/Listings/listing.php?category=sharedbedroom">
-                    Shared Rooms
-                </a>
-
-                <a href="/webprogg/Listings/listing.php?category=privateroom">
-                    Private Rooms
-                </a>
-
-                <a href="/webprogg/Listings/listing.php?category=entirehouse">
-                    Entire Houses
-                </a>
-
-                <a href="/webprogg/Listings/listing.php?category=boardinghouse">
-                    Boarding Houses
-                </a>
-
-                <a href="/webprogg/Listings/listing.php?category=apartment">
-                    Apartments
-                </a>
-
+                <span class="footer-heading">LISTINGS</span>
+                <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
+                <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
+                <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
+                <a href="/webprogg/Listings/listing.php">Featured Stays</a>
             </div>
-
-            <!-- QUICK LINKS -->
-
             <div class="footer-links">
-
-                <span class="footer-heading">
-                    QUICK LINKS
-                </span>
-
-                <a href="<?= htmlspecialchars($navigation['HOME'], ENT_QUOTES, 'UTF-8') ?>">
-                    Home
-                </a>
-
-                <a href="/webprogg/Listings/listing.php">
-                    Listings
-                </a>
-
-                <a href="/webprogg/host/howitworks.php">
-                    How It Works
-                </a>
-
-                <a href="/webprogg/hiveclub.php">
-                    Hive Club
-                </a>
-
-                <a href="/webprogg/misc/contacts.php">
-                    Contacts
-                </a>
-
+                <span class="footer-heading">QUICK LINKS</span>
+                <a href="/webprogg/index.php">About Us</a>
+                <a href="/webprogg/misc/contacts.php">Contact</a>
+                <a href="/webprogg/host/becomeahost.php">Become a Host</a>
+                <a href="/webprogg/hiveclub.php">Hive Club</a>
             </div>
-
-            <!-- GET THE APP -->
-
-            <div class="footer-links">
-
-                <span class="footer-heading">
-                    GET THE APP
-                </span>
-
+            <div class="footer-contact">
+                <span class="footer-heading">GET THE APP</span>
                 <div class="footer-app-badges">
-
-                    <img
-                        src="/webprogg/images/GooglePlay.jpg"
-                        alt="Get it on Google Play"
-                    >
-
-                    <img
-                        src="/webprogg/images/AppStore.jpg"
-                        alt="Download on the App Store"
-                    >
-
+                    <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
+                    <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
                 </div>
-
-                <div class="footer-contact-line">
-
-                    <img
-                        src="/webprogg/images/GPSIcon.png"
-                        alt=""
-                    >
-
-                    <span>
-                        Negros Oriental, Philippines
-                    </span>
-
-                </div>
-
             </div>
-
         </div>
-
-        <!-- FOOTER BOTTOM -->
-
         <div class="footer-bottom">
-
-            <p>
-                &copy; <?= date("Y") ?> RoomHive. All rights reserved.
-            </p>
-
+            <p>&copy; <?= date('Y') ?> RoomHive. All rights reserved.</p>
         </div>
-
     </footer>
 
-    <!-- =========================================================
-         NEW — FLOATING LOGIN MODAL (guests)
-         Auto-opens once per browser session, and opens from any
-         link pointing at loginform.php — the navbar's BECOME A HOST
-         link and the guest "Save this search" button are caught
-         automatically, no markup changes needed.
-    ========================================================== -->
-    <div class="lx-modal" id="lxModal" aria-hidden="true">
-
+    <!-- ========================= LOGIN MODAL (guests) ========================= -->
+    <?php if ($autoOpenLoginPopup): ?>
+    <div class="lx-modal" id="lx-login-modal">
         <div class="lx-modal-backdrop" data-lx-close></div>
-
-        <div class="lx-modal-card" role="dialog" aria-modal="true" aria-label="Log in to RoomHive">
-
-            <button type="button" class="lx-modal-close" data-lx-close aria-label="Close">
-                &times;
-            </button>
-
+        <div class="lx-modal-card">
+            <button type="button" class="lx-modal-close" data-lx-close aria-label="Close">&times;</button>
             <div class="lx-modal-logo">
-
-                <img
-                    src="/webprogg/images/RoomHiveLogos.png"
-                    alt="RoomHive logo"
-                >
-
+                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive">
             </div>
-
-            <h2 class="lx-modal-title">
-                Welcome back!
-            </h2>
-
-            <!-- Error message (filled in by JS on a failed attempt) -->
-            <div class="lx-error" id="lxModalError" hidden></div>
-
-            <form id="lxModalForm" novalidate>
-
-                <input type="hidden" name="redirect" value="">
-
-                <!-- Email -->
-                <div class="lx-field">
-
-                    <label for="lx-email">
-
-                        <img
-                            src="/webprogg/images/EmailIcon.jpg"
-                            alt=""
-                        >
-
-                        Email Address
-
-                    </label>
-
-                    <input
-                        class="lx-input"
-                        type="email"
-                        id="lx-email"
-                        name="email"
-                        autocomplete="email"
-                        required
-                    >
-
-                </div>
-
-                <!-- Password -->
-                <div class="lx-field">
-
-                    <label for="lx-password">
-
-                        <img
-                            src="/webprogg/images/LockIcon.png"
-                            alt=""
-                        >
-
-                        Password
-
-                    </label>
-
-                    <input
-                        class="lx-input"
-                        type="password"
-                        id="lx-password"
-                        name="password"
-                        autocomplete="current-password"
-                        required
-                    >
-
-                </div>
-
-                <!-- Forgot password -->
-                <div class="lx-forgot">
-
-                    <a href="/webprogg/auth/forgotpassword.php">
-                        Forgot Password?
-                    </a>
-
-                </div>
-
-                <button type="submit" class="lx-submit">
-                    Log in
-                </button>
-
-            </form>
-
-            <div class="lx-divider">
-                or
-            </div>
-
-            <!-- NOTE: absolute paths — this page lives in /Listings/,
-                 so relative hrefs like 'google-login.php' would 404. -->
-            <button
-                type="button"
-                class="lx-social"
-                onclick="window.location.href='/webprogg/auth/google-login.php'"
-            >
-
-                <img
-                    src="/webprogg/images/Googlecons.png"
-                    alt=""
-                >
-
-                Continue with Google
-
-            </button>
-
-            <button
-                type="button"
-                class="lx-social"
-                onclick="window.location.href='/webprogg/auth/apple-login.php'"
-            >
-
-                <img
-                    src="/webprogg/images/AppleIcons.png"
-                    alt=""
-                >
-
-                Continue with Apple
-
-            </button>
-
-            <p class="lx-create">
-
-                Not registered yet?
-
-                <a href="/webprogg/auth/createaccount.php">
-                    Create Account Here
-                </a>
-
+            <h3 class="lx-modal-title">Welcome back to the Hive</h3>
+            <p class="lx-hint" id="lx-login-hint" style="display:none;">
+                Log in to save listings to your wishlist
             </p>
-
+            <form method="post" action="/webprogg/auth/login_process.php">
+                <div class="lx-field">
+                    <label for="lx-email">Email</label>
+                    <input class="lx-input" type="email" id="lx-email" name="email" required autocomplete="email">
+                </div>
+                <div class="lx-field">
+                    <label for="lx-password">Password</label>
+                    <input class="lx-input" type="password" id="lx-password" name="password" required autocomplete="current-password">
+                </div>
+                <p class="lx-forgot"><a href="/webprogg/auth/forgotpassword.php">Forgot password?</a></p>
+                <button class="lx-submit" type="submit">Log In</button>
+            </form>
+            <p class="lx-create">Don't have an account? <a href="/webprogg/auth/registerform.php">Create one</a></p>
         </div>
-
     </div>
-
-    <!-- =========================
-        SCRIPTS
-    ========================== -->
+    <?php endif; ?>
 
     <script src="/webprogg/assets/javaScript.js"></script>
 
-    <!-- NEW — sidebar "Clear" helper.
-         Guarded with typeof so it can't collide if your original
-         cut-off footer already defined it inline. -->
-    <script>
-    if (typeof window.roomhiveClearAmenities !== "function") {
-        window.roomhiveClearAmenities = function () {
-            var form = document.getElementById("amenities-form");
-            if (!form) { return; }
-            form.querySelectorAll('input[name="amenities[]"]').forEach(function (cb) {
-                cb.checked = false;
-            });
-            form.submit();
-        };
-    }
-    </script>
-
-    <!-- NEW — FLOATING LOGIN MODAL SCRIPT (self-contained) -->
+    <!-- =========================================================
+         PAGE SCRIPTS
+    ========================================================== -->
     <script>
     (function () {
         "use strict";
 
-        var modal = document.getElementById("lxModal");
-        var form  = document.getElementById("lxModalForm");
+        var isLoggedIn = document.body.getAttribute('data-logged-in') === '1';
+        var resultsGrid = document.getElementById('rh-listings-results');
 
-        if (!modal || !form) {
-            return;
+        /* ============ PRICE RANGE SLIDER ============ */
+        var priceRange = document.getElementById('price-range');
+        var priceMaxLabel = document.getElementById('price-max');
+
+        if (priceRange && priceMaxLabel) {
+            priceRange.addEventListener('input', function () {
+                priceMaxLabel.textContent =
+                    Number(this.value).toLocaleString();
+            });
+            priceRange.addEventListener('change', function () {
+                document.getElementById('filter-form').submit();
+            });
         }
 
-        var errorBox   = document.getElementById("lxModalError");
-        var emailInput = document.getElementById("lx-email");
+        /* ============ CATEGORY DROPDOWN ============ */
+        var catToggle = document.getElementById('categoryDropdownToggle');
+        var catPanel  = document.getElementById('categoryDropdownPanel');
 
-        function openModal() {
-            modal.classList.add("open");
-            modal.setAttribute("aria-hidden", "false");
-            document.body.style.overflow = "hidden";
+        if (catToggle && catPanel) {
+            catToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
 
-            if (emailInput) {
-                window.setTimeout(function () {
-                    emailInput.focus();
-                }, 350);
-            }
+                var isOpen = catPanel.classList.contains('open');
+                catPanel.classList.toggle('open', !isOpen);
+                catToggle.setAttribute('aria-expanded', String(!isOpen));
+            });
+
+            document.addEventListener('click', function (e) {
+                if (!catPanel.contains(e.target) && e.target !== catToggle) {
+                    catPanel.classList.remove('open');
+                    catToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    catPanel.classList.remove('open');
+                    catToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
         }
 
-        function closeModal() {
-            modal.classList.remove("open");
-            modal.setAttribute("aria-hidden", "true");
-            document.body.style.overflow = "";
+        /* ============ RESULTS COUNT ============ */
+        var toolbar      = document.querySelector('.rh-toolbar');
+        var resultsCount = document.getElementById('rh-results-count');
 
-            if (errorBox) {
-                errorBox.hidden = true;
-                errorBox.textContent = "";
-            }
+        if (toolbar && resultsCount) {
+            var shown = parseInt(toolbar.getAttribute('data-shown'), 10) || 0;
+            var total = parseInt(toolbar.getAttribute('data-total'), 10) || 0;
+            resultsCount.textContent =
+                'Showing ' + shown + ' of ' + total +
+                ' space' + (total === 1 ? '' : 's');
         }
 
-        /* ---- AUTO-OPEN: guests, once per browser session ----
-           Shares the same sessionStorage flag as index.php, so
-           the card only nags once no matter which page you land on. */
-        var autoOpen = <?php echo $autoOpenLoginPopup ? "true" : "false"; ?>;
+        /* ============ SORT + VIEW TOGGLE ============ */
+        var sortSelect = document.getElementById('rh-sort');
 
-        if (autoOpen) {
-            var alreadyShown = false;
+        if (resultsGrid && sortSelect) {
+            var originalOrder = Array.prototype.slice.call(
+                resultsGrid.querySelectorAll('.listing-box')
+            );
 
-            try {
-                alreadyShown =
-                    sessionStorage.getItem("rhLoginModalShown") === "1";
-                sessionStorage.setItem("rhLoginModalShown", "1");
-            } catch (err) {
-                /* storage unavailable — just show it */
-            }
+            sortSelect.addEventListener('change', function () {
+                var list = originalOrder.slice();
 
-            if (!alreadyShown) {
-                window.setTimeout(openModal, 700);
-            }
+                if (sortSelect.value === 'price-asc') {
+                    list.sort(function (a, b) {
+                        return (parseFloat(a.dataset.price) || 0) -
+                               (parseFloat(b.dataset.price) || 0);
+                    });
+                } else if (sortSelect.value === 'price-desc') {
+                    list.sort(function (a, b) {
+                        return (parseFloat(b.dataset.price) || 0) -
+                               (parseFloat(a.dataset.price) || 0);
+                    });
+                }
+
+                list.forEach(function (card) {
+                    resultsGrid.appendChild(card);
+                });
+            });
         }
 
-        /* ---- Any link to loginform.php opens the modal instead of
-                navigating — covers the navbar BECOME A HOST link and
-                the guest "Save this search" button with zero markup
-                changes. ---- */
-        document.addEventListener("click", function (event) {
-            if (!event.target || !event.target.closest) {
-                return;
-            }
+        var viewBtns = document.querySelectorAll('.rh-view-btn');
 
-            var loginLink = event.target.closest('a[href*="loginform.php"]');
+        viewBtns.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                viewBtns.forEach(function (b) {
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
 
-            if (loginLink) {
-                event.preventDefault();
-                openModal();
-                return;
-            }
-
-            if (event.target.closest("[data-lx-close]")) {
-                closeModal();
-            }
+                if (resultsGrid) {
+                    resultsGrid.classList.toggle(
+                        'rh-list-view',
+                        btn.getAttribute('data-view') === 'list'
+                    );
+                }
+            });
         });
 
-        /* ---- Esc closes it ---- */
-        document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape" && modal.classList.contains("open")) {
-                closeModal();
+        /* =========================================================
+           CHANGE #11 — HEARTS WRITE TO THE DATABASE WISHLIST
+        ========================================================== */
+        var loginModal = document.getElementById('lx-login-modal');
+        var loginHint  = document.getElementById('lx-login-hint');
+
+        function openLoginForWishlist() {
+            if (loginModal) {
+                if (loginHint) loginHint.style.display = '';
+                loginModal.classList.add('open');
+            } else {
+                window.location.href = '/webprogg/auth/loginform.php';
             }
-        });
+        }
 
-        /* ---- Submit through loginform.php's AJAX path ----
-           The X-Requested-With header makes loginform.php answer
-           with JSON (already supported), so errors show inside the
-           card and success redirects without a full reload. */
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
+        function cardIsSaved(card) {
+            var b = card.querySelector('.rh-save-btn');
+            return !!(b && b.classList.contains('saved'));
+        }
 
-            if (errorBox) {
-                errorBox.hidden = true;
-            }
+        var savedOnly = false;
 
-            var submitBtn = form.querySelector(".lx-submit");
-            var originalLabel = submitBtn ? submitBtn.textContent : "";
+        function applySavedOnlyFilter() {
+            if (!resultsGrid) return;
 
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = "Logging in...";
-            }
+            resultsGrid.querySelectorAll('.listing-box').forEach(function (card) {
+                card.classList.toggle(
+                    'js-hidden',
+                    savedOnly && !cardIsSaved(card)
+                );
+            });
+        }
 
-            fetch("/webprogg/auth/loginform.php", {
-                method: "POST",
-                headers: { "X-Requested-With": "XMLHttpRequest" },
-                body: new FormData(form),
-                credentials: "same-origin"
-            })
-                .then(function (response) {
-                    return response.json();
+        document.querySelectorAll('.rh-save-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (!isLoggedIn) {
+                    openLoginForWishlist();
+                    return;
+                }
+
+                var listingId = btn.getAttribute('data-listing-id');
+                if (!listingId) return;
+
+                btn.disabled = true;
+
+                fetch('/webprogg/user/togglewishlist.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: 'listing_id=' + encodeURIComponent(listingId)
                 })
+                .then(function (res) { return res.json(); })
                 .then(function (data) {
-                    if (data && data.success) {
-                        window.location.href = data.redirect;
+                    btn.disabled = false;
+
+                    if (!data.success) {
+                        if (data.login) {
+                            isLoggedIn = false;
+                            openLoginForWishlist();
+                        } else {
+                            alert(data.message || 'Could not update your wishlist.');
+                        }
                         return;
                     }
 
-                    if (errorBox) {
-                        errorBox.textContent =
-                            (data && data.error) || "Something went wrong.";
-                        errorBox.hidden = false;
-                    }
+                    var saved = !!data.saved;
+
+                    btn.classList.toggle('saved', saved);
+                    btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+                    btn.innerHTML = saved ? '&#9829;' : '&#9825;';
+
+                    applySavedOnlyFilter();
                 })
                 .catch(function () {
-                    if (errorBox) {
-                        errorBox.textContent =
-                            "Couldn't reach the server. Please try again.";
-                        errorBox.hidden = false;
-                    }
-                })
-                .finally(function () {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = originalLabel || "Log in";
-                    }
+                    btn.disabled = false;
+                    alert('Something went wrong. Please try again.');
                 });
+            });
         });
+
+        /* ============ SAVE THIS SEARCH (localStorage) ============ */
+        var saveSearchBtn = document.getElementById('rh-save-search-btn');
+
+        if (saveSearchBtn) {
+            saveSearchBtn.addEventListener('click', function () {
+                var searches = [];
+                try {
+                    searches = JSON.parse(
+                        localStorage.getItem('roomhive_saved_searches')
+                    ) || [];
+                } catch (e) {
+                    searches = [];
+                }
+
+                searches.push({
+                    location:  saveSearchBtn.getAttribute('data-location'),
+                    category:  saveSearchBtn.getAttribute('data-category'),
+                    q:         saveSearchBtn.getAttribute('data-q'),
+                    price_min: saveSearchBtn.getAttribute('data-price-min'),
+                    price_max: saveSearchBtn.getAttribute('data-price-max'),
+                    amenities: saveSearchBtn.getAttribute('data-amenities'),
+                    saved_at:  Date.now()
+                });
+
+                localStorage.setItem(
+                    'roomhive_saved_searches',
+                    JSON.stringify(searches)
+                );
+
+                var original = saveSearchBtn.innerHTML;
+                saveSearchBtn.innerHTML =
+                    '<span class="rh-heart-icon">&#9829;</span> Search saved!';
+                saveSearchBtn.disabled = true;
+
+                setTimeout(function () {
+                    saveSearchBtn.innerHTML = original;
+                    saveSearchBtn.disabled = false;
+                }, 2000);
+            });
+        }
+
+        /* ============ FLOATING LOGIN MODAL ============ */
+        if (loginModal) {
+            setTimeout(function () {
+                loginModal.classList.add('open');
+            }, 600);
+
+            loginModal.querySelectorAll('[data-lx-close]').forEach(function (el) {
+                el.addEventListener('click', function () {
+                    loginModal.classList.remove('open');
+                });
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    loginModal.classList.remove('open');
+                }
+            });
+        }
+
     })();
     </script>
 

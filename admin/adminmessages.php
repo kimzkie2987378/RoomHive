@@ -1,18 +1,33 @@
 <?php
+/* =========================================================
+   ROOMHIVE ADMIN — MESSAGES
+   adminmessages.php
+
+   FIXED:
+   1. INNER JOIN on listings silently hid conversations with
+      listing_id NULL (general inquiries, or listings deleted).
+      Now LEFT JOIN + "No listing attached" fallback.
+   2. Hardcoded sent_at replaced with auto-detect
+      (sent_at or created_at) — same detection the tenant/host
+      inboxes use, so this works on either schema.
+========================================================= */
+
 require_once __DIR__ . '/admin_init.php';
 
-/* NOTE: uses messages.sent_at per your schema. If you get
-   "Unknown column 'sent_at'", swap every sent_at below for created_at. */
+/* ---- Schema auto-detect ---- */
+ $msgCols  = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
+ $MSG_TIME = in_array('sent_at', $msgCols, true) ? 'sent_at' : 'created_at';
 
+/* ---- Conversations (LEFT JOIN — see fix note above) ---- */
  $conversations = $pdo->query(
     "SELECT c.id, c.created_at, c.last_message_at,
             t.name AS tenant_name, h.name AS host_name,
-            l.title AS listing_title,
+            COALESCE(l.title, 'No listing attached') AS listing_title,
             (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS msg_count
      FROM conversations c
      JOIN users t ON t.id = c.user_id
      JOIN users h ON h.id = c.host_id
-     JOIN listings l ON l.id = c.listing_id
+     LEFT JOIN listings l ON l.id = c.listing_id
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
      LIMIT 100"
 )->fetchAll();
@@ -25,10 +40,10 @@ foreach ($conversations as $c) {
 }
 if ($selected) {
     $m = $pdo->prepare(
-        "SELECT m.body, m.sender_id, m.sent_at, u.name AS sender_name
+        "SELECT m.body, m.sender_id, m.$MSG_TIME AS msg_time, u.name AS sender_name
          FROM messages m JOIN users u ON u.id = m.sender_id
          WHERE m.conversation_id = :c
-         ORDER BY m.sent_at ASC"
+         ORDER BY m.$MSG_TIME ASC"
     );
     $m->execute(['c' => $selectedId]);
     $thread = $m->fetchAll();
@@ -94,7 +109,7 @@ CSS); ?>
                     ?>
                     <?php foreach ($thread as $m): ?>
                         <div class="bubble <?= (int)$m['sender_id'] === $threadHostId ? 'host-b' : 'tenant-b' ?>">
-                            <b><?= h($m['sender_name']) ?> · <?= h(date('M j, g:i A', strtotime($m['sent_at']))) ?></b>
+                            <b><?= h($m['sender_name']) ?> · <?= h(date('M j, g:i A', strtotime($m['msg_time']))) ?></b>
                             <?= h($m['body']) ?>
                         </div>
                     <?php endforeach; ?>

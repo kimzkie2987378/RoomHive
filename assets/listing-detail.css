@@ -7,6 +7,10 @@
    Shares the RoomHive honey/canopy token system used on
    listings-style.css so a host page and a detail page never
    feel like two different products.
+
+   === UPDATED === added the 50% reserve breakdown rows,
+   guests display box, application-status pill base and the
+   map-pin classes used by the current listing-detail.php.
 ========================== */
 
 :root {
@@ -511,6 +515,37 @@
 }
 
 /* =========================
+   === NEW === 50% RESERVE BREAKDOWN (booking card)
+========================== */
+
+.rd-reserve-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  border-top: 1px dashed var(--rh-line);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.rd-reserve-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--rh-ink-soft);
+}
+
+.rd-reserve-row strong {
+  color: var(--rh-ink);
+  font-weight: 600;
+}
+
+.rd-reserve-row.rd-reserve-now strong {
+  color: var(--rh-gold-deep);
+  font-weight: 800;
+}
+
+/* =========================
    DATE SUMMARY (above the calendar)
 ========================== */
 
@@ -581,11 +616,22 @@
     5px 0 0 var(--rh-gold-wash);
 }
 
+/* Booked days — crossed out */
+.flatpickr-day.flatpickr-disabled {
+  text-decoration: line-through;
+  opacity: 0.35;
+}
+
 .rd-guests {
   margin-bottom: 18px;
 }
 
-.rd-guests select {
+/* =========================
+   === NEW === GUESTS DISPLAY BOX
+   (the page shows a fixed capacity, not a select)
+========================== */
+
+.rd-guests-display {
   width: 100%;
   padding: 11px;
   border-radius: 12px;
@@ -593,6 +639,91 @@
   font-family: inherit;
   font-size: 0.88rem;
   color: var(--rh-ink);
+  background: var(--rh-cloud);
+  margin-bottom: 5px;
+  box-sizing: border-box;
+}
+
+.rd-guests-note {
+  display: block;
+  font-size: 11px;
+  color: var(--rh-ink-soft);
+}
+
+/* =========================
+   === NEW === APPLICATION STATUS PILL (base)
+========================== */
+
+.rd-application-status {
+  padding: 7px 15px;
+  border-radius: var(--rh-radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+.rd-application-status-pending {
+  background: #fff4e0;
+  color: #8a5a10;
+  border: 1px solid rgba(237, 164, 35, 0.5);
+}
+
+.rd-application-status-confirmed {
+  background: #e8f8f1;
+  color: #1e7a3d;
+  border: 1px solid #b9e3c5;
+}
+
+.rd-application-status-rejected {
+  background: #fdecec;
+  color: #a1332e;
+  border: 1px solid #f3b9b9;
+}
+
+.rd-application-status-cancelled {
+  background: #f4f6f8;
+  color: #5d6875;
+  border: 1px solid #e3e7ec;
+}
+
+/* =========================
+   === NEW === NOTICE BANNER (base)
+========================== */
+
+.rd-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: #fff4e8;
+  border: 1px solid rgba(237, 164, 35, 0.5);
+  border-radius: 14px;
+  color: #8a5a10;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.rd-notice-success {
+  background: #e8f8f1;
+  border-color: #b9e3c5;
+  color: #1e7a3d;
+}
+
+/* =========================
+   === NEW === DATE COMPLETION HINT
+========================== */
+
+.rd-date-hint {
+  text-align: center;
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rh-gold-deep);
+}
+
+.rd-date-hint.rd-hint-ok {
+  color: #2f9e5b;
 }
 
 /* =========================
@@ -624,6 +755,11 @@
   cursor: pointer;
 }
 
+/* Long Term hides the check-out field */
+.rd-date-hidden {
+  display: none !important;
+}
+
 .rd-btn {
   display: block;
   width: 100%;
@@ -651,6 +787,11 @@
 
 .rd-btn-primary:hover {
   background: var(--rh-gold-deep);
+}
+
+.rd-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .rd-btn-outline {
@@ -739,6 +880,43 @@
   transform: translate(-50%, -100%);
   font-size: 1.6rem;
   color: var(--rh-coral);
+}
+
+/* =========================
+   === NEW === LEAFLET EXACT-LOCATION MAP
+========================== */
+
+.rd-map-embed {
+  position: relative;
+  z-index: 1;
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--rh-line);
+  margin-bottom: 14px;
+  box-shadow: 0 8px 20px -12px rgba(28, 43, 36, 0.3);
+  background: #eaf2fb;
+}
+
+.rd-pin-icon {
+  background: transparent;
+  border: none;
+}
+
+.rd-pin {
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+}
+
+.rd-map-exact-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2f9e5b;
 }
 
 .rd-map-btn {

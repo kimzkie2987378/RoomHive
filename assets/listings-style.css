@@ -2,18 +2,14 @@
    ROOMHIVE — LISTINGS PAGE DESIGN SYSTEM
    listings-style.css
 
-   Design concept: a hive is warm, ordered and productive.
-   The palette pulls honey-gold and deep canopy-green from
-   Negros Oriental's forests, set on a warm unbleached-paper
-   canvas instead of clinical white. Fraunces (a warm display
-   serif) carries the greeting and section titles; Poppins
-   handles every working UI surface. A soft hexagonal motif
-   (clipped corners, honeycomb dot grid) recurs quietly across
-   the hero, badges and empty state — never as decoration for
-   its own sake, always marking "this is a RoomHive surface."
-
-   Scoped to elements this page actually renders. Built for a
-   1920px desktop canvas first, then stepped down.
+   === CHANGES ===
+   1. .listings-page — max-width 1440px → 100% (full bleed),
+      padding-top 130px to clear the fixed navbar.
+   2. .listings-content — REMOVED the reserved 280px sidebar
+      column (1fr 280px → 1fr). This was the empty right side.
+   3. .listings-results — 3 columns → 4 columns per row,
+      with new breakpoints (1180→3, 900→2, 720→1).
+   4. List-view and empty-state rules unchanged.
    ========================================================= */
 
 :root {
@@ -55,9 +51,9 @@
 ========================================================= */
 
 .listings-page {
-  max-width: 1440px;
+  max-width: 100%; /* CHANGE #1 — was 1440px */
   margin: 0 auto;
-  padding: 40px 48px 96px;
+  padding: 130px 48px 96px; /* CHANGE #1 — top clears fixed navbar */
   background: var(--rh-canvas);
   font-family: var(--font-ui);
   color: var(--rh-ink);
@@ -65,15 +61,12 @@
 
 @media (max-width: 1180px) {
   .listings-page {
-    padding: 32px 24px 72px;
+    padding: 130px 24px 72px;
   }
 }
 
 /* =========================================================
    GREETING HERO
-   Editorial split: name in the display serif set large,
-   a short line of purpose beside it, a single honeycomb-
-   clipped illustration frame anchoring the right edge.
 ========================================================= */
 
 .listings-greeting {
@@ -90,7 +83,6 @@
   isolation: isolate;
 }
 
-/* faint honeycomb dot lattice, brand texture rather than clip-art */
 .listings-greeting::before {
   content: "";
   position: absolute;
@@ -301,8 +293,6 @@
 
 /* =========================================================
    FILTER CONSOLE
-   One continuous pill-shaped bar; a hairline divider marks
-   each control's territory instead of boxing every field.
 ========================================================= */
 
 .filter-bar {
@@ -315,8 +305,8 @@
   padding: 10px 14px;
   box-shadow: var(--rh-shadow-console);
   margin-bottom: 8px;
-  position: sticky;
-  top: 16px;
+  position: static; /* non-sticky per listing.php */
+  top: auto;
   z-index: 20;
   transition:
     box-shadow 0.2s ease,
@@ -762,7 +752,7 @@
 
 .listings-results {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr); /* CHANGE #3 — was repeat(3, 1fr) */
   gap: 24px;
   margin-top: 18px;
 }
@@ -992,9 +982,16 @@
   color: var(--rh-ink-soft);
 }
 
+/* CHANGE #3 — breakpoints matched to 4-column base */
 @media (max-width: 1180px) {
   .listings-results {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr); /* was repeat(2, 1fr) */
+  }
+}
+
+@media (max-width: 900px) {
+  .listings-results {
+    grid-template-columns: repeat(2, 1fr); /* NEW step */
   }
 }
 
@@ -1092,13 +1089,16 @@
 
 /* =========================================================
    LAYOUT: MAIN + SIDEBAR
+   CHANGE #2 — THE ROOT CAUSE. Was "1fr 280px", which
+   reserved a 280px sidebar column listing.php never fills.
+   That reserved column WAS the empty right side.
 ========================================================= */
 
 .listings-content {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr; /* CHANGE #2 — was 1fr 280px */
   align-items: start;
-  gap: 36px;
+  gap: 0;
   margin-top: 28px;
 }
 
@@ -1176,6 +1176,8 @@
 
 /* =========================================================
    AMENITIES SIDEBAR
+   (kept for compatibility — nothing renders into it now,
+   but harmless if you ever re-add a sidebar)
 ========================================================= */
 
 .amenities-sidebar {
@@ -1497,446 +1499,5 @@
   .rh-btt {
     transition: none !important;
     animation: none !important;
-  }
-}
-/* =========================================================
-   ROOMHIVE — LISTINGS PAGE, INTERACTIVE LAYER
-   listings-interactive.css
-
-   Additive only — nothing here overrides listings-style.css,
-   it layers new motion on top of it. Load this AFTER
-   listings-style.css so the hive tokens (--rh-gold,
-   --rh-canopy, etc.) already exist.
-
-   Everything answers something the visitor does — arriving,
-   moving the cursor, hovering, loading a new page of results
-   — with one deliberate exception: the greeting's opening
-   reveal, the page's single orchestrated moment.
-   ========================================================= */
-
-:root {
-  --rh-hex-clip: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0% 50%);
-}
-
-/* =========================================================
-   1. GREETING — OPENING REVEAL + CURSOR-LIT HONEYCOMB
-========================================================= */
-
-.greeting-text p,
-.greeting-text h1,
-.rh-hero-tagline {
-  animation: rhHiveWipeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.greeting-text h1 {
-  animation-delay: 0.08s;
-}
-.rh-hero-tagline {
-  animation-delay: 0.16s;
-}
-
-.greeting-illustration {
-  animation: rhHexReveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: 0.1s;
-}
-
-@keyframes rhHiveWipeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes rhHexReveal {
-  from {
-    opacity: 0;
-    clip-path: polygon(50% 45%, 50% 45%, 50% 55%, 50% 55%, 50% 55%, 50% 45%);
-  }
-  to {
-    opacity: 1;
-    clip-path: var(--rh-hex-clip);
-  }
-}
-
-/* Cursor-lit glow across the honeycomb texture — tracks
-   --hx/--hy, set in JS from pointer position */
-.listings-greeting {
-  --hx: 50%;
-  --hy: 50%;
-}
-
-.listings-greeting::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  background: radial-gradient(
-    260px circle at var(--hx) var(--hy),
-    rgba(221, 147, 15, 0.35),
-    transparent 70%
-  );
-  mix-blend-mode: screen;
-}
-
-.listings-greeting.rh-hero-lit::after {
-  opacity: 1;
-}
-
-@media (max-width: 900px) {
-  .listings-greeting::after {
-    display: none;
-  }
-}
-
-/* =========================================================
-   2. LISTING CARDS — TILT + LIGHT SWEEP + HEX MARK
-========================================================= */
-
-.listing-box {
-  --rh-tilt-x: 0deg;
-  --rh-tilt-y: 0deg;
-  --rh-lift: 0px;
-  transform: translateY(var(--rh-lift)) perspective(900px)
-    rotateX(var(--rh-tilt-x)) rotateY(var(--rh-tilt-y));
-}
-
-/* Same specificity as listings-style.css's .listing-box:hover,
-   loaded after it — wins on the transform property only, so
-   the lift still combines with live tilt instead of one
-   silently overriding the other. */
-.listing-box:hover {
-  transform: translateY(var(--rh-lift, -6px)) perspective(900px)
-    rotateX(var(--rh-tilt-x)) rotateY(var(--rh-tilt-y));
-}
-
-.rh-card-media {
-  --smx: 50%;
-  --smy: 50%;
-}
-
-.rh-card-media::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  opacity: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    160px circle at var(--smx) var(--smy),
-    rgba(255, 255, 255, 0.28),
-    transparent 65%
-  );
-  transition: opacity 0.25s ease;
-}
-
-.listing-box:hover .rh-card-media::before {
-  opacity: 1;
-}
-
-/* Quiet hex signature at the corner, not a repeated icon */
-.rh-hex-mark {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  z-index: 1;
-  width: 20px;
-  height: 20px;
-  background: var(--rh-gold);
-  clip-path: var(--rh-hex-clip);
-  opacity: 0;
-  transform: scale(0.4) rotate(-25deg);
-  transition:
-    opacity 0.25s ease,
-    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  pointer-events: none;
-}
-
-.listing-box:hover .rh-hex-mark {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
-}
-
-@media (prefers-reduced-motion: reduce), (hover: none) {
-  .listing-box,
-  .listing-box:hover,
-  .rh-card-media::before,
-  .rh-hex-mark {
-    transition: none !important;
-    animation: none !important;
-  }
-  .listing-box,
-  .listing-box:hover {
-    --rh-tilt-x: 0deg;
-    --rh-tilt-y: 0deg;
-  }
-}
-
-/* =========================================================
-   3. MAGNETIC CONTROLS
-   Circular buttons drift a few px toward the cursor, set by
-   JS via --mgx/--mgy, and snap back on leave.
-========================================================= */
-
-.rh-carousel-arrow,
-.rh-view-btn,
-.search-button {
-  --mgx: 0px;
-  --mgy: 0px;
-  transform: translate(var(--mgx), var(--mgy));
-}
-
-.rh-carousel-arrow,
-.search-button {
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.15s ease,
-    background 0.15s ease,
-    transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* search-button already scales on hover in listings-style.css —
-   same specificity, loaded after, so the two combine instead
-   of the magnetic drift getting silently dropped on hover. */
-.search-button:hover {
-  transform: translate(var(--mgx), var(--mgy)) scale(1.05);
-}
-
-@media (prefers-reduced-motion: reduce), (hover: none) {
-  .rh-carousel-arrow,
-  .rh-view-btn,
-  .search-button,
-  .search-button:hover {
-    transform: none !important;
-  }
-}
-
-/* =========================================================
-   4. ACTIVE FILTER CHIPS
-========================================================= */
-
-.rh-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 14px;
-}
-
-.rh-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: var(--rh-gold-wash);
-  border: 1px solid var(--rh-gold);
-  color: var(--rh-gold-deep);
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 6px 8px 6px 14px;
-  border-radius: var(--rh-radius-pill);
-  text-decoration: none;
-  animation: rhChipIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.rh-chip:hover {
-  background: #f7e6bf;
-}
-
-.rh-chip-x {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--rh-gold);
-  color: #fff;
-  font-size: 0.7rem;
-  line-height: 1;
-  transition:
-    background 0.15s ease,
-    transform 0.15s ease;
-}
-
-.rh-chip:hover .rh-chip-x {
-  background: var(--rh-gold-deep);
-  transform: scale(1.12);
-}
-
-@keyframes rhChipIn {
-  from {
-    opacity: 0;
-    transform: scale(0.85) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rh-chip {
-    animation: none;
-  }
-}
-
-/* =========================================================
-   5. HONEYCOMB LOADING SKELETON
-   Overlays the results grid the instant listing.php's own
-   .rh-loading class appears on it (see JS) — small tiles
-   shimmer in place of the dimmed real content underneath.
-========================================================= */
-
-.listings-results {
-  position: relative;
-}
-
-.rh-skeleton-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.rh-skeleton-overlay.rh-show {
-  opacity: 1;
-}
-
-.rh-skeleton-card {
-  border-radius: var(--rh-radius-card);
-  overflow: hidden;
-  background: var(--rh-cloud);
-  border: 1px solid var(--rh-line);
-  min-height: 260px;
-  position: relative;
-}
-
-.rh-skeleton-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    var(--rh-line-soft) 30%,
-    var(--rh-gold-wash) 50%,
-    var(--rh-line-soft) 70%
-  );
-  background-size: 200% 100%;
-  animation: rhShimmer 1.3s ease-in-out infinite;
-}
-
-@keyframes rhShimmer {
-  from {
-    background-position: 140% 0;
-  }
-  to {
-    background-position: -40% 0;
-  }
-}
-
-@media (max-width: 1180px) {
-  .rh-skeleton-overlay {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 720px) {
-  .rh-skeleton-overlay {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rh-skeleton-card::after {
-    animation: none;
-  }
-  .rh-skeleton-overlay {
-    transition: none;
-  }
-}
-
-/* =========================================================
-   6. SAVE — HEX RING PULSE
-   One quiet ring on top of javaScript.js's existing heart
-   burst — a complement, not a second copy of it.
-========================================================= */
-
-.rh-hex-ring {
-  position: fixed;
-  width: 34px;
-  height: 34px;
-  clip-path: var(--rh-hex-clip);
-  border: 2px solid var(--rh-gold);
-  pointer-events: none;
-  z-index: 999;
-  animation: rhHexPulse 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes rhHexPulse {
-  from {
-    opacity: 0.9;
-    transform: scale(0.6);
-  }
-  to {
-    opacity: 0;
-    transform: scale(2.2);
-  }
-}
-
-/* =========================================================
-   7. EMPTY STATE — DRIFTING HEX ACCENT
-========================================================= */
-
-.rh-empty-state {
-  position: relative;
-}
-
-.rh-empty-drift {
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 18px;
-  position: relative;
-}
-
-.rh-empty-drift span {
-  position: absolute;
-  inset: 0;
-  clip-path: var(--rh-hex-clip);
-  background: var(--rh-gold-wash);
-  border: 1.5px solid var(--rh-gold);
-}
-
-.rh-empty-drift span:nth-child(2) {
-  transform: scale(0.55);
-  background: var(--rh-gold);
-  border: none;
-  animation: rhEmptyFloat 2.6s ease-in-out infinite;
-}
-
-@keyframes rhEmptyFloat {
-  0%,
-  100% {
-    transform: scale(0.55) translateY(0);
-  }
-  50% {
-    transform: scale(0.55) translateY(-6px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rh-empty-drift span:nth-child(2) {
-    animation: none;
   }
 }

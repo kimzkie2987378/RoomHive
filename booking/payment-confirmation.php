@@ -12,16 +12,25 @@
      - Guest pays the last remaining amount -> receipt stamps
        "FULLY PAID" (green) and the balance box disappears.
 
-   HOST ACCESS: the listing's host may also view this receipt
-   (opened from pendingtenants.php "View Receipt"). Host view:
-     - identical receipt paper (same stamp, figures, meta)
-     - no auto-redirect countdown, no "What happens next"
-     - primary button becomes "Back to Pending Tenants"
-   The payer name is taken from the DB (guest), NOT the
-   session, so it is correct in both views.
+   HOST ACCESS: the listing's host may also view this receipt.
+   Host view: no countdown, no next-steps, primary button =
+   "Back to Pending Tenants". Payer name always from DB.
 
-   SECURITY: booking data is re-fetched from the DB. Access is
-   granted ONLY to the booking's guest OR the listing's host.
+   HOST SIGNATURE:
+     - If a signature exists (uploads/signatures/booking-{id}.png,
+       saved via the Sign & Accept pad or signed right here),
+       the receipt shows "Signed & Accepted by Host".
+     - If unsigned and the HOST is viewing, an inline signing
+       pad appears on this page: draw -> save (sign-receipt.php)
+       -> and if the booking is still pending, accept it
+       (accept-booking.php). Guests never see the pad; the pad
+       is excluded from print.
+
+   BRANDING: the receipt uses the real logo image
+   /webprogg/images/RoomHiveLogos.png (navbar + store header)
+   instead of the old house SVG + text.
+
+   SECURITY: access = booking's guest OR listing's host only.
    "amt" and "pm" are DISPLAY-ONLY.
 ========================================================= */
 
@@ -125,6 +134,35 @@ if ($booking === false || (!$isGuestViewer && !$isHostViewer)) {
  $payerName = !empty($booking['guest_name'])
     ? $booking['guest_name']
     : ($_SESSION['user_name'] ?? 'Guest');
+
+/* -----------------------------------------------------
+   HOST SIGNATURE — saved by sign-receipt.php
+----------------------------------------------------- */
+ $sigDir  = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/signatures';
+ $sigFile = $sigDir . '/booking-' . $bookingId . '.png';
+ $sigJson = $sigDir . '/booking-' . $bookingId . '.json';
+
+ $hostSigned = file_exists($sigFile);
+ $sigUrl     = '';
+ $sigDate    = '';
+
+if ($hostSigned) {
+    $sigUrl = '/webprogg/uploads/signatures/booking-' . $bookingId . '.png?v=' . filemtime($sigFile);
+    $sigTs  = filemtime($sigFile);
+    if (is_file($sigJson)) {
+        $j = json_decode((string) file_get_contents($sigJson), true);
+        if (!empty($j['signed_at'])) {
+            $t = strtotime($j['signed_at']);
+            if ($t) { $sigTs = $t; }
+        }
+    }
+    $sigDate = date('M j, Y \a\t g:i A', $sigTs);
+}
+
+/* Host can sign right on this receipt while it is unsigned */
+ $isPendingBooking = ($booking['status'] === 'pending');
+ $canHostSign = ($isHostViewer && !$hostSigned
+    && in_array($booking['status'], ['pending', 'confirmed'], true));
 
 /* -----------------------------------------------------
    PRE-COMPUTED DISPLAY STRINGS (echoed RAW, never h())
@@ -290,17 +328,15 @@ if ($checkin && $checkout) {
         justify-content: space-between;
     }
     .rc-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; }
-    .rc-brand-mark {
-        width: 30px; height: 30px;
-        border-radius: 9px;
-        background: linear-gradient(135deg, var(--rc-honey-light), var(--rc-honey));
-        display: flex; align-items: center; justify-content: center;
-        color: #fff;
-        box-shadow: 0 4px 10px rgba(245,166,35,.35);
+
+    /* REAL LOGO — navbar brand */
+    .rc-brand-logo {
+        height: 30px;
+        width: auto;
+        max-width: 130px;
+        object-fit: contain;
+        display: block;
     }
-    .rc-brand-mark svg { width: 16px; height: 16px; }
-    .rc-brand-text { font-size: 14px; font-weight: 400; color: var(--rc-ink); }
-    .rc-brand-text b { font-weight: 800; }
 
     .rc-page { max-width: 460px; margin: 0 auto; padding: 26px 20px 70px; }
 
@@ -424,22 +460,16 @@ if ($checkin && $checkout) {
     }
 
     .rc-head { text-align: center; padding-bottom: 16px; }
+
+    /* REAL LOGO — receipt store header */
     .rc-store-logo {
-        width: 46px; height: 46px;
-        margin: 0 auto 10px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, var(--rc-honey-light), var(--rc-honey));
-        display: flex; align-items: center; justify-content: center;
-        color: #fff;
-        box-shadow: 0 5px 14px rgba(245,166,35,.4);
+        display: block;
+        max-height: 70px;
+        max-width: 200px;
+        margin: 0 auto 8px;
+        object-fit: contain;
     }
-    .rc-store-logo svg { width: 24px; height: 24px; }
-    .rc-store-name {
-        font-size: 17px;
-        font-weight: 800;
-        letter-spacing: -0.2px;
-    }
-    .rc-store-name span { color: var(--rc-honey); }
+
     .rc-store-tag {
         margin: 3px 0 0;
         font-size: 10.5px;
@@ -652,6 +682,107 @@ if ($checkin && $checkout) {
         letter-spacing: 0.04em;
     }
 
+    /* HOST SIGNATURE block */
+    .rc-sig {
+        text-align: center;
+        padding: 14px 0 6px;
+        border-top: 1.5px dashed var(--rc-line);
+    }
+    .rc-sig-label {
+        margin: 0 0 8px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--rc-soft);
+    }
+    .rc-sig-img {
+        height: 64px;
+        max-width: 80%;
+        object-fit: contain;
+        border-bottom: 1.5px solid #C9CDD6;
+        padding: 0 10px 2px;
+    }
+    .rc-sig-name {
+        margin: 6px 0 0;
+        font-family: var(--rc-mono);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--rc-ink);
+    }
+    .rc-sig-date {
+        margin: 2px 0 0;
+        font-family: var(--rc-mono);
+        font-size: 9.5px;
+        color: var(--rc-soft);
+    }
+    .rc-sig-empty {
+        font-family: var(--rc-mono);
+        font-size: 11px;
+        color: #AAB1BE;
+        border: 1.5px dashed #E3E7EF;
+        border-radius: 10px;
+        padding: 14px 10px;
+    }
+
+    /* HOST SIGNING PAD (on the receipt, host only) */
+    .rc-signpad {
+        margin-top: 12px;
+        text-align: left;
+        background: #FAFAFD;
+        border: 1px solid var(--rc-line);
+        border-radius: 12px;
+        padding: 14px;
+    }
+    .rc-signpad-title {
+        margin: 0 0 2px;
+        font-size: 12.5px;
+        font-weight: 800;
+        color: var(--rc-ink);
+    }
+    .rc-signpad-sub {
+        margin: 0 0 10px;
+        font-size: 11.5px;
+        color: var(--rc-soft);
+        line-height: 1.5;
+    }
+    .rc-sign-canvas-wrap { position: relative; }
+    #rcSignCanvas {
+        display: block;
+        width: 100%;
+        height: 180px;
+        background: #fff;
+        border: 1.5px dashed #C9CDD6;
+        border-radius: 10px;
+        touch-action: none;
+        cursor: crosshair;
+    }
+    .rc-sign-hint {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        color: #AAB1BE;
+        font-size: 12.5px;
+        font-weight: 600;
+        transition: opacity .2s ease;
+    }
+    .rc-sign-hint.hidden { opacity: 0; }
+    .rc-sign-tools {
+        display: flex;
+        justify-content: flex-end;
+        margin: 8px 0 10px;
+    }
+    #rcSignSave { width: 100%; }
+    #rcSignSave[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
     .rc-footer {
         text-align: center;
         padding-top: 14px;
@@ -761,13 +892,15 @@ if ($checkin && $checkout) {
     }
     .rc-btn-outline:hover { border-color: var(--rc-honey); color: #C77800; }
 
+    /* PRINT STYLES — receipt only */
     @media print {
         body { background: #fff; }
         .rc-nav,
         .rc-autoredirect,
         .rc-actions,
         .rc-next,
-        .rc-success { display: none !important; }
+        .rc-success,
+        .rc-signpad { display: none !important; }
         .rc-page { max-width: 100%; padding: 10mm 0; }
         .rc-receipt { filter: none; }
         .rc-receipt::before,
@@ -787,12 +920,7 @@ if ($checkin && $checkout) {
 <header class="rc-nav">
     <div class="rc-nav-inner">
         <a class="rc-brand" href="/webprogg/Listings/listing.php">
-            <span class="rc-brand-mark">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
-                </svg>
-            </span>
-            <span class="rc-brand-text">Room<b>Hive</b></span>
+            <img class="rc-brand-logo" src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive">
         </a>
         <button type="button" class="rc-btn-outline" style="width:auto;padding:8px 16px;" onclick="window.print()">
             &#128424; Print
@@ -836,14 +964,9 @@ if ($checkin && $checkout) {
     <!-- OFFICIAL RECEIPT (identical for guest and host) -->
     <div class="rc-receipt" id="rc-receipt">
 
-        <!-- STORE HEADER -->
+        <!-- STORE HEADER — real logo image -->
         <div class="rc-head">
-            <div class="rc-store-logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
-                </svg>
-            </div>
-            <div class="rc-store-name">Room<span>Hive</span></div>
+            <img class="rc-store-logo" src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive">
             <p class="rc-store-tag">Find your next space</p>
             <p class="rc-store-contact">
                 0917 156 3974<br>
@@ -860,6 +983,7 @@ if ($checkin && $checkout) {
             <div><span>Time Paid</span><span><?php echo h($paidTime); ?></span></div>
             <div><span>Payment Method</span><span><?php echo h($paymentMethodLabel); ?></span></div>
             <div><span>Payment Type</span><span><?php echo $paymentTypeLabel; ?></span></div>
+            <div><span>Host Signature</span><span><?php echo $hostSigned ? 'Signed &middot; ' . h($sigDate) : 'Pending'; ?></span></div>
         </div>
 
         <!-- BILLED TO -->
@@ -944,6 +1068,47 @@ if ($checkin && $checkout) {
                 <?php echo $stampText; ?>
             </span>
             <p class="rc-stamp-caption"><?php echo $paymentStatusLine; ?></p>
+        </div>
+
+        <!-- HOST SIGNATURE — saved signature, or the on-receipt
+             signing pad when the HOST is viewing -->
+        <div class="rc-sig">
+            <?php if ($hostSigned): ?>
+                <p class="rc-sig-label">Signed &amp; Accepted by Host</p>
+                <img class="rc-sig-img" src="<?php echo h($sigUrl); ?>" alt="Host signature">
+                <p class="rc-sig-name"><?php echo h($booking['host_name']); ?></p>
+                <p class="rc-sig-date">Signed on <?php echo h($sigDate); ?></p>
+            <?php else: ?>
+                <p class="rc-sig-label">Host Signature</p>
+                <div class="rc-sig-empty">Awaiting host signature</div>
+
+                <?php if ($canHostSign): ?>
+                <!-- ON-RECEIPT SIGNING PAD (host only, hidden on print) -->
+                <div class="rc-signpad" id="rcSignPad">
+                    <p class="rc-signpad-title">You're viewing this receipt as the host.</p>
+                    <p class="rc-signpad-sub">
+                        Draw your signature below and press
+                        <b><?php echo $isPendingBooking ? 'Sign &amp; Accept Application' : 'Sign Receipt'; ?></b>.
+                        <?php if ($isPendingBooking): ?>
+                            Signing also accepts this application.
+                        <?php endif; ?>
+                    </p>
+
+                    <div class="rc-sign-canvas-wrap">
+                        <canvas id="rcSignCanvas"></canvas>
+                        <span class="rc-sign-hint" id="rcSignHint">&#9996; Draw your signature here</span>
+                    </div>
+
+                    <div class="rc-sign-tools">
+                        <button type="button" class="rc-ar-btn" id="rcSignClear">Clear</button>
+                    </div>
+
+                    <button type="button" class="rc-btn-primary" id="rcSignSave" disabled>
+                        <?php echo $isPendingBooking ? 'Sign &amp; Accept Application' : 'Sign Receipt'; ?>
+                    </button>
+                </div>
+                <?php endif; ?>
+            <?php endif; ?>
         </div>
 
         <!-- FOOTER -->
@@ -1072,6 +1237,162 @@ if ($checkin && $checkout) {
             clearInterval(timer);
             counterEl.textContent = '\u2014';
             bar.classList.add('rc-ar-cancelled');
+        });
+    }
+})();
+</script>
+
+<!-- HOST ON-RECEIPT SIGNING PAD (runs only if the pad is rendered) -->
+<script>
+(function () {
+    var canvas = document.getElementById('rcSignCanvas');
+    if (!canvas) return;
+
+    var ctx        = canvas.getContext('2d');
+    var saveBtn    = document.getElementById('rcSignSave');
+    var clearBtn   = document.getElementById('rcSignClear');
+    var hint       = document.getElementById('rcSignHint');
+
+    var hasInk  = false;
+    var drawing = false;
+    var lastX   = 0;
+    var lastY   = 0;
+
+    var BOOKING_ID = <?php echo (int) $bookingId; ?>;
+    var IS_PENDING = <?php echo $isPendingBooking ? 'true' : 'false'; ?>;
+
+    function initCanvas() {
+        var dpr  = window.devicePixelRatio || 1;
+        var rect = canvas.getBoundingClientRect();
+        var w    = Math.max(200, Math.round(rect.width));
+        var h    = 180;
+
+        canvas.width  = w * dpr;
+        canvas.height = h * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        /* white background so the saved PNG is not transparent */
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+
+        /* signature baseline */
+        ctx.strokeStyle = '#C9CDD6';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 6]);
+        ctx.beginPath();
+        ctx.moveTo(16, h - 40);
+        ctx.lineTo(w - 16, h - 40);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        /* ink */
+        ctx.strokeStyle = '#14142B';
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        hasInk = false;
+        drawing = false;
+        saveBtn.disabled = true;
+        hint.classList.remove('hidden');
+    }
+
+    function canvasPos(event) {
+        var rect = canvas.getBoundingClientRect();
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+
+    canvas.addEventListener('pointerdown', function (event) {
+        event.preventDefault();
+        drawing = true;
+        try { canvas.setPointerCapture(event.pointerId); } catch (e) {}
+        var p = canvasPos(event);
+        lastX = p.x; lastY = p.y;
+
+        if (!hasInk) {
+            hasInk = true;
+            saveBtn.disabled = false;
+            hint.classList.add('hidden');
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#14142B';
+        ctx.fill();
+    });
+
+    canvas.addEventListener('pointermove', function (event) {
+        if (!drawing) return;
+        var p = canvasPos(event);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        lastX = p.x;
+        lastY = p.y;
+    });
+
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (evt) {
+        canvas.addEventListener(evt, function () { drawing = false; });
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () { initCanvas(); });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+            if (!hasInk) return;
+
+            var dataUrl = canvas.toDataURL('image/png');
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving signature\u2026';
+
+            /* STEP 1 — save the signature */
+            fetch('/webprogg/booking/sign-receipt.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'booking_id=' + encodeURIComponent(BOOKING_ID)
+                    + '&signature=' + encodeURIComponent(dataUrl)
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (!data.success) {
+                        alert(data.message || 'Could not save your signature.');
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = IS_PENDING ? 'Sign & Accept Application' : 'Sign Receipt';
+                        return;
+                    }
+
+                    /* STEP 2 — if the booking is still pending, accept it too */
+                    if (!IS_PENDING) {
+                        window.location.reload();
+                        return;
+                    }
+
+                    saveBtn.textContent = 'Accepting\u2026';
+                    fetch('/webprogg/booking/accept-booking.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'booking_id=' + encodeURIComponent(BOOKING_ID)
+                    })
+                        .then(function (res) { return res.json(); })
+                        .then(function (acc) {
+                            if (!acc.success) {
+                                alert(acc.message || 'Signature saved, but the application could not be accepted.');
+                            }
+                            window.location.reload();
+                        })
+                        .catch(function () {
+                            alert('Signature saved, but the application could not be accepted.');
+                            window.location.reload();
+                        });
+                })
+                .catch(function () {
+                    alert('Something went wrong while saving your signature. Please try again.');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = IS_PENDING ? 'Sign & Accept Application' : 'Sign Receipt';
+                });
         });
     }
 })();

@@ -10,24 +10,14 @@
    this booking so far (bookings.amount_paid), split 97% to the
    host / 3% platform fee.
 
-   REQUIRES (run once):
-     ALTER TABLE users
-       ADD COLUMN wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+   FIXED: the ownership SELECT was missing b.user_id, so the
+   guest notification read an undefined key and notified
+   user 0 (or failed). The guest's id is now selected as
+   tenant_id and used everywhere.
 
-     ALTER TABLE bookings
-       ADD COLUMN host_payout_amount DECIMAL(10,2) NULL AFTER amount_paid,
-       ADD COLUMN platform_fee_amount DECIMAL(10,2) NULL AFTER host_payout_amount,
-       ADD COLUMN payout_at DATETIME NULL AFTER platform_fee_amount;
-
-   NOTE: this pays out whatever amount_paid is AT THE MOMENT OF
-   ACCEPTANCE — for the normal flow that's the ₱1,000 reservation
-   fee (see process-payment.php). If the tenant later pays the
-   remaining balance on an already-confirmed booking,
-   process-payment.php's "balance" branch is what collects that
-   payment — it is NOT covered by this file, since accept-booking.php
-   only ever runs once, at the pending -> confirmed transition. If
-   balance payments should also split 97/3 to the host as they come
-   in, that split needs to be added over there too.
+   REQUIRES (run once — your schema already has these):
+     users.wallet_balance,
+     bookings.host_payout_amount / platform_fee_amount / payout_at
 
    Expects POST: booking_id
    Responds JSON: { success: bool, message?: string }
@@ -44,7 +34,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$bookingId = isset($_POST['booking_id']) && is_numeric($_POST['booking_id'])
+ $bookingId = isset($_POST['booking_id']) && is_numeric($_POST['booking_id'])
     ? (int) $_POST['booking_id']
     : 0;
 
@@ -54,22 +44,18 @@ if ($bookingId <= 0) {
     exit;
 }
 
-/* Platform split — 97% to the host, 3% platform fee. Keep this in
-   one place; process-payment.php's balance-payment branch should
-   reuse the same rate if/when it starts splitting balance payments
-   too, rather than hardcoding 0.97 a second time somewhere else. */
+/* Platform split — 97% to the host, 3% platform fee. */
 const HOST_PAYOUT_RATE = 0.97;
 
-$pdo->beginTransaction();
+ $pdo->beginTransaction();
 
 try {
-    /* FOR UPDATE locks this row for the duration of the
-       transaction — same reasoning as process-payment.php's
-       balance-payment branch: a double-click or a race with a
-       reject click on the same booking can't both go through, and
-       can't both trigger a payout/refund. */
+    /* FOR UPDATE locks this row — a double-click or a race with
+       a reject click on the same booking can't both go through. */
     $ownershipStmt = $pdo->prepare(
-        "SELECT b.id, b.status, b.amount_paid, l.user_id AS host_id
+        "SELECT b.id, b.status, b.amount_paid,
+                b.user_id AS tenant_id,
+                l.user_id AS host_id, l.title AS listing_title
          FROM bookings b
          JOIN listings l ON l.id = b.listing_id
          WHERE b.id = :booking_id
@@ -104,9 +90,7 @@ try {
 
     /* Split whatever has actually been paid into this booking so
        far. Round the host's share first, then give the platform
-       whatever's left over — so host_share + platform_share always
-       adds back up to amount_paid exactly, instead of each side
-       rounding independently and drifting by a centavo. */
+       whatever's left over. */
     $amountPaid    = (float) $booking['amount_paid'];
     $hostShare     = round($amountPaid * HOST_PAYOUT_RATE, 2);
     $platformShare = round($amountPaid - $hostShare, 2);
@@ -126,18 +110,12 @@ try {
     ]);
 
     if ($updateStmt->rowCount() === 0) {
-        // Someone else / another tab already decided this booking
-        // between our SELECT and our UPDATE.
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'This application has already been decided.']);
         exit;
     }
 
-    /* Credit the host's wallet with their 97% share. The 3%
-       platform fee isn't credited to any user row — it's recorded
-       on the booking itself (platform_fee_amount above), which is
-       what admin.php's Payouts panel should SUM(platform_fee_amount)
-       from once that panel gets built out. */
+    /* Credit the host's wallet with their 97% share. */
     if ($hostShare > 0) {
         $pdo->prepare(
             "UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :host_id"
@@ -150,10 +128,55 @@ try {
     $pdo->commit();
 
 } catch (Exception $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Could not accept this application. Please try again.']);
     exit;
+}
+
+/* -----------------------------------------------------
+   NOTIFY THE GUEST (after the payout COMMIT; failure here
+   can never affect the acceptance above). FIXED: reads
+   tenant_id, which is now guaranteed to exist in $booking.
+----------------------------------------------------- */
+try {
+    $guestId      = (int) $booking['tenant_id'];
+    $hostName     = $_SESSION['user_name'] ?? 'The host';
+    $listingTitle = (string) $booking['listing_title'];
+
+    $message = $hostName . ' accepted your booking for "' . $listingTitle . '".' .
+               ' The host has signed your official receipt.';
+    $link    = '/webprogg/booking/booking-details.php?id=' . $bookingId;
+
+    if ($guestId <= 0) {
+        throw new RuntimeException('accept-booking: tenant_id missing for booking ' . $bookingId);
+    }
+
+    $notifyHelper = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notify.php';
+    if (file_exists($notifyHelper)) {
+        include_once $notifyHelper;
+    }
+
+    $notified = false;
+    if (function_exists('roomhive_notify')) {
+        $notified = roomhive_notify($pdo, $guestId, $message, $link);
+    }
+
+    if (!$notified) {
+        $n = $pdo->prepare(
+            "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+             VALUES (:u, :m, :l, 0, NOW())"
+        );
+        $n->execute([
+            'u' => $guestId,
+            'm' => mb_substr($message, 0, 240),
+            'l' => $link,
+        ]);
+    }
+} catch (Exception $e) {
+    error_log('accept-booking guest notification failed: ' . $e->getMessage());
 }
 
 echo json_encode(['success' => true]);

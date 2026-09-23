@@ -8,18 +8,21 @@
  * location, ID type/number — plus the actual uploaded ID photo shown
  * inline, not just a link.
  *
- * NAV FIX: now boots through the shared admin_init.php shell instead
- * of carrying its own hand-rolled sidebar copy. The sidebar, topbar
- * and admin dropdown come from admin_page_start() — identical to
- * every other admin page, with "Host Applications" highlighted.
- * This also fixes the fatal error at the bottom of the old file,
- * which called admin_page_end() without ever loading admin_init.php.
+ * FIXES (this version):
+ * - ID PHOTO 404 FIXED: host_applications.id_file is stored relative
+ *   to /webprogg (same convention as listing_photos.photo_path).
+ *   Printed raw, the browser resolved it against /webprogg/admin/
+ *   and the ID image 404'd. Now forced to a site-root absolute path.
+ * - CSRF token added to any POST (defensive; this page has no forms
+ *   today but the token is available if approve/reject move here).
+ * - Boots through the shared admin_init.php shell — sidebar, topbar
+ *   and admin dropdown come from admin_page_start().
  */
 
 require_once __DIR__ . '/admin_init.php';
 
 /* icon(), h(), statusBadgeClass(), admin_page_start(), admin_page_end(),
-   $navItems, $csrfToken, $adminName, $adminEmail all come from
+   $navItems, $csrfToken, $adminName, $adminEmail, $pdo all come from
    admin_init.php — do NOT redefine them here. */
 
 /* ---------------------------------------------------------
@@ -39,10 +42,6 @@ require_once __DIR__ . '/admin_init.php';
 
 /* ---------------------------------------------------------
    LOAD WHAT WAS FILLED IN ON becomeahost.php
-   Straight from host_applications — the exact fields that
-   form's POST handler inserts: full_name, email, phone,
-   location, id_type, id_number, id_file, plus when it was
-   submitted and its current status.
 --------------------------------------------------------- */
  $appStmt = $pdo->prepare(
     "SELECT ha.id, ha.full_name, ha.email, ha.phone, ha.age, ha.location,
@@ -60,6 +59,16 @@ if (!$application) {
 }
 
  $statusLabel = ucfirst($application['status']);
+
+/* ---------- ID PHOTO PATH FIX ----------
+   host_applications.id_file is stored relative to /webprogg
+   (same convention as listing_photos.photo_path). Printed raw,
+   the browser resolves it against /webprogg/admin/ and the ID
+   photo 404s — the same bug listingapplicationeye.php already
+   fixed for listing photos. admin_resolve_photo() comes from
+   admin_init.php and handles every stored format.
+----------------------------------------- */
+ $idFileUrl = admin_resolve_photo($application['id_file'] ?? '', '');
 
 /* ---------- Page-specific CSS ---------- */
  $extraCss = <<<CSS
@@ -223,10 +232,10 @@ admin_page_start('RoomHive Admin — Host Application', 'Host Applications', $ex
     <div class="eye-panel">
         <span class="info-label" style="display:block; margin-bottom:10px;">Uploaded ID</span>
 
-        <?php if (!empty($application['id_file'])): ?>
+        <?php if ($idFileUrl !== ''): ?>
             <div class="eye-id-photo-wrap">
-                <img class="eye-id-photo" src="<?= h($application['id_file']) ?>" alt="Uploaded ID for <?= h($application['full_name']) ?>">
-                <a class="eye-id-expand" href="<?= h($application['id_file']) ?>" target="_blank" rel="noopener">
+                <img class="eye-id-photo" src="<?= h($idFileUrl) ?>" alt="Uploaded ID for <?= h($application['full_name']) ?>">
+                <a class="eye-id-expand" href="<?= h($idFileUrl) ?>" target="_blank" rel="noopener">
                     <?= icon('expand') ?> Full Size
                 </a>
             </div>

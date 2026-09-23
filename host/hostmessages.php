@@ -4,19 +4,18 @@
    hostmessages.php
 
    FIXED vs previous version:
-   - Send form now has CSRF protection (it had none before —
-     added the same guarded pattern usermessages.php uses).
-   - Insert explicitly checks rowCount() before touching
-     conversations.last_message_at, and sets the timestamp
-     itself instead of relying on a DB default.
-   - DB errors are caught and logged instead of being silently
-     swallowed by PDO's default error mode, and surfaced to the
-     host via the existing flash banner.
+   1. The file ended with DUPLICATED </body></html> tags —
+      now ends cleanly with one pair.
+   2. Sending a message now NOTIFIES THE TENANT (matching
+      usermessages.php) — self-contained notifier, never breaks
+      the send.
+   Kept: CSRF on send, rowCount check, schema auto-detect
+   (sent_at/created_at, is_read/read_at), real bell count.
 ========================================================= */
 
 require_once __DIR__ . '/host_init.php';
 
-$me = (int) $_SESSION['user_id'];
+ $me = (int) $_SESSION['user_id'];
 
 /* ---------- Guarded CSRF helpers (host side) ---------- */
 if (!function_exists('hp_csrf_token')) {
@@ -32,16 +31,45 @@ if (!function_exists('hp_csrf_token')) {
     }
 }
 
-/* -----------------------------------------------------
-   MESSAGES SCHEMA AUTO-DETECT
------------------------------------------------------ */
-$_msgCols     = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
-$MSG_TIME     = in_array('sent_at', $_msgCols, true) ? 'sent_at' : 'created_at';
-$HAS_IS_READ  = in_array('is_read', $_msgCols, true);
-$HAS_READ_AT  = in_array('read_at', $_msgCols, true);
-$HAS_READ_FLAG = $HAS_IS_READ || $HAS_READ_AT;
+/* ---------- Self-contained notifier (message-carrying) ---------- */
+if (!function_exists('hm_notify')) {
+    function hm_notify($pdo, $userId, $message, $link) {
+        try {
+            $userId = (int) $userId;
+            if ($userId <= 0) { return false; }
 
-$MSG_UNREAD_SQL = $HAS_READ_FLAG
+            $rhNotify = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notify.php';
+            if (file_exists($rhNotify)) { require_once $rhNotify; }
+
+            if (function_exists('roomhive_notify')) {
+                if (roomhive_notify($pdo, $userId, $message, $link)) { return true; }
+            }
+
+            $n = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $n->execute([
+                'u' => $userId,
+                'm' => mb_substr($message, 0, 240),
+                'l' => $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('hostmessages notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+/* ---------- Messages schema auto-detect ---------- */
+ $_msgCols      = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
+ $MSG_TIME      = in_array('sent_at', $_msgCols, true) ? 'sent_at' : 'created_at';
+ $HAS_IS_READ   = in_array('is_read', $_msgCols, true);
+ $HAS_READ_AT   = in_array('read_at', $_msgCols, true);
+ $HAS_READ_FLAG = $HAS_IS_READ || $HAS_READ_AT;
+
+ $MSG_UNREAD_SQL = $HAS_READ_FLAG
     ? ($HAS_IS_READ ? 'm.is_read = 0' : 'm.read_at IS NULL')
     : '1 = 0';
 
@@ -94,6 +122,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POS
                 if ($ins->rowCount() === 1) {
                     $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = :id")
                         ->execute(['id' => $convId]);
+
+                    /* NEW — notify the tenant */
+                    $whoStmt = $pdo->prepare(
+                        "SELECT user_id FROM conversations WHERE id = :id LIMIT 1"
+                    );
+                    $whoStmt->execute(['id' => $convId]);
+                    $tenantId = (int) $whoStmt->fetchColumn();
+
+                    hm_notify(
+                        $pdo,
+                        $tenantId,
+                        ($_SESSION['user_name'] ?? 'Your host')
+                            . ' sent you a new message.',
+                        '/webprogg/user/usermessages.php?conversation=' . $convId
+                    );
                 } else {
                     hp_flash_set('error', 'Your message could not be saved. Please try again.');
                     error_log('hostmessages.php: insert reported rowCount=0 for conversation ' . $convId);
@@ -110,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POS
 }
 
 /* ---- Conversation list ---- */
-$convStmt = $pdo->prepare(
+ $convStmt = $pdo->prepare(
     "SELECT c.id, c.listing_id, c.last_message_at, c.created_at,
             u.name AS tenant_name, u.avatar_path AS tenant_avatar,
             l.title AS listing_title,
@@ -127,9 +170,9 @@ $convStmt = $pdo->prepare(
      WHERE c.host_id = :h
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC"
 );
-$convStmt->execute(['h' => $me, 'h2' => $me]);
+ $convStmt->execute(['h' => $me, 'h2' => $me]);
 
-$conversations = array_map(function ($row) {
+ $conversations = array_map(function ($row) {
     return [
         'id'            => (int) $row['id'],
         'listing_id'    => $row['listing_id'] ? (int) $row['listing_id'] : null,
@@ -142,13 +185,13 @@ $conversations = array_map(function ($row) {
 }, $convStmt->fetchAll());
 
 /* ---- Selected thread ---- */
-$isExplicitThread = isset($_GET['c']);
-$selectedId = $isExplicitThread
+ $isExplicitThread = isset($_GET['c']);
+ $selectedId = $isExplicitThread
     ? (int) $_GET['c']
     : ($conversations[0]['id'] ?? 0);
 
-$selected = null;
-$thread = [];
+ $selected = null;
+ $thread = [];
 
 if ($selectedId) {
     foreach ($conversations as $c) {
@@ -171,24 +214,26 @@ if ($selectedId) {
 }
 
 /* Bell badge = real unread total (overrides host_init's 0) */
-$bellStmt = $pdo->prepare(
+ $bellStmt = $pdo->prepare(
     "SELECT COUNT(*)
      FROM messages m
      JOIN conversations c ON c.id = m.conversation_id
      WHERE c.host_id = :h AND m.sender_id != :h2 AND $MSG_UNREAD_SQL"
 );
-$bellStmt->execute(['h' => $me, 'h2' => $me]);
-$notification_count = (int) $bellStmt->fetchColumn();
+ $bellStmt->execute(['h' => $me, 'h2' => $me]);
+ $notification_count = (int) $bellStmt->fetchColumn();
 
-function hp_message_day_label($timestamp) {
-    $day = date('Y-m-d', $timestamp);
-    if ($day === date('Y-m-d')) return 'Today';
-    if ($day === date('Y-m-d', strtotime('-1 day'))) return 'Yesterday';
-    return date('F j, Y', $timestamp);
+if (!function_exists('hp_message_day_label')) {
+    function hp_message_day_label($timestamp) {
+        $day = date('Y-m-d', $timestamp);
+        if ($day === date('Y-m-d')) return 'Today';
+        if ($day === date('Y-m-d', strtotime('-1 day'))) return 'Yesterday';
+        return date('F j, Y', $timestamp);
+    }
 }
 
-$flash = hp_flash_take();
-$activePage = 'messages';
+ $flash = hp_flash_take();
+ $activePage = 'messages';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -203,7 +248,8 @@ $activePage = 'messages';
 <body>
 
 <?php include __DIR__ . '/host_navbar.php'; ?>
- <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+
 <main class="hp-dashboard hp-dashboard--flush-top">
 
     <?php include __DIR__ . '/host_sidebar.php'; ?>
@@ -301,7 +347,7 @@ $activePage = 'messages';
                             </div>
                             <?php if ($selected['listing_id']): ?>
                                 <div class="hp-msg-thread-actions">
-                                    <a href="/webprogg/Listings/listingdetails.php?id=<?php echo h($selected['listing_id']); ?>"
+                                    <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($selected['listing_id']); ?>"
                                        class="hp-msg-icon-btn" title="View listing" aria-label="View listing">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
                                     </a>

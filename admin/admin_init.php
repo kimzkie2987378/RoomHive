@@ -12,6 +12,18 @@
 
    SIDEBAR CHANGE: RoomHive brand block and the
    "Need Help / Contact Support" card have been removed.
+
+   CHANGES (this version):
+   1. NEW NAV ITEM: "Hive Club" (adminhiveclub.php) added
+      after Payouts — required by the Hive Club Phase 7
+      admin console; admin_page_start() highlights it by
+      label automatically.
+   2. NAV ALIGNMENT: the ☰ menu button now WORKS on every
+      shell page — off-canvas sidebar + dimmed overlay
+      under 1000px, Escape/outside-click closes, and the
+      topbar gains a soft shadow once the page scrolls.
+   3. admin_page_end() runs the canonical shared script
+      (chip dropdown + sidebar toggle + topbar shadow).
 ========================================================= */
 
 session_start();
@@ -30,6 +42,9 @@ if (empty($_SESSION['admin_csrf'])) {
 }
  $csrfToken = $_SESSION['admin_csrf'];
 
+/* =========================================================
+   CHANGE 1 — "Hive Club" nav entry added after Payouts
+========================================================= */
  $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'href' => '/webprogg/admin/adminusers.php'],
@@ -38,6 +53,7 @@ if (empty($_SESSION['admin_csrf'])) {
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
     ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Hive Club',            'icon' => 'tag',        'href' => '/webprogg/admin/adminhiveclub.php'],
     ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
     ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
     ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
@@ -114,7 +130,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -149,7 +165,9 @@ function icon($name, $class = '') {
     return '<svg class="icon ' . $class . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';
 }
 
-/* ---------- Page shell ---------- */
+/* =========================================================
+   CHANGE 2 — PAGE SHELL with working sidebar toggle
+========================================================= */
 function admin_page_start($title, $activeLabel, $extraCss = '') {
     global $navItems, $notificationCount, $adminName, $adminEmail;
     ?><!DOCTYPE html>
@@ -182,11 +200,36 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
     .flash-banner.success { background: #E7F7EC; color: #2FA84F; }
     .flash-banner.error { background: #FCEAEA; color: #E14B4B; }
     .flash-banner .icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* ---- CHANGE 2: mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
 </style>
 <?= $extraCss ?>
 </head>
 <body>
-<div class="layout">
+<div class="layout" id="adminLayout">
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <aside class="sidebar">
         <nav class="nav">
             <?php foreach ($navItems as $item): ?>
@@ -196,9 +239,10 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
             <?php endforeach; ?>
         </nav>
     </aside>
+
     <div class="main">
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
             <div class="search-box"><?= icon('search') ?><input type="text" placeholder="Search users, bookings, properties..."></div>
             <div class="topbar-right">
                 <button class="icon-btn bell-btn" aria-label="Notifications">
@@ -226,6 +270,10 @@ function admin_page_start($title, $activeLabel, $extraCss = '') {
 <?php
 }
 
+/* =========================================================
+   CHANGE 3 — canonical shared script (chip + sidebar
+   toggle + topbar shadow)
+========================================================= */
 function admin_page_end() {
     ?>
         </div>
@@ -233,10 +281,50 @@ function admin_page_end() {
 </div>
 <script>
 (function () {
-    const chip = document.getElementById('adminChip');
-    if (!chip) return;
-    chip.addEventListener('click', function (e) { chip.classList.toggle('open'); e.stopPropagation(); });
-    document.addEventListener('click', function () { chip.classList.remove('open'); });
+    "use strict";
+
+    /* ---- Admin chip dropdown ---- */
+    var chip = document.getElementById('adminChip');
+    if (chip) {
+        chip.addEventListener('click', function (e) {
+            chip.classList.toggle('open');
+            e.stopPropagation();
+        });
+        document.addEventListener('click', function () {
+            chip.classList.remove('open');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
+    }
+
+    /* ---- Mobile sidebar toggle (menu button now works) ---- */
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
+    });
+
+    /* ---- Topbar shadow on scroll ---- */
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
 })();
 </script>
 </body>

@@ -1,13 +1,41 @@
 <?php
 /* Shared host sidebar. Set $activePage before including:
    overview | listings | pending | bookings | earnings | payouts |
-   reviews | messages | editprofile | verification | payoutmethods |
-   notificationsettings | security | quithosting | helpcenter
+   reviews | messages | notifications | editprofile | verification |
+   payoutmethods | notificationsettings | security | quithosting |
+   helpcenter
    Requires host_init.php ($host, $pending_tenants_count). */
  $activePage = $activePage ?? '';
 
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+}
+
 function hp_side_active($activePage, $key) {
     return $activePage === $key ? ' active' : '';
+}
+
+/* -----------------------------------------------------
+   UNREAD NOTIFICATION COUNT (for the sidebar badge)
+   Computed here (guarded) so EVERY host page gets the live
+   badge without each page having to query it. Pages like
+   hostnotifications.php pre-set $hostNotifUnread, which is
+   reused instead of running a second query.
+----------------------------------------------------- */
+ $hostNotifUnread = $hostNotifUnread ?? null;
+
+if ($hostNotifUnread === null && isset($_SESSION['user_id'])) {
+    try {
+        $hnuStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
+        );
+        $hnuStmt->execute(['u' => $_SESSION['user_id']]);
+        $hostNotifUnread = (int) $hnuStmt->fetchColumn();
+    } catch (Exception $e) {
+        $hostNotifUnread = 0;
+    }
 }
 ?>
 <style>
@@ -30,7 +58,6 @@ function hp_side_active($activePage, $key) {
         height: 64px;
     }
 
-    /* NEW — section label + quit hosting styling */
     .hp-side-heading {
         margin: 20px 10px 6px;
         font-size: 11px;
@@ -74,10 +101,19 @@ function hp_side_active($activePage, $key) {
     </a>
 
     <a href="/webprogg/host/hostbookings.php" class="hp-side-link<?php echo hp_side_active($activePage, 'bookings'); ?>">Bookings</a>
-    <a href="/webprogg/host/earnings.php" class="hp-side-link<?php echo hp_side_active($activePage, 'earnings'); ?>">Earnings</a>
+
+    <a href="/webprogg/host/earning.php" class="hp-side-link<?php echo hp_side_active($activePage, 'earnings'); ?>">Earnings</a>
     <a href="/webprogg/host/payouts.php" class="hp-side-link<?php echo hp_side_active($activePage, 'payouts'); ?>">Payouts</a>
     <a href="/webprogg/host/hostreviews.php" class="hp-side-link<?php echo hp_side_active($activePage, 'reviews'); ?>">Reviews</a>
     <a href="/webprogg/host/hostmessages.php" class="hp-side-link<?php echo hp_side_active($activePage, 'messages'); ?>">Messages</a>
+
+    <!-- Notifications — links to the HOST notifications page -->
+    <a href="/webprogg/host/hostnotifications.php" class="hp-side-link hp-side-link-badged<?php echo hp_side_active($activePage, 'notifications'); ?>">
+        Notifications
+        <?php if ($hostNotifUnread > 0): ?>
+            <span class="hp-side-badge"><?php echo h($hostNotifUnread); ?></span>
+        <?php endif; ?>
+    </a>
 
     <!-- SETTINGS GROUP -->
     <span class="hp-side-heading">Settings</span>

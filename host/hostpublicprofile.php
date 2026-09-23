@@ -5,13 +5,13 @@
    "View Host Profile" button (?id= is the host's users.id).
 
    FIXES:
-   - Navbar was MISSING (only its orphaned <style> block
-     remained) — now uses the shared includes/navbar.php,
-     which carries the fixed dropdown design (42px avatar,
-     12px MY PROFILE, role-aware links incl. Messages).
-   - Stray "<" character after </main> removed.
-   - Old inline .account-dropdown <style> block removed
-     (navbar.php provides the dropdown styles now).
+   - Navbar uses the shared includes/navbar.php (role-aware).
+   - === THIS FIX === a STRUCTURAL CSS layer was added to the
+     inline <style>: the page's layout classes (.hp-hero-inner,
+     .hp-avatar size, .hp-badges, .hp-hex shapes, .hp-layout,
+     .hp-listings-grid, .hp-detail-row base, .hp-btn) were
+     never defined — hostprofile.css is the DASHBOARD's css and
+     does not contain them, so the page rendered unstyled.
 ========================== */
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
@@ -26,10 +26,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
  $userName = $_SESSION['user_name'] ?? 'Guest';
 
-/* Same nav-avatar staleness handling as listing.php / listing-detail.php,
-   so a freshly-uploaded profile photo shows immediately in the navbar
-   without a re-login. Also pulls the VIEWER's is_host so navbar.php's
-   dropdown can show the Host Dashboard link when appropriate. */
+/* Nav avatar staleness handling + viewer's is_host for navbar.php */
  $navAvatar = '/webprogg/images/default-avatar.png';
  $isHost    = false;
 
@@ -46,12 +43,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 
  $notification_count = 0;
 
-/* =========================================================
-   CHANGED — SHARED NAVBAR CONTRACT
-   navbar.php expects: $navigation ("LABEL" => "/url"),
-   $currentPage, $isLoggedIn, $navAvatar, $notification_count,
-   $isHost (the VIEWER's host status, for the dropdown).
-========================================================= */
+/* Shared navbar contract */
  $navigation = [
     "HOME"          => $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php",
     "LISTINGS"      => "/webprogg/Listings/listing.php",
@@ -61,25 +53,15 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
     "CONTACTS"      => "/webprogg/misc/contacts.php",
 ];
 
-/* Detail page — no nav item is "current" */
  $currentPage = '';
 
 /* =========================
    RESOLVE HOST FROM ?id=
 ========================== */
-
  $hostId = isset($_GET['id']) && is_numeric($_GET['id'])
     ? (int) $_GET['id']
     : 0;
 
-/*
- * NOTE: this install's `users` table has no `bio` column, so the
- * "About this host" section always falls back to the generic line
- * below. If a bio column gets added later (e.g.
- * ALTER TABLE users ADD COLUMN bio TEXT NULL;), add `, bio` to the
- * SELECT below and this page will pick it up automatically — see
- * the $host['bio'] assignment further down.
- */
  $hostStmt = $pdo->prepare(
     "SELECT id, name, email, avatar_path, is_host, created_at
      FROM users
@@ -89,8 +71,6 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
  $hostStmt->execute(['id' => $hostId]);
  $hostRow = $hostStmt->fetch();
 
-/* No such host, or the account isn't (or is no longer) an approved
-   host — send back to Listings rather than show a broken profile. */
 if ($hostRow === false) {
     header('Location: /webprogg/Listings/listing.php');
     exit;
@@ -100,12 +80,7 @@ if ($hostRow === false) {
 
 /* =========================
    HOST'S APPROVED LISTINGS
-   Same cover-photo path resolution as listing.php's $allListings —
-   host-step3.php writes covers to
-   /webprogg/uploads/listing_photos/cover/, so that's the only
-   folder this needs to check.
 ========================== */
-
  $hostListingsStmt = $pdo->prepare(
     "SELECT l.id, l.title, l.category, l.location, l.price, l.bedrooms, l.created_at,
             p.photo_path AS cover_photo
@@ -133,10 +108,7 @@ if ($hostRow === false) {
 
 /* =========================
    HOST'S REVIEW STATS
-   Aggregated across every listing this host owns — same query
-   shape as $hostReviewsStmt in listing-detail.php.
 ========================== */
-
  $hostReviewsStmt = $pdo->prepare(
     "SELECT r.rating
      FROM reviews r
@@ -152,7 +124,6 @@ if ($hostRow === false) {
 /* =========================
    ASSEMBLE HOST
 ========================== */
-
  $host = [
     'id'            => (int) $hostRow['id'],
     'name'          => $hostRow['name'],
@@ -163,17 +134,11 @@ if ($hostRow === false) {
     'member_since'  => date('F Y', strtotime($hostRow['created_at'])),
     'rating'        => $hostRating,
     'reviews'       => $hostReviews,
-    /* Placeholders, same as listing-detail.php's $listing['host'] —
-       wire these up to real verification logic once it exists. */
     'verified'      => false,
     'superhost'     => false,
     'response_time' => 'within a day',
 ];
 
-/* =========================
-   LISTING DETAIL LINK HELPER
-   (mirrors roomhive_detail_url() in listing.php)
-========================== */
 function roomhive_detail_url($listing)
 {
     return '/webprogg/Listings/listing-detail.php?id=' . urlencode($listing['id']);
@@ -200,16 +165,14 @@ function roomhive_detail_url($listing)
     <link rel="stylesheet" href="/webprogg/assets/host-profile.css">
     <link rel="stylesheet" href="/webprogg/assets/listings-style.css">
 
-    <!-- NEW: enables JS-gated entrance reveals -->
     <script>document.documentElement.classList.add("js");</script>
 
     <!-- =====================================================
-         HOST PUBLIC PROFILE — HIVE POLISH LAYER
-         Loads AFTER host-profile.css so it wins the cascade at
-         equal specificity. Upgrades colors, buttons, badges,
-         cards and the listing grid to the site-wide hive design
-         language (honey #eda423 / moss #2f9e5b / ink #1c2a38)
-         WITHOUT touching any structural layout rules.
+         HOST PUBLIC PROFILE — LAYER 1: STRUCTURE (THE FIX)
+         These classes were previously undefined anywhere:
+         hostprofile.css is the DASHBOARD's css. This layer
+         defines the public profile's own layout and loads
+         after host-profile.css so it wins the cascade.
     ====================================================== -->
 
     <style>
@@ -225,17 +188,207 @@ function roomhive_detail_url($listing)
             --hp-gold-shadow: 0 14px 28px rgba(237, 164, 35, 0.16);
 
             position: relative;
-
-            /* clip (not hidden) so blobs can bleed off the edges
-               without creating a scroll container that would break
-               position: sticky inside the layout. */
             overflow-x: clip;
+
+            /* === STRUCTURE === page shell, clears the fixed navbar */
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 130px 40px 80px;
         }
 
+        /* --- Hero: card-style, overrides the dashboard .hp-hero --- */
+        .hp-page .hp-hero {
+            display: block;
+            margin-top: 0;
+            padding: 30px 34px;
+            position: relative;
+            z-index: 1;
+
+            background: #ffffff;
+            border: 1px solid var(--hp-line);
+            border-radius: 24px;
+            box-shadow: 0 6px 20px rgba(28, 43, 36, 0.07);
+        }
+
+        .hp-hero-inner {
+            display: flex;
+            align-items: center;
+            gap: 26px;
+            flex-wrap: wrap;
+        }
+
+        .hp-avatar-frame {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .hp-page .hp-avatar {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .hp-hero-text {
+            flex: 1;
+            min-width: 240px;
+        }
+
+        .hp-name {
+            margin: 0 0 4px;
+            font-size: clamp(26px, 3vw, 36px);
+        }
+
+        .hp-joined {
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .hp-badges {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .hp-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: #ffffff;
+            border: 1px solid var(--hp-line);
+        }
+
+        /* Hex dot — honey tick used in badges + detail rows */
+        .hp-hex {
+            display: inline-block;
+            width: 11px;
+            height: 12px;
+            flex-shrink: 0;
+            background: var(--hp-honey);
+            clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
+        }
+
+        .hp-hex-sm {
+            width: 9px;
+            height: 10px;
+        }
+
+        .hp-rating {
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* --- Two-column body --- */
+        .hp-layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 26px;
+            align-items: start;
+            margin-top: 26px;
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (max-width: 900px) {
+            .hp-layout { grid-template-columns: 1fr; }
+        }
+
+        .hp-main { min-width: 0; }
+
+        .hp-about { margin-bottom: 34px; }
+
+        .hp-about h2,
+        .hp-listings h2 {
+            margin: 0 0 16px;
+            font-family: "Fraunces", serif;
+            font-size: 1.3rem;
+        }
+
+        .hp-about-text {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .hp-about-empty,
+        .hp-listings-empty {
+            font-size: 14px;
+        }
+
+        .hp-listings { margin-bottom: 20px; }
+
+        .hp-listings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 18px;
+        }
+
+        /* --- Sidebar --- */
+        .hp-page .hp-sidebar {
+            position: sticky;
+            top: 130px;
+        }
+
+        .hp-card h3 {
+            margin: 0 0 12px;
+            font-size: 15px;
+        }
+
+        .hp-detail-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 4px;
+            border-bottom: 1px solid var(--hp-line);
+            font-size: 13px;
+            color: var(--hp-ink-soft);
+        }
+
+        .hp-detail-row:last-of-type { border-bottom: none; }
+
+        /* label column stretches, value column sits right */
+        .hp-detail-row span:nth-of-type(2) { flex: 1; }
+
+        .hp-detail-row strong {
+            font-size: 13px;
+            color: var(--hp-ink);
+        }
+
+        .hp-btn {
+            display: block;
+            width: 100%;
+            margin-top: 16px;
+            text-align: center;
+            text-decoration: none;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        /* --- Mobile shell --- */
+        @media (max-width: 700px) {
+            .hp-page { padding: 120px 18px 60px; }
+            .hp-page .hp-hero { padding: 24px 20px; }
+            .hp-page .hp-sidebar { position: static; }
+        }
+
+    </style>
+
+    <!-- =====================================================
+         HOST PUBLIC PROFILE — LAYER 2: HIVE POLISH
+         (colors, badges, cards, buttons, decorations)
+    ====================================================== -->
+
+    <style>
+
         /* =====================================================
-           DECORATION LAYER — honeycomb + glow blobs.
-           New class names only: cannot collide with anything
-           in host-profile.css.
+           DECORATION LAYER — honeycomb + glow blobs
         ====================================================== */
 
         .hp-deco {
@@ -255,34 +408,26 @@ function roomhive_detail_url($listing)
 
         .hp-blob {
             position: absolute;
-
             border-radius: 50%;
             filter: blur(70px);
-
             pointer-events: none;
         }
 
         .hp-blob-1 {
             width: 360px;
             height: 360px;
-
             top: -140px;
             right: -120px;
-
             background: radial-gradient(circle at 30% 30%, rgba(246, 196, 78, 0.8), rgba(237, 164, 35, 0.22) 60%, transparent 75%);
-
             animation: hpDrift 14s ease-in-out infinite alternate;
         }
 
         .hp-blob-2 {
             width: 260px;
             height: 260px;
-
             top: 380px;
             left: -140px;
-
             background: radial-gradient(circle at 60% 40%, rgba(246, 196, 78, 0.6), rgba(237, 164, 35, 0.18) 60%, transparent 75%);
-
             animation: hpDrift 18s ease-in-out infinite alternate-reverse;
         }
 
@@ -302,7 +447,6 @@ function roomhive_detail_url($listing)
 
         .js .hp-reveal {
             opacity: 0;
-
             animation: hpRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0s) forwards;
         }
 
@@ -314,19 +458,17 @@ function roomhive_detail_url($listing)
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            position: relative;
+            z-index: 1;
 
             color: var(--hp-ink-soft) !important;
-
             font-weight: 600;
-
             text-decoration: none;
-
             transition: color 0.15s ease, transform 0.15s ease;
         }
 
         .hp-back-link:hover {
             color: var(--hp-honey-dark) !important;
-
             transform: translateX(-3px);
         }
 
@@ -336,11 +478,9 @@ function roomhive_detail_url($listing)
 
         .hp-avatar {
             border: 3px solid #ffffff !important;
-
             box-shadow:
                 0 0 0 3px var(--hp-honey),
                 0 14px 28px rgba(237, 164, 35, 0.3) !important;
-
             transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
@@ -350,12 +490,9 @@ function roomhive_detail_url($listing)
 
         .hp-name {
             color: var(--hp-ink) !important;
-
             font-weight: 800 !important;
             letter-spacing: -0.6px;
 
-            /* Gradient shimmer, same treatment as the host
-               wizard and every page hero. */
             background: linear-gradient(92deg, var(--hp-ink) 0%, var(--hp-ink) 55%, #eda423 85%, #f6c04e 100%);
             background-size: 200% auto;
 
@@ -377,7 +514,6 @@ function roomhive_detail_url($listing)
 
         .hp-badge {
             font-weight: 700 !important;
-
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
@@ -387,34 +523,30 @@ function roomhive_detail_url($listing)
 
         .hp-badge-verified {
             background: linear-gradient(135deg, #f6b93b, var(--hp-honey)) !important;
-
             border-color: transparent !important;
-
             color: var(--hp-ink) !important;
-
             box-shadow: 0 6px 14px rgba(237, 164, 35, 0.35);
         }
 
         .hp-badge-superhost {
             background: var(--hp-moss) !important;
-
             border-color: transparent !important;
-
             color: #ffffff !important;
-
             box-shadow: 0 6px 14px rgba(47, 158, 91, 0.35);
         }
 
         .hp-rating {
             color: #b07708 !important;
-
             font-weight: 700 !important;
         }
 
         .hp-rating-count {
             color: var(--hp-ink-soft) !important;
-
             font-weight: 500 !important;
+        }
+
+        .hp-rating-empty {
+            color: var(--hp-ink-soft) !important;
         }
 
         /* =====================================================
@@ -424,34 +556,25 @@ function roomhive_detail_url($listing)
         .hp-about h2,
         .hp-listings h2 {
             position: relative;
-
             display: inline-block;
-
             color: var(--hp-ink) !important;
-
             font-weight: 800 !important;
         }
 
         .hp-about h2::after,
         .hp-listings h2::after {
             content: "";
-
             position: absolute;
-
             width: 36px;
             height: 3px;
-
             left: 0;
             bottom: -7px;
-
             background: linear-gradient(90deg, #f6b93b, var(--hp-honey));
-
             border-radius: 2px;
         }
 
         .hp-about-text {
             color: var(--hp-ink-soft) !important;
-
             line-height: 1.75 !important;
         }
 
@@ -466,7 +589,6 @@ function roomhive_detail_url($listing)
 
         .hp-listings-grid .listing-box {
             border-radius: 16px;
-
             transition:
                 transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
                 box-shadow 0.3s ease,
@@ -475,26 +597,20 @@ function roomhive_detail_url($listing)
 
         .hp-listings-grid .listing-box:hover {
             transform: translateY(-6px);
-
             border-color: rgba(237, 164, 35, 0.45) !important;
-
             box-shadow: var(--hp-gold-shadow) !important;
         }
 
         .hp-listings-grid .rh-card-media {
             aspect-ratio: 4 / 3;
-
             overflow: hidden;
         }
 
         .hp-listings-grid .rh-card-media img {
             width: 100%;
             height: 100%;
-
             object-fit: cover;
-
             display: block;
-
             transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
@@ -504,7 +620,6 @@ function roomhive_detail_url($listing)
 
         .hp-listings-grid .listing-box-title {
             color: var(--hp-ink) !important;
-
             font-weight: 700 !important;
         }
 
@@ -524,33 +639,29 @@ function roomhive_detail_url($listing)
            SIDEBAR CARD — honey top bar + hover rows
         ====================================================== */
 
-        .hp-card {
+        .hp-page .hp-card {
             border-top: 4px solid var(--hp-honey) !important;
-
             transition:
                 box-shadow 0.25s ease,
                 border-color 0.25s ease;
         }
 
-        .hp-card:hover {
+        .hp-page .hp-card:hover {
             box-shadow: var(--hp-gold-shadow) !important;
         }
 
         .hp-card h3 {
             color: var(--hp-ink) !important;
-
             font-weight: 800 !important;
         }
 
         .hp-detail-row {
             transition: background 0.15s ease, transform 0.15s ease;
-
             border-radius: 10px;
         }
 
         .hp-detail-row:hover {
             background: #fff8ec;
-
             transform: translateX(3px);
         }
 
@@ -559,13 +670,8 @@ function roomhive_detail_url($listing)
         }
 
         /* Hex marks honey */
-        .hp-hex {
-            background: var(--hp-honey) !important;
-        }
-
-        .hp-hex-sm {
-            background: var(--hp-honey) !important;
-        }
+        .hp-hex { background: var(--hp-honey) !important; }
+        .hp-hex-sm { background: var(--hp-honey) !important; }
 
         /* =====================================================
            BUTTONS — gradient honey primary
@@ -573,15 +679,10 @@ function roomhive_detail_url($listing)
 
         .hp-btn-primary {
             background: linear-gradient(135deg, #f6b93b, var(--hp-honey)) !important;
-
             border: none !important;
-
             color: var(--hp-ink) !important;
-
             font-weight: 700 !important;
-
             box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35) !important;
-
             transition:
                 transform 0.2s ease,
                 box-shadow 0.2s ease !important;
@@ -589,7 +690,6 @@ function roomhive_detail_url($listing)
 
         .hp-btn-primary:hover {
             transform: translateY(-2px);
-
             box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45) !important;
         }
 
@@ -617,7 +717,6 @@ function roomhive_detail_url($listing)
 
             .js .hp-reveal {
                 animation: none !important;
-
                 opacity: 1 !important;
                 transform: none !important;
             }
@@ -640,13 +739,7 @@ function roomhive_detail_url($listing)
 <body>
 
 <!-- =========================
-     NAVIGATION BAR
-     FIX: the header markup was missing from this page
-     entirely (only its orphaned <style> block remained).
-     Now uses the shared navbar.php — same fixed dropdown
-     design as host_navbar.php, role-aware links (Host
-     Dashboard for hosts, User Profile for renters),
-     Messages entry, and self-contained dropdown JS.
+     NAVIGATION BAR (shared)
 ========================== -->
 
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
@@ -657,9 +750,6 @@ function roomhive_detail_url($listing)
 
 <main class="hp-page">
 
-    <!-- Decoration layer — honeycomb texture + glow
-         blobs, in brand-new class names so they can't
-         collide with host-profile.css -->
     <div class="hp-deco" aria-hidden="true">
         <span class="hp-blob hp-blob-1"></span>
         <span class="hp-blob hp-blob-2"></span>
@@ -869,10 +959,6 @@ function roomhive_detail_url($listing)
 
 </main>
 
-<!-- FIX: stray "<" character after </main> removed — it was
-     rendering as visible text on the page. -->
-
-<!-- MAIN JAVASCRIPT (handles account dropdown open/close) -->
 <script src="/webprogg/assets/javaScript.js"></script>
 
 </body>

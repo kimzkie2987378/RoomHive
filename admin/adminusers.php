@@ -5,8 +5,19 @@
  * `users` table) with a Delete action. Deleting a user is destructive
  * and cascades across every table that references that user.
  *
- * SIDEBAR CHANGE: RoomHive brand block and the
- * "Need Help / Contact Support" card removed.
+ * CASCADE (kept): covers every user-referencing table — listings
+ * (+ their bookings/reviews/wishlist/photos), conversations in BOTH
+ * directions (+ their messages), messages sent in other parties'
+ * threads, own bookings/reviews/wishlist, notifications,
+ * saved_searches, support_tickets, notification_settings,
+ * notification_preferences, payouts, payout_methods, Hive Club,
+ * host_applications, and the account itself. Conversations attached
+ * to the user's LISTINGS (owned by other parties) are DETACHED.
+ *
+ * NEW (this version):
+ *   - NAV ALIGNMENT: working ☰ menu button (off-canvas sidebar +
+ *     overlay under 1000px), topbar shadow on scroll.
+ *   - "Hive Club" nav entry added (adminhiveclub.php).
  */
 
 session_start();
@@ -36,7 +47,7 @@ if (empty($_SESSION['admin_csrf'])) {
 
 /*
  * =========================================================
- * DELETE USER (cascading)
+ * DELETE USER (full cascading delete)
  * =========================================================
  */
  $flash = null;
@@ -53,12 +64,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
         if ($targetUser) {
             $pdo->beginTransaction();
             try {
+
+                /* =============================================
+                   1. LISTINGS OWNED BY THE USER
+                   ============================================= */
                 $stmt = $pdo->prepare("SELECT id FROM listings WHERE user_id = :uid");
                 $stmt->execute(['uid' => $targetUserId]);
                 $ownedListingIds = array_column($stmt->fetchAll(), 'id');
 
                 if ($ownedListingIds) {
                     $placeholders = implode(',', array_fill(0, count($ownedListingIds), '?'));
+
+                    /* Detach conversations pointing at these listings
+                       (other parties' chat history is kept). listing_id
+                       is nullable after the schema migration. */
+                    try {
+                        $convCols = $pdo->query("SHOW COLUMNS FROM conversations")
+                                        ->fetchAll(PDO::FETCH_COLUMN);
+                        if (in_array('listing_id', $convCols, true)) {
+                            $pdo->prepare("UPDATE conversations SET listing_id = NULL WHERE listing_id IN ($placeholders)")
+                                ->execute($ownedListingIds);
+                        }
+                    } catch (PDOException $e) {
+                        error_log('adminusers cascade: conversations detach skipped: ' . $e->getMessage());
+                    }
 
                     $pdo->prepare("DELETE FROM bookings WHERE listing_id IN ($placeholders)")
                         ->execute($ownedListingIds);
@@ -76,6 +105,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                         ->execute($ownedListingIds);
                 }
 
+                /* =============================================
+                   2. CONVERSATIONS WHERE THEY'RE TENANT OR HOST
+                   (+ every message inside them)
+                   ============================================= */
+                try {
+                    $convStmt = $pdo->prepare(
+                        "SELECT id FROM conversations WHERE user_id = :uid OR host_id = :uid2"
+                    );
+                    $convStmt->execute([
+                        'uid'  => $targetUserId,
+                        'uid2' => $targetUserId,
+                    ]);
+                    $convIds = array_column($convStmt->fetchAll(), 'id');
+
+                    if ($convIds) {
+                        $convPh = implode(',', array_fill(0, count($convIds), '?'));
+                        $pdo->prepare("DELETE FROM messages WHERE conversation_id IN ($convPh)")
+                            ->execute($convIds);
+                        $pdo->prepare("DELETE FROM conversations WHERE id IN ($convPh)")
+                            ->execute($convIds);
+                    }
+
+                    /* Messages they sent inside OTHER parties' threads. */
+                    $pdo->prepare("DELETE FROM messages WHERE sender_id = :uid")
+                        ->execute(['uid' => $targetUserId]);
+
+                } catch (PDOException $e) {
+                    error_log('adminusers cascade: conversations/messages: ' . $e->getMessage());
+                }
+
+                /* =============================================
+                   3. THEIR OWN ROWS
+                   ============================================= */
                 $pdo->prepare("DELETE FROM bookings WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
@@ -85,6 +147,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                 $pdo->prepare("DELETE FROM wishlist WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
+                /* =============================================
+                   4. NOTIFICATIONS
+                   ============================================= */
+                $pdo->prepare("DELETE FROM notifications WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                /* =============================================
+                   5. OTHER USER-KEYED TABLES
+                   ============================================= */
+                $pdo->prepare("DELETE FROM saved_searches WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM support_tickets WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM notification_settings WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM notification_preferences WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM payouts WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM payout_methods WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                /* =============================================
+                   6. HIVE CLUB (ledger cleaned via user_id)
+                   ============================================= */
                 $stmt = $pdo->prepare("SELECT id FROM hive_members WHERE user_id = :uid");
                 $stmt->execute(['uid' => $targetUserId]);
                 $hiveMemberIds = array_column($stmt->fetchAll(), 'id');
@@ -97,9 +189,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                 $pdo->prepare("DELETE FROM hiveclub_transactions WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
+                $pdo->prepare("DELETE FROM hive_redemptions WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
+                $pdo->prepare("DELETE FROM hive_points_ledger WHERE user_id = :uid")
+                    ->execute(['uid' => $targetUserId]);
+
                 $pdo->prepare("DELETE FROM hive_members WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
+                /* =============================================
+                   7. HOST APPLICATION + THE ACCOUNT ITSELF
+                   ============================================= */
                 $pdo->prepare("DELETE FROM host_applications WHERE user_id = :uid")
                     ->execute(['uid' => $targetUserId]);
 
@@ -111,7 +212,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
                 header('Location: /webprogg/admin/adminusers.php?deleted=' . urlencode($targetUser['name']));
                 exit();
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                error_log('adminusers delete failed: ' . $e->getMessage());
                 header('Location: /webprogg/admin/adminusers.php?error=delete_failed');
                 exit();
             }
@@ -136,7 +238,7 @@ if (isset($_GET['deleted'])) {
     $flash = ['type' => 'error', 'text' => $messages[$_GET['error']] ?? 'Something went wrong.'];
 }
 
-/* ---------- Sidebar navigation ---------- */
+/* ---------- Sidebar navigation (Hive Club added) ---------- */
  $navItems = [
     ['label' => 'Dashboard',            'icon' => 'home',       'href' => '/webprogg/admin/admin.php'],
     ['label' => 'Users',                'icon' => 'users',      'active' => true, 'href' => '/webprogg/admin/adminusers.php'],
@@ -145,13 +247,14 @@ if (isset($_GET['deleted'])) {
     ['label' => 'Listings Application', 'icon' => 'clipboard',  'href' => '/webprogg/admin/listingapplication.php'],
     ['label' => 'Host Applications',    'icon' => 'user-check', 'href' => '/webprogg/admin/hostapplication.php'],
     ['label' => 'Payouts',              'icon' => 'wallet',     'href' => '/webprogg/admin/adminpayouts.php'],
+    ['label' => 'Hive Club',            'icon' => 'tag',        'href' => '/webprogg/admin/adminhiveclub.php'],
     ['label' => 'Reviews',              'icon' => 'star',       'href' => '/webprogg/admin/adminreviews.php'],
     ['label' => 'Messages',             'icon' => 'message',    'href' => '/webprogg/admin/adminmessages.php'],
     ['label' => 'Reports',              'icon' => 'bar-chart',  'href' => '/webprogg/admin/adminreports.php'],
     ['label' => 'Settings',             'icon' => 'settings',   'href' => '/webprogg/admin/adminsettings.php'],
 ];
 
-/* ---------- Notifications badge (kept consistent with admin.php) ---------- */
+/* ---------- Notifications badge ---------- */
  $pendingHostApps   = (int) $pdo->query("SELECT COUNT(*) FROM host_applications WHERE status = 'pending'")->fetchColumn();
  $pendingListings   = (int) $pdo->query("SELECT COUNT(*) FROM listings WHERE status = 'pending'")->fetchColumn();
  $notificationCount = $pendingHostApps + $pendingListings;
@@ -201,7 +304,7 @@ if ($role === 'host') {
  $totalUsersCount = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
  $totalHostsCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE is_host = 1")->fetchColumn();
 
-/* ---------- Inline icon helper (same set as admin.php) ---------- */
+/* ---------- Inline icon helper ---------- */
 function icon($name, $class = '') {
     $icons = [
         'home' => '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
@@ -214,7 +317,7 @@ function icon($name, $class = '') {
         'star' => '<path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.6 1-5.75-4.2-4.1 5.8-.85z"/>',
         'message' => '<path d="M3.5 12a8.2 8.2 0 1 1 3.3 6.5L3 20l1.3-3.8A8.1 8.1 0 0 1 3.5 12Z"/>',
         'bar-chart' => '<path d="M4 20V10M12 20V4M20 20v-7"/>',
-        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
+        'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.1 1.65V20a2.2 2.2 0 1 1-4.4 0v-.06a1.8 1.8 0 0 0-1.18-1.65 1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.65-1.1H4a2.2 2.2 0 1 1 0-4.4h.06a1.8 1.8 0 0 0 1.65-1.18 1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H10.5a1.8 1.8 0 0 0 1.1-1.65V4a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.1 1.65 1.8 1.8 0 0 0 2-.36l-.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.09a1.8 1.8 0 0 0 1.65 1.1H20a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.65 1.1Z"/>',
         'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>',
         'bell' => '<path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
@@ -230,7 +333,6 @@ function icon($name, $class = '') {
     return '<svg class="icon '.$class.'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'.$path.'</svg>';
 }
 
-/** Renders a small "nothing here yet" placeholder inside a list panel. */
 function emptyState($text) {
     echo '<div class="empty-state">';
     echo '<div class="empty-icon">'.icon('search').'</div>';
@@ -286,6 +388,28 @@ function emptyState($text) {
     .admin-menu-item:hover { background: #F6F7FB; }
     .admin-menu-item .icon { width: 16px; height: 16px; }
     .admin-logout { color: #E14B4B; }
+
+    /* ---- NAV ALIGNMENT: mobile sidebar toggle + topbar shadow ---- */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 20, 43, 0.45);
+        z-index: 90;
+    }
+    @media (max-width: 1000px) {
+        .layout.sidebar-open .sidebar-overlay { display: block; }
+        .layout.sidebar-open .sidebar {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+    }
+    .topbar.topbar-scrolled { box-shadow: 0 6px 18px rgba(20, 20, 43, 0.08); }
 
     /* ---------- Users page specifics ---------- */
     .users-toolbar {
@@ -393,7 +517,6 @@ function emptyState($text) {
     .btn-delete-user:hover { background: #E14B4B; color: #fff; }
     .btn-delete-user .icon { width: 14px; height: 14px; }
 
-    /* ---------- Flash banner ---------- */
     .flash-banner {
         display: flex;
         align-items: center;
@@ -408,7 +531,6 @@ function emptyState($text) {
     .flash-banner.error { background: #FCEAEA; color: #E14B4B; }
     .flash-banner .icon { width: 18px; height: 18px; flex-shrink: 0; }
 
-    /* ---------- Delete confirmation modal ---------- */
     .modal-overlay {
         display: none;
         position: fixed;
@@ -455,7 +577,10 @@ function emptyState($text) {
 </head>
 <body>
 
-<div class="layout">
+<div class="layout" id="adminLayout">
+
+    <!-- Mobile overlay (NAV ALIGNMENT) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- ============ SIDEBAR ============ -->
     <aside class="sidebar">
@@ -472,9 +597,8 @@ function emptyState($text) {
     <!-- ============ MAIN ============ -->
     <div class="main">
 
-        <!-- Topbar -->
-        <header class="topbar">
-            <button class="icon-btn menu-btn" aria-label="Toggle menu"><?= icon('menu') ?></button>
+        <header class="topbar" id="adminTopbar">
+            <button class="icon-btn menu-btn" id="menuBtn" aria-label="Toggle menu"><?= icon('menu') ?></button>
 
             <div class="search-box">
                 <?= icon('search') ?>
@@ -638,8 +762,15 @@ function emptyState($text) {
 </div>
 
 <script>
+/* =====================================================
+   CANONICAL SCRIPT — nav alignment (chip, sidebar toggle,
+   topbar shadow) + the delete-confirmation modal
+====================================================== */
 (function () {
-    const chip = document.getElementById('adminChip');
+    "use strict";
+
+    /* ---- Admin chip dropdown ---- */
+    var chip = document.getElementById('adminChip');
     if (chip) {
         chip.addEventListener('click', function (e) {
             chip.classList.toggle('open');
@@ -648,12 +779,44 @@ function emptyState($text) {
         document.addEventListener('click', function () {
             chip.classList.remove('open');
         });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { chip.classList.remove('open'); }
+        });
     }
 
-    const modal      = document.getElementById('deleteModal');
-    const modalText  = document.getElementById('deleteModalText');
-    const idField     = document.getElementById('deleteUserId');
-    const cancelBtn   = document.getElementById('cancelDelete');
+    /* ---- Mobile sidebar toggle (menu button now works) ---- */
+    var layout  = document.getElementById('adminLayout');
+    var menuBtn = document.getElementById('menuBtn');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    function closeSidebar() { if (layout) { layout.classList.remove('sidebar-open'); } }
+
+    if (menuBtn && layout) {
+        menuBtn.addEventListener('click', function (e) {
+            layout.classList.toggle('sidebar-open');
+            e.stopPropagation();
+        });
+    }
+    if (overlay) { overlay.addEventListener('click', closeSidebar); }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeSidebar(); }
+    });
+
+    /* ---- Topbar shadow on scroll ---- */
+    var topbar = document.getElementById('adminTopbar');
+    if (topbar) {
+        var onScroll = function () {
+            topbar.classList.toggle('topbar-scrolled', window.scrollY > 8);
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+    }
+
+    /* ---- Delete confirmation modal (kept) ---- */
+    var modal      = document.getElementById('deleteModal');
+    var modalText  = document.getElementById('deleteModalText');
+    var idField    = document.getElementById('deleteUserId');
+    var cancelBtn  = document.getElementById('cancelDelete');
 
     document.querySelectorAll('.js-delete-user').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -670,7 +833,7 @@ function emptyState($text) {
             }
 
             modalText.innerHTML = 'This will permanently delete <strong>' + name +
-                '</strong> and all of their data — bookings, reviews, wishlist items, listings and photos, and host application history.' +
+                '</strong> and all of their data — bookings, reviews, wishlist items, listings and photos, messages and conversations, notifications, saved searches, support tickets, payout records, Hive Club membership and host application history.' +
                 extra + ' This action cannot be undone.';
             idField.value = btn.dataset.userId;
             modal.classList.add('open');

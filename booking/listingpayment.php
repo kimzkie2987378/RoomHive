@@ -1,294 +1,306 @@
 <?php
-        /* =========================================================
-        ROOMHIVE — LISTING PAYMENT (Inquiry Step 2: Payment)
-        listingpayment.php
+/* =========================================================
+   ROOMHIVE — LISTING PAYMENT (Inquiry Step 2: Payment)
+   listingpayment.php
 
-        DESIGN REFRESH:
-          - Added site navbar (brand + avatar + notifications)
-          - Soft gray page background + elevated cards
-          - Step tracker with checkmark on done step
-          - Larger payment method tiles w/ hover + custom radio
-          - Green secure-payment banner
-          - Balance mode now shows a paid-vs-remaining progress bar
-          - Sticky summary sidebar on desktop
-          - ALL business logic unchanged (new inquiry + pay balance,
-            server-side amount derivation, same form field names,
-            same POST target process-payment.php)
-          ===== NEW =====
-          - Listing status guards:
-              * Host CANNOT open this page for a space that is
-                already live (status = 'approved') — no re-listing.
-              * Renters CANNOT open this page for a space that is
-                not published yet.
-          - ===== NEW: MAP PIN ===== Real Leaflet map in the
-            Location card showing the exact pin the host dropped
-            on host-step2.php (latitude/longitude from the
-            listings table). Falls back to the placeholder image
-            for listings saved before pins existed.
-        ========================================================= */
+   === HIVE CLUB PHASE 4 — MEMBER DISCOUNT LIVE ===
+   Members get their tier discount (Bronze 5% / Gold 10% /
+   Platinum 15%) on the listing price:
+     - The expired-membership sweep runs on load (lazy).
+     - Membership chip shown in the sidebar (tier, %, days
+       left, or "Join Hive Club" upsell).
+     - Summary shows: Monthly Rent -> Member Discount (-P)
+       -> Discounted Total -> Reserve Now (50%) ->
+       Balance After Accept. The Reserve button says
+       "Pay Reserve P<X> (50% of member price)".
+   `bookings.total` will store the DISCOUNTED total (written
+   by process-payment.php) so the balance flow and point
+   earning stay consistent with what was actually paid.
 
-        session_start();
-        require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+   KEPT: 50% reserve model, balance mode, owner "List Now"
+   flow, guards, map pin, same POST target/field names.
+========================================================= */
 
-        /* -----------------------------------------------------
-        AUTH GUARD
-        ----------------------------------------------------- */
-        if (!isset($_SESSION['user_id'])) {
-            header("Location: /webprogg/auth/loginform.php");
-            exit;
+session_start();
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
+
+/* -----------------------------------------------------
+   AUTH GUARD
+----------------------------------------------------- */
+if (!isset($_SESSION['user_id'])) {
+    header("Location: /webprogg/auth/loginform.php");
+    exit;
+}
+
+ $isLoggedIn = isset($_SESSION["logged_in"]) && $_SESSION["logged_in"] === true;
+ $navAvatar  = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
+ $notification_count = 0;
+
+/* Real unread bell count */
+ $ncStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
+);
+ $ncStmt->execute(['u' => $_SESSION['user_id']]);
+ $notification_count = (int) $ncStmt->fetchColumn();
+
+/* -----------------------------------------------------
+   HIVE CLUB — expire lapsed memberships, load this member
+----------------------------------------------------- */
+hive_expiry_sweep($pdo);
+ $hiveMember   = hive_member($pdo, $_SESSION['user_id']);
+ $hiveActive   = hive_active($hiveMember);
+ $hiveDiscount = hive_discount_pct($hiveMember);
+ $hiveTier     = $hiveMember ? (string) $hiveMember['tier'] : null;
+ $hiveDaysLeft = hive_days_until_expiry($hiveMember);
+
+/* Small helper so we're not repeating htmlspecialchars() everywhere */
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+/* -----------------------------------------------------
+   PHOTO PATH FIX
+----------------------------------------------------- */
+if (!function_exists('resolve_photo')) {
+    function resolve_photo($path, $fallback) {
+        if (empty($path)) {
+            return $fallback;
         }
-
-        $isLoggedIn = isset($_SESSION["logged_in"]) && $_SESSION["logged_in"] === true;
-        $navAvatar  = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
-        $notification_count = 0;
-
-        /* Small helper so we're not repeating htmlspecialchars() everywhere */
-        function h($value) {
-            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        if (preg_match('#^(https?://|/)#i', $path)) {
+            return $path;
         }
+        return '/webprogg/' . ltrim((string) $path, '/');
+    }
+}
 
-        /* -----------------------------------------------------
-        PHOTO PATH FIX (unchanged)
-        ----------------------------------------------------- */
-        function resolve_photo($path, $fallback) {
-            if (empty($path)) {
-                return $fallback;
-            }
-            if (preg_match('#^(https?://|/)#i', $path)) {
-                return $path;
-            }
-            return '/webprogg/' . ltrim($path, '/');
+/* -----------------------------------------------------
+   RESOLVE LISTING + INQUIRY DETAILS FROM STEP 1
+----------------------------------------------------- */
+ $listingId = isset($_GET['listing_id']) && is_numeric($_GET['listing_id'])
+    ? (int) $_GET['listing_id']
+    : 0;
+
+if (!function_exists('payment_valid_date')) {
+    function payment_valid_date($value) {
+        if (!is_string($value) || $value === '') {
+            return null;
         }
+        $d = DateTime::createFromFormat('Y-m-d', $value);
+        return ($d && $d->format('Y-m-d') === $value) ? $value : null;
+    }
+}
 
-        /* -----------------------------------------------------
-        RESOLVE LISTING + INQUIRY DETAILS FROM STEP 1 (unchanged)
-        ----------------------------------------------------- */
-        $listingId = isset($_GET['listing_id']) && is_numeric($_GET['listing_id'])
-            ? (int) $_GET['listing_id']
-            : 0;
+ $checkin  = payment_valid_date($_GET['checkin_date'] ?? null) ?? '';
+ $checkout = payment_valid_date($_GET['checkout_date'] ?? null) ?? '';
 
-        function payment_valid_date($value) {
-            if (!is_string($value) || $value === '') {
-                return null;
-            }
-            $d = DateTime::createFromFormat('Y-m-d', $value);
-            return ($d && $d->format('Y-m-d') === $value) ? $value : null;
-        }
+ $longTerm = isset($_GET['long_term']) && $_GET['long_term'] === '1';
 
-        $checkin  = payment_valid_date($_GET['checkin_date'] ?? null) ?? '';
-        $checkout = payment_valid_date($_GET['checkout_date'] ?? null) ?? '';
+if ($longTerm) {
+    $checkout = '';
+}
 
-        $longTerm = isset($_GET['long_term']) && $_GET['long_term'] === '1';
+ $allowedGuestOptions = ['1', '2', '3', '4+'];
+ $guestsInput = $_GET['guests'] ?? null;
+ $guests = in_array($guestsInput, $allowedGuestOptions, true) ? $guestsInput : '1';
 
-        if ($longTerm) {
-            $checkout = '';
-        }
+/* -----------------------------------------------------
+   PAY-REMAINING-BALANCE MODE
+----------------------------------------------------- */
+ $payBalanceBookingId = isset($_GET['pay_balance']) && is_numeric($_GET['pay_balance'])
+    ? (int) $_GET['pay_balance']
+    : null;
 
-        $allowedGuestOptions = ['1', '2', '3', '4+'];
-        $guestsInput = $_GET['guests'] ?? null;
-        $guests = in_array($guestsInput, $allowedGuestOptions, true) ? $guestsInput : '1';
+ $balanceBooking = null;
 
-        /* -----------------------------------------------------
-        PAY-REMAINING-BALANCE MODE (unchanged)
-        ----------------------------------------------------- */
-        $payBalanceBookingId = isset($_GET['pay_balance']) && is_numeric($_GET['pay_balance'])
-            ? (int) $_GET['pay_balance']
-            : null;
+if ($payBalanceBookingId !== null) {
+    $balanceStmt = $pdo->prepare(
+        "SELECT id, user_id, listing_id, total, amount_paid, status,
+                checkin_date, checkout_date, guests
+         FROM bookings
+         WHERE id = :id
+         LIMIT 1"
+    );
+    $balanceStmt->execute(['id' => $payBalanceBookingId]);
+    $balanceBooking = $balanceStmt->fetch();
 
-        $balanceBooking = null;
+    $balanceIsValid = $balanceBooking !== false
+        && (int) $balanceBooking['user_id'] === (int) $_SESSION['user_id']
+        && (int) $balanceBooking['listing_id'] === $listingId
+        && in_array($balanceBooking['status'], ['pending', 'confirmed'], true);
 
-        if ($payBalanceBookingId !== null) {
-            $balanceStmt = $pdo->prepare(
-                "SELECT id, user_id, listing_id, total, amount_paid, status,
-                        checkin_date, checkout_date, guests
-                 FROM bookings
-                 WHERE id = :id
-                 LIMIT 1"
-            );
-            $balanceStmt->execute(['id' => $payBalanceBookingId]);
-            $balanceBooking = $balanceStmt->fetch();
+    if (!$balanceIsValid) {
+        header('Location: /webprogg/booking/userbookings.php');
+        exit;
+    }
 
-            $balanceIsValid = $balanceBooking !== false
-                && (int) $balanceBooking['user_id'] === (int) $_SESSION['user_id']
-                && (int) $balanceBooking['listing_id'] === $listingId
-                && in_array($balanceBooking['status'], ['pending', 'confirmed'], true);
+    $remaining = round(
+        (float) $balanceBooking['total'] - (float) $balanceBooking['amount_paid'],
+        2
+    );
 
-            if (!$balanceIsValid) {
-                header('Location: /webprogg/booking/userbookings.php');
-                exit;
-            }
+    if ($remaining <= 0.005) {
+        header('Location: /webprogg/booking/booking-details.php?id=' . $payBalanceBookingId);
+        exit;
+    }
 
-            $remaining = round(
-                (float) $balanceBooking['total'] - (float) $balanceBooking['amount_paid'],
-                2
-            );
+    $checkin  = $balanceBooking['checkin_date']  ?? $checkin;
+    $checkout = $balanceBooking['checkout_date'] ?? $checkout;
+    $guests   = in_array($balanceBooking['guests'] ?? '', $allowedGuestOptions, true)
+        ? $balanceBooking['guests']
+        : $guests;
+}
 
-            if ($remaining <= 0.005) {
-                header('Location: /webprogg/booking/booking-details.php?id=' . $payBalanceBookingId);
-                exit;
-            }
+/* =====================================================
+   LISTING FETCH
+===================================================== */
+ $listingStmt = $pdo->prepare(
+    "SELECT l.id, l.title, l.location, l.exact_address, l.category, l.property_type, l.price,
+            l.user_id AS host_id,
+            l.status,
+            l.latitude, l.longitude,
+            l.bedrooms, l.bathrooms, l.size_sqm, l.floor, l.parking,
+            u.name AS host_name, u.avatar_path AS host_avatar, u.created_at AS host_since,
+            p.photo_path AS cover_photo
+    FROM listings l
+    JOIN users u ON u.id = l.user_id
+    LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
+    WHERE l.id = :id
+    LIMIT 1"
+);
+ $listingStmt->execute(['id' => $listingId]);
+ $listing = $listingStmt->fetch();
 
-            $checkin  = $balanceBooking['checkin_date']  ?? $checkin;
-            $checkout = $balanceBooking['checkout_date'] ?? $checkout;
-            $guests   = $balanceBooking['guests']        ?? $guests;
-        }
+if ($listing === false) {
+    header('Location: /webprogg/Listings/listing.php');
+    exit;
+}
 
-        /* =====================================================
-        ===== NEW ===== LISTING FETCH — now also selects
-        l.status (for guards) and l.latitude / l.longitude
-        (for the exact map pin the host dropped in step 2).
-        ===================================================== */
-        $listingStmt = $pdo->prepare(
-            "SELECT l.id, l.title, l.location, l.exact_address, l.category, l.property_type, l.price,
-                    l.user_id AS host_id,
-                    l.status,
-                    l.latitude, l.longitude,
-                    l.bedrooms, l.bathrooms, l.size_sqm, l.floor, l.parking,
-                    u.name AS host_name, u.avatar_path AS host_avatar, u.created_at AS host_since,
-                    p.photo_path AS cover_photo
-            FROM listings l
-            JOIN users u ON u.id = l.user_id
-            LEFT JOIN listing_photos p ON p.listing_id = l.id AND p.photo_type = 'cover'
-            WHERE l.id = :id
-            LIMIT 1"
-        );
-        $listingStmt->execute(['id' => $listingId]);
-        $listing = $listingStmt->fetch();
+/* =========================================================
+   LISTING STATUS GUARDS
+========================================================= */
+ $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
+ $listingStatus  = $listing['status'] ?? '';
 
-        if ($listing === false) {
-            header('Location: /webprogg/Listings/listing.php');
-            exit;
-        }
+if ($balanceBooking === null) {
 
-        /* =========================================================
-        ===== NEW ===== LISTING STATUS GUARDS
-        Enforced here (server-side) so a disabled/hidden button on
-        listing-detail.php is not the only protection.
+    if ($isListingOwner && $listingStatus === 'approved') {
+        header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&alreadylisted=1');
+        exit;
+    }
 
-          GUARD 1 — The host cannot open the listing/payment flow
-                    for a space that is ALREADY live. Once a space
-                    is uploaded and listed (status = 'approved'),
-                    it cannot be listed again.
+    if (!$isListingOwner && $listingStatus !== 'approved') {
+        header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
+        exit;
+    }
+}
 
-          GUARD 2 — Renters cannot pay for a space that is NOT
-                    published yet.
+/* -----------------------------------------------------
+   RATINGS
+----------------------------------------------------- */
+ $listingReviewsStmt = $pdo->prepare(
+    "SELECT rating FROM reviews WHERE listing_id = :id"
+);
+ $listingReviewsStmt->execute(['id' => $listingId]);
+ $listingRatings = array_map('floatval', array_column($listingReviewsStmt->fetchAll(), 'rating'));
 
-        Both guards are skipped in balance mode — that flow is for
-        an existing validated booking, not a new listing/inquiry.
-        ========================================================= */
-        $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
-        $listingStatus  = $listing['status'] ?? '';
+ $listing_rating_avg   = count($listingRatings) > 0 ? round(array_sum($listingRatings) / count($listingRatings), 1) : 0;
+ $listing_rating_count = count($listingRatings);
 
-        if ($balanceBooking === null) {
+/* FIXED: host rating = reviews ON the host's listings,
+   not reviews the host wrote as a guest. */
+ $hostReviewsStmt = $pdo->prepare(
+    "SELECT r.rating
+     FROM reviews r
+     JOIN listings l2 ON l2.id = r.listing_id
+     WHERE l2.user_id = :host_id"
+);
+ $hostReviewsStmt->execute(['host_id' => $listing['host_id']]);
+ $hostRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
 
-            /* GUARD 1 — host trying to re-list an already-listed space */
-            if ($isListingOwner && $listingStatus === 'approved') {
-                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&alreadylisted=1');
-                exit;
-            }
+ $host_rating_avg   = count($hostRatings) > 0 ? round(array_sum($hostRatings) / count($hostRatings), 1) : 0;
+ $host_rating_count = count($hostRatings);
 
-            /* GUARD 2 — renter trying to book an unlisted space */
-            if (!$isListingOwner && $listingStatus !== 'approved') {
-                header('Location: /webprogg/Listings/listing-detail.php?id=' . $listingId . '&unavailable=1');
-                exit;
-            }
-        }
+ $isSuperhost = $host_rating_count >= 5 && $host_rating_avg >= 4.8;
 
-        /* -----------------------------------------------------
-        LISTING RATING (unchanged)
-        ----------------------------------------------------- */
-        $listingReviewsStmt = $pdo->prepare(
-            "SELECT rating FROM reviews WHERE listing_id = :id"
-        );
-        $listingReviewsStmt->execute(['id' => $listingId]);
-        $listingRatings = array_map('floatval', array_column($listingReviewsStmt->fetchAll(), 'rating'));
+/* =========================================================
+   HIVE CLUB PRICING (Phase 4)
+   Discount applies to the listing's monthly price.
+   Balance mode: NO new discount — the discount was already
+   baked into b.total when the reserve was paid; charging a
+   second discount here would double-dip.
+========================================================= */
+ $monthlyRent = (float) $listing['price'];
 
-        $listing_rating_avg   = count($listingRatings) > 0 ? round(array_sum($listingRatings) / count($listingRatings), 1) : 0;
-        $listing_rating_count = count($listingRatings);
+if ($balanceBooking !== null) {
+    $hiveDiscount = 0;
+}
 
-        /* -----------------------------------------------------
-        HOST RATING (unchanged)
-        ----------------------------------------------------- */
-        $hostReviewsStmt = $pdo->prepare(
-            "SELECT rating FROM reviews WHERE user_id = :id"
-        );
-        $hostReviewsStmt->execute(['id' => $listing['host_id']]);
-        $hostRatings = array_map('floatval', array_column($hostReviewsStmt->fetchAll(), 'rating'));
+ $discountAmount = round($monthlyRent * ($hiveDiscount / 100), 2);
+ $discountedTotal = round($monthlyRent - $discountAmount, 2);
 
-        $host_rating_avg   = count($hostRatings) > 0 ? round(array_sum($hostRatings) / count($hostRatings), 1) : 0;
-        $host_rating_count = count($hostRatings);
+ $reservationFee  = round($discountedTotal * 0.5, 2);
+ $reserveBalance  = round($discountedTotal - $reservationFee, 2);
 
-        $isSuperhost = $host_rating_count >= 5 && $host_rating_avg >= 4.8;
+if ($balanceBooking !== null) {
+    $totalDueToday   = $remaining;
+    $bookingTotal    = (float) $balanceBooking['total'];
+    $amountPaidSoFar = (float) $balanceBooking['amount_paid'];
+} else {
+    $totalDueToday   = $reservationFee;
+    $bookingTotal    = null;
+    $amountPaidSoFar = null;
+}
 
-        /* -----------------------------------------------------
-        BOOKING SUMMARY FIGURES (unchanged)
-        ----------------------------------------------------- */
-        $monthlyRent = (float) $listing['price'];
+ $paidPct = ($balanceBooking !== null && $bookingTotal > 0)
+    ? max(0, min(100, (int) round(($amountPaidSoFar / $bookingTotal) * 100)))
+    : 0;
 
-        if ($balanceBooking !== null) {
-            $totalDueToday   = $remaining;
-            $bookingTotal    = (float) $balanceBooking['total'];
-            $amountPaidSoFar = (float) $balanceBooking['amount_paid'];
-        } else {
-            $totalDueToday   = 1000.00;
-            $bookingTotal    = null;
-            $amountPaidSoFar = null;
-        }
+/* -----------------------------------------------------
+   MAP PIN COORDINATES
+----------------------------------------------------- */
+ $pinLatitude  = isset($listing['latitude'])  && $listing['latitude']  !== null
+    ? (float) $listing['latitude']
+    : null;
+ $pinLongitude = isset($listing['longitude']) && $listing['longitude'] !== null
+    ? (float) $listing['longitude']
+    : null;
+ $hasMapPin = ($pinLatitude !== null && $pinLongitude !== null);
 
-        /* NEW (presentation only): % of booking already paid,
-           used for the progress bar in balance mode. */
-        $paidPct = ($balanceBooking !== null && $bookingTotal > 0)
-            ? max(0, min(100, (int) round(($amountPaidSoFar / $bookingTotal) * 100)))
-            : 0;
+/* -----------------------------------------------------
+   PAYMENT METHODS OFFERED
+----------------------------------------------------- */
+ $paymentMethods = [
+    [
+        'id'          => 'gcash',
+        'label'       => 'GCash',
+        'description' => 'Pay securely with GCash',
+        'icon'        => '/webprogg/images/GCashIcon.png',
+        'recommended' => true,
+    ],
+    [
+        'id'          => 'maya',
+        'label'       => 'Maya',
+        'description' => 'Pay with Maya',
+        'icon'        => '/webprogg/images/paymayaicon.png',
+        'recommended' => false,
+    ],
+    [
+        'id'          => 'card',
+        'label'       => 'Credit/Debit Card',
+        'description' => 'Visa, Mastercard, JCB and more.',
+        'icon'        => '/webprogg/images/paymentsicon-userprofile.png',
+        'recommended' => false,
+    ],
+];
 
-        /* -----------------------------------------------------
-        ===== NEW ===== MAP PIN COORDINATES
-        Picked up from the pin the host dropped on host-step2.php.
-        isset() guards keep this page working on old listings
-        created before the latitude/longitude columns existed.
-        ----------------------------------------------------- */
-        $pinLatitude  = isset($listing['latitude'])  && $listing['latitude']  !== null
-            ? (float) $listing['latitude']
-            : null;
-        $pinLongitude = isset($listing['longitude']) && $listing['longitude'] !== null
-            ? (float) $listing['longitude']
-            : null;
-        $hasMapPin = ($pinLatitude !== null && $pinLongitude !== null);
-
-        /* -----------------------------------------------------
-        PAYMENT METHODS OFFERED (unchanged)
-        ----------------------------------------------------- */
-        $paymentMethods = [
-            [
-                'id'          => 'gcash',
-                'label'       => 'GCash',
-                'description' => 'Pay securely with GCash',
-                'icon'        => '/webprogg/images/GCashIcon.png',
-                'recommended' => true,
-            ],
-            [
-                'id'          => 'maya',
-                'label'       => 'Maya',
-                'description' => 'Pay with Maya',
-                'icon'        => '/webprogg/images/paymayaicon.png',
-                'recommended' => false,
-            ],
-            [
-                'id'          => 'card',
-                'label'       => 'Credit/Debit Card',
-                'description' => 'Visa, Mastercard, JCB and more.',
-                'icon'        => '/webprogg/images/paymentsicon-userprofile.png',
-                'recommended' => false,
-            ],
-        ];
-
-        /* ===== NEW: Google Maps link prefers the exact pin when
-           available, otherwise falls back to the address text ===== */
-        $mapsQuery = $hasMapPin
-            ? $pinLatitude . ',' . $pinLongitude
-            : trim($listing['exact_address'] . ', ' . $listing['location']);
-        $mapsUrl   = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($mapsQuery);
-        ?>
+ $mapsQuery = $hasMapPin
+    ? $pinLatitude . ',' . $pinLongitude
+    : trim($listing['exact_address'] . ', ' . $listing['location']);
+ $mapsUrl   = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($mapsQuery);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -300,13 +312,7 @@
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 
-<!-- ===== NEW: FREE MAP — Leaflet + OpenStreetMap (no API key) ===== -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
 <style>
-    /* =====================================================
-       BASE
-    ===================================================== */
     * { box-sizing: border-box; }
     body {
         margin: 0;
@@ -315,9 +321,7 @@
         color: #14142B;
     }
 
-    /* =====================================================
-       TOP NAVBAR (new)
-    ===================================================== */
+    /* ===== TOP NAVBAR ===== */
     .lp-nav {
         position: sticky;
         top: 0;
@@ -390,9 +394,7 @@
         background: #F6F4EE;
     }
 
-    /* =====================================================
-       PAGE SHELL
-    ===================================================== */
+    /* ===== PAGE SHELL ===== */
     .bp-page { max-width: 1100px; margin: 0 auto; padding: 22px 20px 70px; }
 
     .bp-back-link {
@@ -408,9 +410,7 @@
     }
     .bp-back-link:hover { color: #F5A623; }
 
-    /* =====================================================
-       STEP TRACKER
-    ===================================================== */
+    /* ===== STEP TRACKER ===== */
     .bp-steps {
         display: flex;
         align-items: flex-start;
@@ -455,9 +455,7 @@
     }
     .bp-step-line-done { background: #A8DFBC; }
 
-    /* =====================================================
-       LAYOUT
-    ===================================================== */
+    /* ===== LAYOUT ===== */
     .bp-layout { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
     .bp-main { flex: 1.7; min-width: 300px; }
     .bp-sidebar {
@@ -474,9 +472,7 @@
         .bp-sidebar { position: static; max-width: none; }
     }
 
-    /* =====================================================
-       CARDS
-    ===================================================== */
+    /* ===== CARDS ===== */
     .bp-card {
         background: #fff;
         border: 1px solid #EEF1F6;
@@ -488,9 +484,7 @@
     .bp-main h1 { margin: 0 0 5px; font-size: 22px; color: #14142B; letter-spacing: -0.3px; }
     .bp-subtext { margin: 0 0 20px; font-size: 13.5px; color: #8B93A6; }
 
-    /* =====================================================
-       SECURE BANNER (green)
-    ===================================================== */
+    /* ===== BANNERS ===== */
     .bp-secure-banner {
         display: flex;
         gap: 12px;
@@ -513,9 +507,58 @@
     .bp-secure-banner strong { display: block; color: #14532D; font-size: 13.5px; }
     .bp-secure-banner p { margin: 2px 0 0; color: #4C8A63; font-size: 12.5px; }
 
-    /* =====================================================
-       PAYMENT METHODS
-    ===================================================== */
+    .bp-reserve-note {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        background: #FFF6E9;
+        border: 1px dashed #F5C77E;
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 22px;
+    }
+    .bp-reserve-note .bp-secure-icon { background: #FDE8C8; color: #C77800; }
+    .bp-reserve-note strong { display: block; color: #8A5A10; font-size: 13.5px; }
+    .bp-reserve-note p { margin: 2px 0 0; color: #A97B2F; font-size: 12.5px; line-height: 1.5; }
+
+    /* ===== NEW: HIVE CLUB MEMBER CHIP (sidebar) ===== */
+    .bp-hive-chip {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        background: linear-gradient(120deg, #FFF6E9 0%, #FFFDF6 100%);
+        border: 1px solid #F5C77E;
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+    }
+    .bp-hive-chip .bp-secure-icon { background: #FDE8C8; color: #C77800; font-size: 18px; }
+    .bp-hive-chip-body { flex: 1; min-width: 0; }
+    .bp-hive-chip-body strong { display: block; color: #8A5A10; font-size: 13.5px; }
+    .bp-hive-chip-body p { margin: 2px 0 0; color: #A97B2F; font-size: 12px; line-height: 1.5; }
+    .bp-hive-chip a {
+        flex-shrink: 0;
+        font-size: 11.5px;
+        font-weight: 800;
+        color: #C77800;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .bp-hive-chip a:hover { text-decoration: underline; }
+
+    /* ===== NEW: DISCOUNT ROW (summary) ===== */
+    .bp-summary-row-disc strong { color: #1FA971; }
+    .bp-summary-row-disc span::before {
+        content: "";
+        display: inline-block;
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: #2FA84F;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+
+    /* ===== PAYMENT METHODS ===== */
     .bp-methods-label {
         font-size: 12px;
         font-weight: 700;
@@ -578,9 +621,7 @@
         background: radial-gradient(#F5A623 0 42%, transparent 46%);
     }
 
-    /* =====================================================
-       HOW IT WORKS
-    ===================================================== */
+    /* ===== HOW IT WORKS ===== */
     .bp-howitworks {
         background: #F6F7FB;
         border-radius: 14px;
@@ -613,9 +654,7 @@
     .bp-hiw-step p { margin: 0; font-size: 12px; color: #8B93A6; line-height: 1.45; }
     .bp-hiw-arrow { color: #C9CDD6; font-size: 16px; padding-top: 4px; }
 
-    /* =====================================================
-       PAY BUTTON
-    ===================================================== */
+    /* ===== PAY BUTTON ===== */
     .bp-btn-pay {
         display: block;
         width: 100%;
@@ -653,9 +692,7 @@
     }
     .bp-back-inquiry:hover { color: #14142B; text-decoration: underline; }
 
-    /* =====================================================
-       SIDEBAR: LISTING SUMMARY
-    ===================================================== */
+    /* ===== SIDEBAR: LISTING SUMMARY ===== */
     .bp-listing-photo {
         width: 100%;
         height: 170px;
@@ -692,7 +729,6 @@
     }
     .bp-summary-row strong { color: #14142B; }
 
-    /* Balance-mode progress bar */
     .bp-progress {
         height: 8px;
         border-radius: 999px;
@@ -726,9 +762,7 @@
     }
     .bp-summary-row-total strong { font-size: 17px; color: #C77800; }
 
-    /* =====================================================
-       HOST CARD
-    ===================================================== */
+    /* ===== HOST CARD ===== */
     .bp-host-card h3 { margin: 0 0 14px; font-size: 15px; color: #14142B; }
     .bp-host-row { display: flex; gap: 12px; margin-bottom: 12px; }
     .bp-host-avatar {
@@ -761,76 +795,30 @@
         padding: 9px 12px;
     }
 
-    /* =====================================================
-       LOCATION CARD
-    ===================================================== */
+    /* ===== LOCATION CARD ===== */
     .bp-location-card h3 { margin: 0 0 10px; font-size: 15px; color: #14142B; }
     .bp-location-address { margin: 0 0 12px; font-size: 13px; color: #5B6172; }
-    .bp-map-thumb {
-        position: relative;
-        display: block;
-        border-radius: 12px;
-        overflow: hidden;
-        margin-bottom: 12px;
-        height: 120px;
-        background: #EAF2FB;
-    }
-    .bp-map-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
-    .bp-map-thumb:hover img { transform: scale(1.05); }
-    .bp-map-pin {
-        position: absolute; top: 50%; left: 50%;
-        transform: translate(-50%, -60%);
-        font-size: 24px;
-        filter: drop-shadow(0 3px 6px rgba(0,0,0,0.3));
-    }
-
-    /* =====================================================
-       ===== NEW: MAP PIN — LEAFLET EXACT-LOCATION MAP =====
-       Real interactive map centered on the exact pin the host
-       dropped on host-step2.php. Free Leaflet + OpenStreetMap,
-       no API key needed.
-    ===================================================== */
     .bp-map-embed {
         position: relative;
         z-index: 1;
-
         height: 150px;
-
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid #EEF1F6;
-
         margin-bottom: 10px;
-
         box-shadow: 0 4px 14px -8px rgba(20, 20, 43, 0.3);
-
         background: #EAF2FB;
     }
-
-    .bp-pin-icon {
-        background: transparent;
-        border: none;
-    }
-
-    .bp-pin {
-        font-size: 30px;
-        line-height: 1;
-        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
-    }
-
+    .bp-map-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
     .bp-map-exact-note {
         display: flex;
         align-items: center;
         gap: 6px;
-
         margin: 0 0 12px;
-
         font-size: 11.5px;
         font-weight: 600;
-
         color: #2FA84F;
     }
-
     .bp-btn-outline {
         display: block;
         width: 100%;
@@ -864,7 +852,7 @@
             <span class="lp-brand-text">Room<b>Hive</b></span>
         </a>
         <div class="lp-nav-right">
-            <a class="lp-nav-bell" href="#" aria-label="Notifications">
+            <a class="lp-nav-bell" href="/webprogg/user/notifications.php" aria-label="Notifications">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/>
                     <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
@@ -894,7 +882,6 @@
     <?php endif; ?>
 
     <?php if ($balanceBooking === null): ?>
-    <!-- STEP TRACKER (new-inquiry flow only) -->
     <div class="bp-steps">
         <div class="bp-step bp-step-done">
             <span class="bp-step-circle">
@@ -921,7 +908,7 @@
 
         <!-- =====================================================
              MAIN: PAYMENT METHOD SELECTION
-        ===================================================== -->
+        ====================================================== -->
         <div class="bp-main">
 
             <div class="bp-card">
@@ -930,11 +917,11 @@
                     <h1>Pay Remaining Balance</h1>
                     <p class="bp-subtext">
                         Settle the remaining &#8369;<?php echo h(number_format($totalDueToday, 2)); ?>
-                        owed on this booking.
+                        owed on this booking. Once paid, the booking is fully paid and you can enjoy your stay.
                     </p>
                 <?php else: ?>
                     <h1>Payment Method</h1>
-                    <p class="bp-subtext">Choose your preferred payment method to complete your inquiry.</p>
+                    <p class="bp-subtext">Choose your preferred payment method to reserve your dates.</p>
                 <?php endif; ?>
 
                 <div class="bp-secure-banner">
@@ -949,6 +936,27 @@
                         <p>We use trusted payment providers to keep your information safe.</p>
                     </div>
                 </div>
+
+                <?php if ($balanceBooking === null): ?>
+                <div class="bp-reserve-note">
+                    <span class="bp-secure-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                        </svg>
+                    </span>
+                    <div>
+                        <strong>24-hour reservation</strong>
+                        <p>
+                            This &#8369;<?php echo h(number_format($reservationFee, 2)); ?> payment (50% of the price)
+                            locks your dates for <b>24 hours</b> while the host reviews your application.
+                            If the host doesn't accept within 24 hours, the reserve is automatically declined
+                            and your payment is refunded to your RoomHive wallet. Pay the remaining
+                            &#8369;<?php echo h(number_format($reserveBalance, 2)); ?> after acceptance to
+                            fully enjoy your stay.
+                        </p>
+                    </div>
+                </div>
+                <?php endif; ?>
 
                 <form id="bp-payment-form" method="POST" action="/webprogg/booking/process-payment.php">
 
@@ -1003,34 +1011,35 @@
                         <div class="bp-howitworks-steps">
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">1</span>
-                                <strong>Send Inquiry</strong>
-                                <p>You'll be redirected to the payment page.</p>
+                                <strong>Reserve (50%)</strong>
+                                <p>Pay 50% of the price now to lock in your dates.</p>
                             </div>
                             <span class="bp-hiw-arrow">&#8594;</span>
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">2</span>
-                                <strong>Make Payment</strong>
-                                <p>Complete your payment using your selected method.</p>
+                                <strong>Host Reviews (24h)</strong>
+                                <p>The host has 24 hours to accept. Otherwise it's auto-declined and refunded.</p>
                             </div>
                             <span class="bp-hiw-arrow">&#8594;</span>
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">3</span>
-                                <strong>Confirm Booking</strong>
-                                <p>Your booking will be confirmed once payment is verified.</p>
+                                <strong>Pay Balance &amp; Enjoy</strong>
+                                <p>After acceptance, pay the remaining 50% to fully enjoy your stay.</p>
                             </div>
                         </div>
                     </div>
                     <?php endif; ?>
 
                     <button type="submit" class="bp-btn-pay">
-                        Pay Now &#8369; <?php echo h(number_format($totalDueToday, 0)); ?>
+                        <?php echo $balanceBooking !== null ? 'Pay Balance' : 'Pay Reserve'; ?>
+                        &#8369; <?php echo h(number_format($totalDueToday, 2)); ?>
                     </button>
 
                     <p class="bp-secure-note">
                         <?php if ($balanceBooking !== null): ?>
                             This payment will be added to booking #<?php echo h($payBalanceBookingId); ?>.
                         <?php else: ?>
-                            This is a one-time reservation fee to lock in your inquiry.
+                            This 50% reserve holds your dates for 24 hours while the host reviews.
                         <?php endif; ?>
                     </p>
 
@@ -1054,8 +1063,37 @@
 
         <!-- =====================================================
              SIDEBAR: LISTING / SUMMARY / HOST / LOCATION
-        ===================================================== -->
+        ====================================================== -->
         <aside class="bp-sidebar">
+
+            <?php if ($hiveActive && $hiveTier !== null): ?>
+            <!-- NEW: HIVE CLUB MEMBER CHIP -->
+            <div class="bp-hive-chip">
+                <span class="bp-secure-icon">&#127858;</span>
+                <div class="bp-hive-chip-body">
+                    <strong><?php echo h($hiveTier); ?> Member &middot; <?php echo (int) $hiveDiscount; ?>% off</strong>
+                    <p>
+                        <?php if ($hiveDaysLeft === null): ?>
+                            Membership never expires — discount applied below.
+                        <?php elseif ($hiveDaysLeft > 0): ?>
+                            Active for <?php echo (int) $hiveDaysLeft; ?> more day<?php echo $hiveDaysLeft === 1 ? '' : 's'; ?> — discount applied below.
+                        <?php else: ?>
+                            Renewing soon.
+                        <?php endif; ?>
+                    </p>
+                </div>
+            </div>
+            <?php else: ?>
+            <!-- UPSELL CHIP -->
+            <div class="bp-hive-chip">
+                <span class="bp-secure-icon">&#127858;</span>
+                <div class="bp-hive-chip-body">
+                    <strong>Save up to 15% with Hive Club</strong>
+                    <p>Members get 5&ndash;15% off every stay, plus points back on completion.</p>
+                </div>
+                <a href="/webprogg/hiveclub.php">Join &rarr;</a>
+            </div>
+            <?php endif; ?>
 
             <div class="bp-card">
 
@@ -1140,7 +1178,6 @@
                             <strong>&#8369; <?php echo h(number_format($amountPaidSoFar, 2)); ?></strong>
                         </div>
 
-                        <!-- Paid progress bar -->
                         <div class="bp-progress" role="progressbar"
                              aria-valuenow="<?php echo $paidPct; ?>" aria-valuemin="0" aria-valuemax="100">
                             <div class="bp-progress-fill" style="width: <?php echo $paidPct; ?>%;"></div>
@@ -1154,15 +1191,33 @@
                     <?php else: ?>
                         <div class="bp-summary-row">
                             <span>Monthly Rent</span>
-                            <strong>&#8369; <?php echo h(number_format($monthlyRent, 0)); ?></strong>
+                            <strong>&#8369; <?php echo h(number_format($monthlyRent, 2)); ?></strong>
+                        </div>
+
+                        <?php if ($hiveDiscount > 0): ?>
+                        <!-- NEW: Hive Club discount line -->
+                        <div class="bp-summary-row bp-summary-row-disc">
+                            <span>Hive Club <?php echo h($hiveTier); ?> (<?php echo (int) $hiveDiscount; ?>% off)</span>
+                            <strong>&minus; &#8369; <?php echo h(number_format($discountAmount, 2)); ?></strong>
                         </div>
                         <div class="bp-summary-row">
-                            <span>Reservation Fee</span>
-                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 0)); ?></strong>
+                            <span>Member Price</span>
+                            <strong>&#8369; <?php echo h(number_format($discountedTotal, 2)); ?></strong>
                         </div>
+                        <?php endif; ?>
+
+                        <div class="bp-summary-row">
+                            <span>Reserve Now (50%)</span>
+                            <strong>&#8369; <?php echo h(number_format($reservationFee, 2)); ?></strong>
+                        </div>
+                        <div class="bp-summary-row">
+                            <span>Balance After Accept</span>
+                            <strong>&#8369; <?php echo h(number_format($reserveBalance, 2)); ?></strong>
+                        </div>
+
                         <div class="bp-summary-row-total">
-                            <span>Total Due Today</span>
-                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 0)); ?></strong>
+                            <span>Due Today</span>
+                            <strong>&#8369; <?php echo h(number_format($totalDueToday, 2)); ?></strong>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -1171,7 +1226,7 @@
 
             <!-- HOST CARD -->
             <div class="bp-card bp-host-card">
-                <h3>Host</h3>
+                <h3>Meet Your Host</h3>
                 <div class="bp-host-row">
                     <img
                         class="bp-host-avatar"
@@ -1183,11 +1238,11 @@
                         <p class="bp-host-name">
                             <?php echo h($listing['host_name']); ?>
                             <?php if ($isSuperhost): ?>
-                                <span class="bp-badge-superhost">SuperHost</span>
+                                <span class="bp-badge-superhost">Superhost</span>
                             <?php endif; ?>
                         </p>
                         <p class="bp-host-since">
-                            Member since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?>
+                            Hosting since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?>
                         </p>
                         <p class="bp-host-rating">
                             <span class="bp-star">&#9733;</span> <?php echo h($host_rating_avg); ?>
@@ -1195,56 +1250,42 @@
                         </p>
                     </div>
                 </div>
-                <p class="bp-host-response">&#9889; Usually responds within a few hours</p>
+                <p class="bp-host-response">Typically responds within a day</p>
             </div>
 
-            <!-- =====================================================
-                 LOCATION CARD
-                 ===== NEW: MAP PIN =====
-                 If the host dropped a pin on host-step2.php, show
-                 the REAL interactive Leaflet map centered on those
-                 exact coordinates. Old listings without a pin keep
-                 the placeholder image.
-            ===================================================== -->
+            <!-- LOCATION CARD -->
             <div class="bp-card bp-location-card">
                 <h3>Location</h3>
                 <p class="bp-location-address">
-                    <?php echo h($listing['location']); ?>
+                    <?php echo h(trim($listing['exact_address'] . ', ' . $listing['location'])); ?>
                 </p>
 
                 <?php if ($hasMapPin): ?>
-
-                    <!-- ===== NEW: real interactive map with the host's exact pin ===== -->
-                    <div
-                        class="bp-map-embed"
-                        id="bpMapEmbed"
-                        data-lat="<?php echo h($pinLatitude); ?>"
-                        data-lng="<?php echo h($pinLongitude); ?>"
-                    ></div>
-
-                    <p class="bp-map-exact-note">
-                        &#128205; Exact pin dropped by the host
-                    </p>
-
+                    <div class="bp-map-embed">
+                        <iframe
+                            src="https://www.openstreetmap.org/export/embed.html?bbox=<?php
+                                echo h(($pinLongitude - 0.004) . ',' . ($pinLatitude - 0.0025) . ','
+                                     . ($pinLongitude + 0.004) . ',' . ($pinLatitude + 0.0025));
+                            ?>&layer=mapnik&marker=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>"
+                            loading="lazy"
+                            title="Listing location map"></iframe>
+                    </div>
+                    <p class="bp-map-exact-note">&#128205; Exact location shared after booking</p>
                 <?php else: ?>
-
-                    <!-- Placeholder for old listings saved without a pin -->
-                    <a
-                        href="<?php echo h($mapsUrl); ?>"
-                        target="_blank"
-                        rel="noopener"
-                        class="bp-map-thumb"
-                        aria-label="View on Google Maps"
-                    >
-                        <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview"
-                             onerror="this.onerror=null;this.style.background='#EAF2FB';">
-                        <span class="bp-map-pin">&#128205;</span>
-                    </a>
-
+                    <div class="bp-map-embed">
+                        <iframe
+                            src="https://www.openstreetmap.org/export/embed.html?bbox=<?php
+                                echo h(($pinLongitude - 0.004) . ',' . ($pinLatitude - 0.0025) . ','
+                                     . ($pinLongitude + 0.004) . ',' . ($pinLatitude + 0.0025));
+                            ?>&layer=mapnik&marker=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>"
+                            loading="lazy"
+                            title="Listing location map"></iframe>
+                    </div>
+                    <p class="bp-map-exact-note">&#128205; Approximate area shown</p>
                 <?php endif; ?>
 
                 <a href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener" class="bp-btn-outline">
-                    View on Google Maps
+                    Open in Google Maps
                 </a>
             </div>
 
@@ -1254,91 +1295,28 @@
 
 </main>
 
-<script src="/webprogg/assets/javaScript.js"></script>
-
-<!-- ===== NEW: Leaflet JS (free map, no API key) ===== -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- =========================================================
-    ===== NEW ===== HOST MAP PIN — LEAFLET INIT
-    Centers on the exact latitude/longitude the host dropped
-    on host-step2.php. Scroll-zoom stays off until clicked so
-    the page doesn't get "trapped" while scrolling.
-========================================================= -->
 <script>
-(function () {
-    var mapEmbed = document.getElementById('bpMapEmbed');
-
-    if (!mapEmbed || !window.L) return;
-
-    var pinLat = parseFloat(mapEmbed.dataset.lat);
-    var pinLng = parseFloat(mapEmbed.dataset.lng);
-
-    if (isNaN(pinLat) || isNaN(pinLng)) return;
-
-    var bpMap = L.map(mapEmbed, {
-        scrollWheelZoom: false
-    }).setView([pinLat, pinLng], 16);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(bpMap);
-
-    /* Emoji pin marker — matches the style used on the listing page */
-    var bpPinIcon = L.divIcon({
-        className: 'bp-pin-icon',
-        html: '<span class="bp-pin">&#128205;</span>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 28]
-    });
-
-    L.marker([pinLat, pinLng], { icon: bpPinIcon }).addTo(bpMap);
-
-    /* Enable wheel zoom only after the user clicks the map,
-       disable again when the cursor leaves — keeps page
-       scrolling smooth */
-    mapEmbed.addEventListener('click', function () {
-        bpMap.scrollWheelZoom.enable();
-    });
-    mapEmbed.addEventListener('mouseleave', function () {
-        bpMap.scrollWheelZoom.disable();
-    });
-})();
-</script>
-
-<!-- =========================================================
-    PAYMENT METHOD — SELECTION HIGHLIGHT
-========================================================= -->
-<script>
-(function () {
-    const methods = document.querySelectorAll('.bp-method');
-
-    methods.forEach(function (label) {
-        const input = label.querySelector('input[type="radio"]');
-        if (!input) return;
-
-        input.addEventListener('change', function () {
-            methods.forEach(function (l) { l.classList.remove('bp-method-selected'); });
-            if (input.checked) label.classList.add('bp-method-selected');
+/* Payment method selection highlight */
+document.querySelectorAll(".bp-method").forEach(function (option) {
+    option.addEventListener("click", function () {
+        document.querySelectorAll(".bp-method").forEach(function (item) {
+            item.classList.remove("bp-method-selected");
         });
+        option.classList.add("bp-method-selected");
+        const radio = option.querySelector("input[type=radio]");
+        if (radio) { radio.checked = true; }
     });
-})();
-</script>
+});
 
-<!-- =========================================================
-    PAY NOW — SUBMIT + LOADING STATE
-========================================================= -->
-<script>
+/* Double-submit guard */
 (function () {
-    const form = document.getElementById('bp-payment-form');
+    var form = document.getElementById('bp-payment-form');
     if (!form) return;
-
     form.addEventListener('submit', function () {
-        const btn = form.querySelector('.bp-btn-pay');
-        if (btn) {
+        var btn = form.querySelector('.bp-btn-pay');
+        if (btn && !btn.disabled) {
             btn.disabled = true;
-            btn.textContent = 'Redirecting to payment...';
+            btn.textContent = 'Processing\u2026';
         }
     });
 })();

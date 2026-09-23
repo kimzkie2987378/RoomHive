@@ -2,10 +2,19 @@
 /* =========================================================
    ROOMHIVE — MY ACCOUNT
    userprofile.php
+
+   HIVE CLUB INTEGRATION:
+   - Real tier from the dual-bucket engine (sweep applied).
+   - 5th stat card: lifetime + spendable points (Bronze
+     auto-provisioned, so this always shows).
+   - Badge logic: active tier / lapsed / join-upsell by points.
+   - Real unread bell count (was hardcoded 0).
+   - Recent bookings show honest payment state (paid vs total).
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
 /* AUTH GUARD */
@@ -46,14 +55,25 @@ if ((int) $dbUser['is_host'] === 1) {
     'about'         => '',
 ];
 
-/* HIVE CLUB MEMBERSHIP */
- $membershipStmt = $pdo->prepare(
-    "SELECT tier, membership_status FROM hive_members WHERE user_id = :id LIMIT 1"
-);
- $membershipStmt->execute(['id' => $_SESSION['user_id']]);
- $membership = $membershipStmt->fetch();
+/* =========================================================
+   HIVE CLUB MEMBERSHIP (engine: sweep + dual buckets)
+========================================================= */
+hive_expiry_sweep($pdo);
+ $hiveMember = hive_member($pdo, $_SESSION['user_id']);
 
- $notification_count = 0;
+ $hiveTier          = $hiveMember ? (string) $hiveMember['tier'] : 'Bronze';
+ $hiveLifetime      = $hiveMember ? (int) $hiveMember['lifetime_points'] : 0;
+ $hiveRedeemable    = $hiveMember ? (int) $hiveMember['redeemable_points'] : 0;
+ $hiveActive        = hive_active($hiveMember);
+ $hiveDaysLeft      = hive_days_until_expiry($hiveMember);
+ $hiveNextTier      = hive_next_tier($hiveLifetime);
+
+/* Real unread bell count (was hardcoded 0) */
+ $ncStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
+ );
+ $ncStmt->execute(['u' => $_SESSION['user_id']]);
+ $notification_count = (int) $ncStmt->fetchColumn();
 
 /* REVIEWS */
  $reviewsStmt = $pdo->prepare("SELECT rating FROM reviews WHERE user_id = :id");
@@ -64,9 +84,9 @@ if ((int) $dbUser['is_host'] === 1) {
     ? round(array_sum($reviews) / count($reviews), 1)
     : 0;
 
-/* RECENT BOOKINGS */
+/* RECENT BOOKINGS — amount_paid added for honest payment display */
  $bookingsStmt = $pdo->prepare(
-    "SELECT b.id, b.total, b.status, b.booked_at,
+    "SELECT b.id, b.total, b.amount_paid, b.status, b.booked_at,
             l.title, l.location,
             p.photo_path AS cover_photo
      FROM bookings b
@@ -80,6 +100,18 @@ if ((int) $dbUser['is_host'] === 1) {
  $bookingsStmt->execute(['id' => $_SESSION['user_id']]);
 
  $bookings = array_map(function ($row) {
+    $total = (float) $row['total'];
+    $paid  = (float) ($row['amount_paid'] ?? 0);
+    $left  = round(max(0, $total - $paid), 2);
+
+    if ($paid > 0.005 && $left <= 0.005) {
+        $payState = 'full';
+    } elseif ($paid > 0.005) {
+        $payState = 'advance';
+    } else {
+        $payState = 'none';
+    }
+
     return [
         'id'       => (int) $row['id'],
         'title'    => $row['title'],
@@ -87,13 +119,15 @@ if ((int) $dbUser['is_host'] === 1) {
         'thumb'    => resolve_photo($row['cover_photo']),
         'dates'    => date('M j, Y', strtotime($row['booked_at'])),
         'status'   => $row['status'],
-        'total'    => number_format((float) $row['total'], 2),
+        'total'    => number_format($total, 2),
+        'paid'     => number_format($paid, 2),
+        'pay_state'=> $payState,
     ];
 }, $bookingsStmt->fetchAll());
 
-/* PAYMENT SUMMARY — BOOKINGS SPENT */
+/* PAYMENT SUMMARY — BOOKINGS SPENT (actual money in) */
  $allBookingsStmt = $pdo->prepare(
-    "SELECT total, booked_at FROM bookings WHERE user_id = :id AND status != 'cancelled'"
+    "SELECT amount_paid, booked_at FROM bookings WHERE user_id = :id AND status != 'cancelled'"
 );
  $allBookingsStmt->execute(['id' => $_SESSION['user_id']]);
  $allBookingsForSpend = $allBookingsStmt->fetchAll();
@@ -104,7 +138,9 @@ if ((int) $dbUser['is_host'] === 1) {
  $bookings_spent_this_week = 0;
 
 foreach ($allBookingsForSpend as $b) {
-    $amount = (float) $b['total'];
+    /* FIXED: real money paid, not the booking total — a 50%
+       reserve no longer counts the unpaid half as "spent". */
+    $amount = (float) ($b['amount_paid'] ?? 0);
     $bookings_spent_all_time += $amount;
 
     if (strtotime($b['booked_at']) >= $oneWeekAgo) {
@@ -137,13 +173,15 @@ foreach ($membershipTransactions as $txn) {
 
 /* PENDING TO PAY */
  $pendingBookingsStmt = $pdo->prepare(
-    "SELECT total FROM bookings WHERE user_id = :id AND status = 'pending'"
+    "SELECT GREATEST(total - amount_paid, 0) AS owed
+     FROM bookings
+     WHERE user_id = :id AND status = 'pending' AND amount_paid < total"
 );
  $pendingBookingsStmt->execute(['id' => $_SESSION['user_id']]);
  $bookings_pending_to_pay = array_sum(array_map(
     'floatval',
-    array_column($pendingBookingsStmt->fetchAll(), 'total')
-));
+    array_column($pendingBookingsStmt->fetchAll(), 'owed')
+ ));
 
  $pendingTxnStmt = $pdo->prepare(
     "SELECT amount FROM hiveclub_transactions WHERE user_id = :id AND payment_status = 'pending'"
@@ -152,7 +190,7 @@ foreach ($membershipTransactions as $txn) {
  $membership_pending_to_pay = array_sum(array_map(
     'floatval',
     array_column($pendingTxnStmt->fetchAll(), 'amount')
-));
+ ));
 
  $total_pending_to_pay = number_format($bookings_pending_to_pay + $membership_pending_to_pay, 2);
 
@@ -188,12 +226,13 @@ foreach ($membershipTransactions as $txn) {
 
  $wishlist_total = count($wishlist);
 
-/* STATS ROW */
+/* STATS ROW — Hive Club points card added */
  $stats = [
     ['icon' => 'bookingsicon-userprofile.png',     'value' => count($bookings),  'label' => 'Bookings Total',            'count' => count($bookings), 'decimals' => 0],
     ['icon' => 'wihlistedicon-userprofile.png',    'value' => $wishlist_total,   'label' => 'Wishlisted Properties',     'count' => $wishlist_total,  'decimals' => 0],
     ['icon' => 'averageratinsicon-userprofile.png','value' => $average_rating,   'label' => 'Average Rating From Reviews','count' => $average_rating, 'decimals' => 1],
     ['icon' => 'totalspenticon-userprofile.png',   'value' => '&#8369; ' . $total_spent_all_time, 'label' => 'Total Spent All Time', 'count' => null, 'decimals' => 0],
+    ['icon' => 'GoldIcon-HiveClub.png',            'value' => number_format($hiveLifetime), 'label' => 'Hive Club Points (' . $hiveTier . ')', 'count' => $hiveLifetime, 'decimals' => 0],
 ];
 
  $activeSidebar = 'overview';
@@ -208,6 +247,27 @@ foreach ($membershipTransactions as $txn) {
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 <script>document.documentElement.classList.add("js");</script>
+
+<style>
+    /* Hive Club badge states + points sub-line (up-) */
+    .up-badge-hc-active {
+        background: linear-gradient(135deg, #f6b93b, #eda423);
+        color: #1c2a38;
+        border-color: transparent;
+    }
+    .up-badge-hc-lapsed {
+        background: #FDF1DC;
+        color: #B07708;
+        border: 1px dashed rgba(237, 164, 35, 0.5);
+    }
+    .up-stat-card .up-hc-sub {
+        display: block;
+        margin-top: 2px;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #B07708;
+    }
+</style>
 </head>
 <body>
 
@@ -302,12 +362,29 @@ foreach ($membershipTransactions as $txn) {
       <div class="up-profile-info">
         <div class="up-profile-name-row">
           <h2><?php echo h($user['name']); ?></h2>
-          <?php if ($membership): ?>
-            <span class="up-badge-verified">
+
+          <?php if ($hiveActive && $hiveTier !== 'Bronze'): ?>
+            <!-- Paid tier, active -->
+            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-active" style="text-decoration:none;">
               <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
-              <?php echo h(ucfirst($membership['tier'])); ?> Member
-            </span>
+              <?php echo h($hiveTier); ?> Member
+              <?php if ($hiveDaysLeft !== null && $hiveDaysLeft <= 30): ?>
+                &middot; <?php echo (int) $hiveDaysLeft; ?>d left
+              <?php endif; ?>
+            </a>
+          <?php elseif ($hiveActive && $hiveLifetime > 0): ?>
+            <!-- Bronze with earned points -->
+            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-active" style="text-decoration:none;">
+              <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
+              Bronze Member
+            </a>
+          <?php elseif ($hiveLifetime > 0): ?>
+            <!-- Lapsed paid plan — points intact -->
+            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-lapsed" style="text-decoration:none;">
+              Plan lapsed &mdash; renew
+            </a>
           <?php else: ?>
+            <!-- No points yet — join upsell -->
             <a href="/webprogg/hiveclub.php" class="up-badge-verified" style="text-decoration:none; background:#f0f0f0; color:#777777; border-color:transparent;">
               Join Hive Club
             </a>
@@ -350,10 +427,13 @@ foreach ($membershipTransactions as $txn) {
                 <strong><?php echo $stat['value']; ?></strong>
             <?php endif; ?>
             <span><?php echo h($stat['label']); ?></span>
+            <?php if ($stat['label'] === 'Hive Club Points (' . $hiveTier . ')'): ?>
+                <span class="up-hc-sub">&#128176; <?php echo number_format($hiveRedeemable); ?> spendable</span>
+            <?php endif; ?>
           </div>
         </div>
       <?php endforeach; ?>
-    </section>
+      </section>
 
     <!-- RECENT BOOKINGS + PAYMENT SUMMARY -->
     <section class="up-two-col">
@@ -383,8 +463,17 @@ foreach ($membershipTransactions as $txn) {
                 <span class="up-status up-status-<?php echo h($booking['status']); ?>">
                   <?php echo h(ucfirst($booking['status'])); ?>
                 </span>
-                <strong>&#8369; <?php echo h($booking['total']); ?></strong>
-                <span>Total Paid</span>
+
+                <?php if ($booking['pay_state'] === 'full'): ?>
+                    <strong>&#8369; <?php echo h($booking['total']); ?></strong>
+                    <span>Fully Paid</span>
+                <?php elseif ($booking['pay_state'] === 'advance'): ?>
+                    <strong>&#8369; <?php echo h($booking['paid']); ?></strong>
+                    <span>Advance Paid</span>
+                <?php else: ?>
+                    <strong>&#8369; <?php echo h($booking['total']); ?></strong>
+                    <span>Booking Total</span>
+                <?php endif; ?>
               </div>
               <span class="up-booking-chevron">&#8250;</span>
             </a>
@@ -517,9 +606,42 @@ foreach ($membershipTransactions as $txn) {
   </div>
 </main>
 
-<!-- FOOTER (unchanged — keep your existing footer markup exactly as it was) -->
 <footer class="site-footer">
-    <!-- ... keep your existing footer here, unchanged ... -->
+    <div class="footer-top">
+        <div class="footer-brand">
+            <a href="/webprogg/user/usershome.php">
+                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
+            </a>
+            <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
+            <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
+            <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
+        </div>
+        <div class="footer-links">
+            <span class="footer-heading">LISTINGS</span>
+            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php">Featured Stays</a>
+        </div>
+        <div class="footer-links">
+            <span class="footer-heading">QUICK LINKS</span>
+            <a href="/webprogg/index.php">About Us</a>
+            <a href="/webprogg/misc/contacts.php">Contact</a>
+            <a href="/webprogg/host/becomeahost.php">Become a Host</a>
+            <a href="/webprogg/hiveclub.php">Hive Club</a>
+        </div>
+        <div class="footer-contact">
+            <span class="footer-heading">GET THE APP</span>
+            <div class="footer-app-badges">
+                <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
+                <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
+            </div>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <p>&copy; <?php echo date('Y'); ?> RoomHive. All rights reserved.</p>
+    </div>
 </footer>
 
 <script src="/webprogg/assets/javaScript.js"></script>
@@ -563,7 +685,10 @@ foreach ($membershipTransactions as $txn) {
                     if (!t0) t0 = ts;
                     var k = Math.min((ts - t0) / DURATION, 1);
                     var eased = 1 - Math.pow(1 - k, 3);
-                    el.textContent = (target * eased).toFixed(decimals);
+                    el.textContent = (target * eased).toLocaleString(
+                        undefined,
+                        { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+                    );
                     if (k < 1) window.requestAnimationFrame(stepFn);
                 };
 

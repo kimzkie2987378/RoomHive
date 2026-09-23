@@ -1,5 +1,40 @@
 <?php
+/* =========================================================
+   ROOMHIVE ADMIN — LISTINGS
+   adminlistings.php
+
+   FIXED:
+   1. Approve / reject / unlist / delete never notified the
+      host — now they do (bell notification, same wording as
+      listingapplication.php's decisions).
+   2. Delete DESTROYED conversations + messages. It now
+      DETACHES them (listing_id = NULL) so the (tenant, host)
+      chat history survives — matching listingapplication.php.
+========================================================= */
+
 require_once __DIR__ . '/admin_init.php';
+
+/* ---- Standalone notifier ---- */
+if (!function_exists('admin_notify_user')) {
+    function admin_notify_user($pdo, $userId, $message, $link) {
+        try {
+            if ((int) $userId <= 0 || trim((string) $message) === '') { return false; }
+            $stmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $stmt->execute([
+                'u' => (int) $userId,
+                'm' => mb_substr(trim((string) $message), 0, 240),
+                'l' => (string) $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('adminlistings notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
 
 /* ---- Actions: approve / reject / unlist / delete ---- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['listing_id'], $_POST['csrf_token'])) {
@@ -11,30 +46,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['lis
     $id     = (int) $_POST['listing_id'];
     $action = $_POST['action'];
 
+    /* owner + title needed for notifications */
+    $ownerStmt = $pdo->prepare("SELECT user_id, title FROM listings WHERE id = :id LIMIT 1");
+    $ownerStmt->execute(['id' => $id]);
+    $listingRow = $ownerStmt->fetch();
+
     if (in_array($action, ['approve', 'reject', 'unlist'], true)) {
         $map = ['approve' => 'approved', 'reject' => 'rejected', 'unlist' => 'unlisted'];
         $pdo->prepare("UPDATE listings SET status = :s, updated_at = NOW() WHERE id = :id")
             ->execute(['s' => $map[$action], 'id' => $id]);
         admin_flash_set('success', "Listing #$id marked " . $map[$action] . '.');
+
+        if ($listingRow) {
+            if ($action === 'approve') {
+                admin_notify_user(
+                    $pdo, (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was approved and is now live on RoomHive.',
+                    '/webprogg/Listings/listing-detail.php?id=' . $id
+                );
+            } elseif ($action === 'reject') {
+                admin_notify_user(
+                    $pdo, (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was not approved. Edit and resubmit it from My Listings.',
+                    '/webprogg/user/mylistings.php'
+                );
+            } else {
+                admin_notify_user(
+                    $pdo, (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was unlisted by an administrator and is hidden from search.',
+                    '/webprogg/user/mylistings.php'
+                );
+            }
+        }
     } elseif ($action === 'delete') {
         $pdo->beginTransaction();
         try {
-            $convIds = $pdo->prepare("SELECT id FROM conversations WHERE listing_id = :id");
-            $convIds->execute(['id' => $id]);
-            $convIds = array_column($convIds->fetchAll(), 'id');
-            if ($convIds) {
-                $ph = implode(',', array_fill(0, count($convIds), '?'));
-                $pdo->prepare("DELETE FROM messages WHERE conversation_id IN ($ph)")->execute($convIds);
-                $pdo->prepare("DELETE FROM conversations WHERE id IN ($ph)")->execute($convIds);
-            }
+            /* DETACH conversations instead of deleting them — the
+               (tenant, host) chat may still matter outside this
+               listing. */
+            $pdo->prepare("UPDATE conversations SET listing_id = NULL WHERE listing_id = :id")
+                ->execute(['id' => $id]);
+
             foreach (['listing_photos', 'bookings', 'reviews', 'wishlist'] as $tbl) {
                 $pdo->prepare("DELETE FROM $tbl WHERE listing_id = :id")->execute(['id' => $id]);
             }
             $pdo->prepare("DELETE FROM listings WHERE id = :id")->execute(['id' => $id]);
             $pdo->commit();
             admin_flash_set('success', "Listing #$id permanently deleted.");
+
+            if ($listingRow) {
+                admin_notify_user(
+                    $pdo, (int) $listingRow['user_id'],
+                    'Your listing "' . $listingRow['title'] . '" was removed by an administrator.',
+                    '/webprogg/user/mylistings.php'
+                );
+            }
         } catch (Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
             admin_flash_set('error', 'Could not delete that listing.');
         }
     }
@@ -151,7 +219,7 @@ if ($status !== 'all') { $where[] = 'l.status = :st'; $params['st'] = $status; }
                                     <input type="hidden" name="ret_status" value="<?= h($status) ?>">
                                     <input type="hidden" name="ret_page" value="<?= $page ?>">
                                     <input type="hidden" name="action" value="delete">
-                                    <button type="submit" class="view-all" style="border-color:var(--red);color:var(--red);" onclick="return confirm('Permanently delete this listing, its photos, bookings, reviews and messages?');">Delete</button>
+                                    <button type="submit" class="view-all" style="border-color:var(--red);color:var(--red);" onclick="return confirm('Permanently delete this listing, its photos, bookings and reviews? Conversations are kept but detached.');">Delete</button>
                                 </form>
                             </div>
                         </td>

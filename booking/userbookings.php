@@ -8,8 +8,17 @@
      - fully paid   -> total + "Fully Paid"
      - advance paid -> amount paid + "Advance Paid" + "left" pill
      - nothing paid -> total + "Booking Total"
-   (Previously every row showed the total labelled "Total
-   Paid", which hid advance payments — do not revert.)
+
+   NEW — REFUND-AWARE (2% cancellation-fee system):
+     - cancelled/declined bookings with refunded_amount > 0
+       now show the actual refund in green ("Refunded to
+       Wallet"), instead of a misleading "Advance Paid".
+
+   ALSO FIXED:
+     - Real unread bell count (was hardcoded 0).
+     - 'rejected' added to the whitelist, tab counts, and a
+       "Declined" tab — host-declined bookings previously only
+       appeared under "All".
 ========================================================= */
 
 session_start();
@@ -42,17 +51,23 @@ if ($dbUser['is_host']) {
 
  $navAvatar = sync_user_session($dbUser);
 
- $notification_count = 0;
+/* REAL UNREAD BELL COUNT (was hardcoded 0 — badge never showed) */
+ $ncStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
+ );
+ $ncStmt->execute(['u' => $_SESSION['user_id']]);
+ $notification_count = (int) $ncStmt->fetchColumn();
 
-/* STATUS FILTER */
- $validStatuses = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
+/* STATUS FILTER — 'rejected' added (host-declined bookings) */
+ $validStatuses = ['all', 'pending', 'confirmed', 'completed', 'cancelled', 'rejected'];
 
  $statusFilter = isset($_GET['status']) && in_array($_GET['status'], $validStatuses, true)
     ? $_GET['status']
     : 'all';
 
-/* ALL BOOKINGS — amount_paid added for the paid/left display */
+/* ALL BOOKINGS — amount_paid + refunded_amount for paid/left/refund display */
  $sql = "SELECT b.id, b.total, b.amount_paid, b.status, b.booked_at,
+               b.refunded_amount,
                l.title, l.location,
                p.photo_path AS cover_photo
         FROM bookings b
@@ -75,9 +90,10 @@ if ($statusFilter !== 'all') {
  $bookingsStmt->execute();
 
  $bookings = array_map(function ($row) {
-    $total = (float) $row['total'];
-    $paid  = (float) ($row['amount_paid'] ?? 0);
-    $left  = round($total - $paid, 2);
+    $total    = (float) $row['total'];
+    $paid     = (float) ($row['amount_paid'] ?? 0);
+    $left     = round($total - $paid, 2);
+    $refunded = round((float) ($row['refunded_amount'] ?? 0), 2);
 
     if ($paid > 0.005 && $left <= 0.005) {
         $paymentState = 'full';    /* fully paid */
@@ -98,6 +114,9 @@ if ($statusFilter !== 'all') {
         'paid_fmt'      => number_format($paid, 2),
         'left_fmt'      => number_format(max(0.0, $left), 2),
         'payment_state' => $paymentState,
+        /* NEW — refund-aware display for cancelled/declined rows */
+        'refunded_fmt'  => number_format($refunded, 2),
+        'show_refund'   => in_array($row['status'], ['cancelled', 'rejected'], true) && $refunded > 0.005,
     ];
 }, $bookingsStmt->fetchAll());
 
@@ -112,7 +131,7 @@ if ($statusFilter !== 'all') {
 );
  $countsStmt->execute(['id' => $_SESSION['user_id']]);
 
- $statusCounts = ['pending' => 0, 'confirmed' => 0, 'completed' => 0, 'cancelled' => 0];
+ $statusCounts = ['pending' => 0, 'confirmed' => 0, 'completed' => 0, 'cancelled' => 0, 'rejected' => 0];
 foreach ($countsStmt->fetchAll() as $row) {
     if (isset($statusCounts[$row['status']])) {
         $statusCounts[$row['status']] = (int) $row['total'];
@@ -126,6 +145,7 @@ foreach ($countsStmt->fetchAll() as $row) {
     'confirmed' => 'Confirmed',
     'completed' => 'Completed',
     'cancelled' => 'Cancelled',
+    'rejected'  => 'Declined',
 ];
 
  $activeSidebar = 'bookings';
@@ -212,6 +232,32 @@ foreach ($countsStmt->fetchAll() as $row) {
         border-radius: 999px;
         padding: 2px 9px;
         white-space: nowrap;
+    }
+
+    /* =====================================================
+       NEW — REFUND PILL + STATUS COLORS
+       Green refund note for cancelled/declined rows, and the
+       red Declined status pill (so it renders even if
+       myaccount.css doesn't define .up-status-rejected).
+    ===================================================== */
+    .up-booking-side .ub-refund-note {
+        font-size: 11px;
+        font-weight: 800;
+        color: #1e7a3d;
+        background: #E9F7EF;
+        border: 1px dashed #BFE8CF;
+        border-radius: 999px;
+        padding: 2px 9px;
+        white-space: nowrap;
+    }
+
+    .up-booking-side strong.ub-refund-amount {
+        color: #1e7a3d;
+    }
+
+    .up-status-rejected {
+        background: #fdecea;
+        color: #a1332e;
     }
 
     @media (max-width: 1200px) {
@@ -365,7 +411,12 @@ foreach ($countsStmt->fetchAll() as $row) {
                   <?php echo h(ucfirst($booking['status'])); ?>
                 </span>
 
-                <?php if ($booking['payment_state'] === 'full'): ?>
+                <?php if ($booking['show_refund']): ?>
+                    <!-- NEW — cancelled/declined with a refund (98% after the 2% fee) -->
+                    <strong class="ub-refund-amount">&#8369; <?php echo h($booking['refunded_fmt']); ?></strong>
+                    <span>Refunded to Wallet</span>
+                    <span class="ub-refund-note">&#10003; Credited</span>
+                <?php elseif ($booking['payment_state'] === 'full'): ?>
                     <strong>&#8369; <?php echo h($booking['total_fmt']); ?></strong>
                     <span>Fully Paid</span>
                 <?php elseif ($booking['payment_state'] === 'advance'): ?>
