@@ -6,9 +6,16 @@
    VIEWERS:
    - TENANT (owner): full view — Pay Balance, Cancel Booking
      (with the floating 2% fee warning card), review modal.
+     USER shell (usernav + user sidebar).
    - HOST (listing owner): read access via "View Details" on
-     hostbookings.php — status banners, payment summary,
-     refund info. NO tenant-only actions.
+     hostbookings.php — HOST shell (navbar.php + host_sidebar.php
+     with Bookings active), status banners, payment summary,
+     refund info, PLUS the GUEST'S DETAILS: profile pic, name,
+     Verified badge (auto-verify rule: ID uploaded + profile
+     complete), PERSONAL PHOTO (in-person recognition, click
+     to open full size), contact grid, and an honest warning
+     listing exactly what the guest is missing if they are
+     not verified. NO tenant-only actions.
 
    The 2%-fee cancel flow, floating warning card, and
    post-cancel review modal are all wired and tenant-only.
@@ -34,12 +41,6 @@ if (!$dbUser) {
     session_destroy();
     header("Location: /webprogg/auth/loginform.php");
     exit;
-}
-
-if ((int) $dbUser['is_host'] === 1) {
-    /* Hosts land on their dashboard — but they may still view
-       a booking's details via hostbookings.php's View Details
-       link, so we do NOT hard-redirect here. */
 }
 
  $navAvatar = sync_user_session($dbUser);
@@ -72,15 +73,120 @@ if ((int) $dbUser['is_host'] === 1) {
  $bStmt->execute(['id' => $bookingId]);
  $booking = $bStmt->fetch();
 
-/* FIXED: b.user_id is actually selected above, so this guard
-   passes for the tenant AND the listing's host, and bounces
-   everyone else. */
  $isTenantViewer = $booking && ((int) $booking['user_id'] === (int) $_SESSION['user_id']);
  $isHostViewer   = $booking && ((int) $booking['host_id']   === (int) $_SESSION['user_id']);
 
 if (!$booking || (!$isTenantViewer && !$isHostViewer)) {
     header("Location: /webprogg/booking/userbookings.php");
     exit;
+}
+
+/* =========================================================
+   TENANT DETAILS — for the host's view.
+   The guest's profile pic, joined date, contact, location,
+   PERSONAL PHOTO, and auto-verification status (ID uploaded
+   + complete profile), so the host knows exactly who
+   they're accepting. Graceful fallback if personal_photo
+   doesn't exist yet on the schema.
+========================================================= */
+ $tenant = null;
+
+if ($isHostViewer && !$isTenantViewer) {
+    try {
+        $tStmt = $pdo->prepare(
+            "SELECT u.id, u.name, u.email, u.phone, u.age, u.location,
+                    u.avatar_path, u.created_at, u.personal_photo
+             FROM users u
+             WHERE u.id = :id
+             LIMIT 1"
+        );
+        $tStmt->execute(['id' => (int) $booking['user_id']]);
+        $tenant = $tStmt->fetch();
+    } catch (PDOException $e) {
+        /* personal_photo column missing — retry without it */
+        try {
+            $tStmt = $pdo->prepare(
+                "SELECT u.id, u.name, u.email, u.phone, u.age, u.location,
+                        u.avatar_path, u.created_at
+                 FROM users u
+                 WHERE u.id = :id
+                 LIMIT 1"
+            );
+            $tStmt->execute(['id' => (int) $booking['user_id']]);
+            $tenant = $tStmt->fetch();
+        } catch (PDOException $e2) {
+            error_log('booking-details: tenant fetch failed: ' . $e2->getMessage());
+            $tenant = null;
+        }
+    }
+
+    /* Verification breakdown — same auto-verify rule as the gate */
+    $tenantVerified = false;
+    $tenantHasId    = false;
+    $tenantIdStatus = null;
+    $tenantMissing  = [];
+
+    if ($tenant) {
+        try {
+            require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/verification_gate.php';
+
+            $tenantVerified = is_user_verified($pdo, (int) $tenant['id']);
+
+            $v = $pdo->prepare(
+                "SELECT status FROM user_id_documents
+                 WHERE user_id = :u AND status != 'rejected'
+                 ORDER BY uploaded_at DESC
+                 LIMIT 1"
+            );
+            $v->execute([':u' => (int) $tenant['id']]);
+            $tenantIdStatus = $v->fetchColumn();
+            $tenantHasId    = (bool) $tenantIdStatus;
+        } catch (PDOException $e) { /* table guarded */ }
+
+        if (trim((string) ($tenant['name'] ?? '')) === '')         { $tenantMissing[] = 'Name'; }
+        if (trim((string) ($tenant['phone'] ?? '')) === '')        { $tenantMissing[] = 'Phone'; }
+        if (!isset($tenant['age']) || $tenant['age'] === null || $tenant['age'] === '') { $tenantMissing[] = 'Age'; }
+        if (trim((string) ($tenant['location'] ?? '')) === '')     { $tenantMissing[] = 'Location'; }
+    }
+}
+
+/* =========================================================
+   SHELL SWITCH (SHELL FIX) — hosts get the HOST shell
+   (navbar.php + host_sidebar.php, Bookings active);
+   tenants keep the USER shell (usernav + sidebar).
+========================================================= */
+if ($isHostViewer && !$isTenantViewer) {
+
+    $isHost = true;
+
+    $navigation = [
+        "HOME"          => "/webprogg/host/hostprofile.php",
+        "LISTINGS"      => "/webprogg/Listings/listing.php",
+        "HOW IT WORKS"  => "/webprogg/host/howitworks.php",
+        "BECOME A HOST" => "/webprogg/host/hostprofile.php",
+        "HIVE CLUB"     => "/webprogg/hiveclub.php",
+        "CONTACTS"      => "/webprogg/misc/contacts.php",
+    ];
+    $currentPage = "/webprogg/host/hostprofile.php";
+
+    $host = [
+        'name'         => $dbUser['name'],
+        'avatar'       => $navAvatar,
+        'member_since' => date('F Y'),
+    ];
+
+    $pcStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE l.user_id = :h AND b.status = 'pending'"
+    );
+    $pcStmt->execute(['h' => $_SESSION['user_id']]);
+    $pending_tenants_count = (int) $pcStmt->fetchColumn();
+
+    $activePage = 'bookings';
+
+} else {
+    $activeSidebar = 'bookings';
 }
 
 /* ---------- DERIVED FIGURES ---------- */
@@ -98,6 +204,8 @@ if (!$booking || (!$isTenantViewer && !$isHostViewer)) {
     . '&pay_balance=' . (int) $booking['id'];
  $messageHostUrl = '/webprogg/user/start-conversation.php?host_id='
     . (int) $booking['host_id'] . '&listing_id=' . (int) $booking['listing_id'];
+ $messageGuestUrl = '/webprogg/user/start-conversation.php?host_id='
+    . (int) $booking['host_id'] . '&listing_id=' . (int) $booking['listing_id'];
 
 /* ---------- REVIEW STATE (post-cancel rating) ---------- */
  $canReview = $isTenantViewer && in_array($booking['status'], ['cancelled', 'completed'], true);
@@ -114,8 +222,6 @@ if ($canReview) {
     $existingReview = $rvStmt->fetch();
 }
  $hasReviewed = $existingReview !== null;
-
- $activeSidebar = 'bookings';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -126,6 +232,9 @@ if ($canReview) {
 <script>try{if(localStorage.getItem("rhTheme")==="dark"){document.documentElement.setAttribute("data-theme-preview","1");}}catch(e){}</script>
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
+<?php if ($isHostViewer && !$isTenantViewer): ?>
+<link rel="stylesheet" href="/webprogg/assets/hostprofile.css">
+<?php endif; ?>
 <script>document.documentElement.classList.add("js");</script>
 
 <style>
@@ -227,6 +336,44 @@ if ($canReview) {
     .bd-banner-green { background: #E9F7EF; border: 1px solid #BFE8CF; color: #1e7a3d; }
     .bd-banner-red   { background: #fdecea; border: 1px solid #f5c6c2; color: #a1332e; }
     .bd-banner-blue  { background: #EAF2FE; border: 1px solid #C9D9F5; color: #1A56DB; }
+
+    /* ---- GUEST CARD (host view) ---- */
+    .bd-guest-verified {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 10.5px; font-weight: 800;
+        vertical-align: middle;
+    }
+    .bd-guest-verified.yes { background: #E8F8F1; color: #178A50; border: 1px solid rgba(23,138,80,.35); }
+    .bd-guest-verified.no  { background: #FFF4E0; color: #C77A00; border: 1px dashed rgba(237,164,35,.5); }
+
+    /* ---- Guest personal photo (host view) ---- */
+    .bd-guest-pp-link { display: block; max-width: 420px; }
+    .bd-guest-pp-img {
+        width: 100%;
+        height: 190px;
+        object-fit: cover;
+        object-position: center;
+        border-radius: 12px;
+        border: 1px solid #EEF1F6;
+        display: block;
+        transition: transform .25s ease, box-shadow .25s ease;
+    }
+    .bd-guest-pp-link:hover .bd-guest-pp-img {
+        transform: scale(1.02);
+        box-shadow: 0 10px 24px rgba(20, 20, 43, 0.15);
+    }
+    .bd-guest-pp-label {
+        display: block;
+        font-size: 11px; font-weight: 700;
+        letter-spacing: 0.6px; text-transform: uppercase;
+        color: #8B93A6; margin-bottom: 6px;
+    }
+    .bd-guest-pp-note {
+        display: block; margin-top: 6px;
+        font-size: 11.5px; color: #8B93A6;
+    }
 
     /* ---- floating cancel card (cbc-) ---- */
     .cbc-backdrop {
@@ -393,18 +540,30 @@ if ($canReview) {
 </head>
 <body>
 
-<?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<?php if ($isHostViewer && !$isTenantViewer): ?>
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+<?php else: ?>
+    <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
+<?php endif; ?>
 
 <!-- PAGE HEADER -->
 <header class="ub-page-head">
     <span class="ub-eyebrow">Booking Details</span>
     <h1>Booking #<?php echo (int) $booking['id']; ?></h1>
-    <p class="ub-lead">Everything about this stay — dates, payment state, and your host.</p>
+    <p class="ub-lead"><?php echo $isHostViewer && !$isTenantViewer ? 'Review the guest before accepting this inquiry.' : 'Everything about this stay — dates, payment state, and your host.'; ?></p>
 </header>
 
 <main class="up-dashboard">
 
-  <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
+  <?php if ($isHostViewer && !$isTenantViewer): ?>
+    <?php
+      $hsFile = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/host/host_sidebar.php';
+      if (is_file($hsFile)) { include $hsFile; }
+    ?>
+  <?php else: ?>
+    <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php'; ?>
+  <?php endif; ?>
 
   <div class="up-content">
 
@@ -428,8 +587,8 @@ if ($canReview) {
           <span>&#128065;</span>
           <span>
             You're viewing this booking as the <strong>host</strong>.
-            <?php echo h($booking['guest_name'] ?? 'The guest'); ?> is the tenant on this stay —
-            Accept/Decline and Mark Completed live on your Bookings page.
+            <?php echo $tenant ? htmlspecialchars($tenant['name']) : 'A renter'; ?> sent this inquiry —
+            their profile is below. Accept/Decline and Mark Completed live on your Bookings page.
           </span>
         </div>
       <?php endif; ?>
@@ -439,19 +598,19 @@ if ($canReview) {
           <span>&#8987;</span>
           <span>
             Application pending — <?php echo h($booking['host_name']); ?> has 24 hours to respond
-            before it is auto-declined and your reserve is refunded in full.
+            before it is auto-declined and the reserve is refunded in full.
           </span>
         </div>
       <?php elseif ($booking['status'] === 'confirmed'): ?>
         <?php if ($fullyPaid): ?>
           <div class="bd-banner bd-banner-green">
             <span>&#9989;</span>
-            <span>Accepted by the host and fully paid — you're all set to enjoy your stay!</span>
+            <span>Accepted by the host and fully paid — all set to enjoy the stay!</span>
           </div>
         <?php else: ?>
           <div class="bd-banner bd-banner-green">
             <span>&#9989;</span>
-            <span>Accepted by the host — the host has signed your official receipt. Pay the remaining balance below to fully enjoy your stay.</span>
+            <span>Accepted by the host — the host has signed the official receipt. Pay the remaining balance below to fully enjoy the stay.</span>
           </div>
         <?php endif; ?>
       <?php elseif ($booking['status'] === 'rejected'): ?>
@@ -460,7 +619,7 @@ if ($canReview) {
           <span>
             Not accepted by the host.
             <?php if ($refunded > 0): ?>
-              Your full payment of &#8369;<?php echo h(number_format($refunded, 2)); ?> has been refunded to your wallet.
+              The full payment of &#8369;<?php echo h(number_format($refunded, 2)); ?> has been refunded to the wallet.
             <?php endif; ?>
           </span>
         </div>
@@ -470,7 +629,7 @@ if ($canReview) {
           <span>
             This booking was cancelled.
             <?php if ($refunded > 0): ?>
-              &#8369;<?php echo h(number_format($refunded, 2)); ?> was refunded to your wallet
+              &#8369;<?php echo h(number_format($refunded, 2)); ?> was refunded to the wallet
               (after the 2% cancellation fee).
             <?php endif; ?>
           </span>
@@ -528,13 +687,101 @@ if ($canReview) {
         <?php endif; ?>
       </div>
 
+      <?php if ($isHostViewer && !$isTenantViewer && $tenant): ?>
+      <!-- ============ GUEST / TENANT DETAILS (host view) ============ -->
+      <div class="bd-host" style="margin-top:16px; padding-top:16px;">
+        <img class="bd-host-avatar"
+             src="<?php echo h(!empty($tenant['avatar_path']) ? $tenant['avatar_path'] : '/webprogg/images/default-avatar.png'); ?>"
+             alt="<?php echo h($tenant['name']); ?>">
+
+        <div class="bd-host-info">
+          <strong>
+            <?php echo h($tenant['name']); ?>
+            <?php if ($tenantVerified): ?>
+              <span class="bd-guest-verified yes">&#10003; Verified</span>
+            <?php else: ?>
+              <span class="bd-guest-verified no">Not Verified</span>
+            <?php endif; ?>
+          </strong>
+          <span>
+            Guest &middot; member since <?php echo h(date('F Y', strtotime($tenant['created_at']))); ?>
+          </span>
+        </div>
+
+        <a href="<?php echo h($messageGuestUrl); ?>"
+           class="up-btn-outline" style="text-decoration:none; padding:10px 18px;">
+          MESSAGE GUEST
+        </a>
+      </div>
+
+      <?php if (!empty($tenant['personal_photo'])): ?>
+      <!-- Guest personal photo (in-person recognition) -->
+      <div style="margin-top:14px;">
+        <span class="bd-guest-pp-label">Guest Personal Photo</span>
+        <a class="bd-guest-pp-link" href="<?php echo h($tenant['personal_photo']); ?>" target="_blank" rel="noopener" title="Open full size">
+          <img
+            class="bd-guest-pp-img"
+            src="<?php echo h($tenant['personal_photo']); ?>"
+            alt="Personal photo of <?php echo h($tenant['name']); ?>"
+            onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='block';"
+          >
+        </a>
+        <span class="bd-guest-pp-note">
+          Hosts use this photo to recognize the guest when meeting in person.
+          Click to open full size.
+        </span>
+      </div>
+      <p class="up-alert up-alert-error" style="display:none; margin-top:8px;">Photo file unavailable.</p>
+      <?php endif; ?>
+
+      <div class="bd-facts" style="margin-top:14px; margin-bottom:0;">
+        <div class="bd-fact">
+          <span>Email</span>
+          <strong style="font-size:12.5px; word-break:break-all;"><?php echo h($tenant['email']); ?></strong>
+        </div>
+        <div class="bd-fact">
+          <span>Phone</span>
+          <strong style="font-size:12.5px;"><?php echo !empty($tenant['phone']) ? h($tenant['phone']) : '&mdash;'; ?></strong>
+        </div>
+        <div class="bd-fact">
+          <span>Age</span>
+          <strong style="font-size:12.5px;"><?php echo (isset($tenant['age']) && $tenant['age'] !== null && $tenant['age'] !== '') ? h($tenant['age']) : '&mdash;'; ?></strong>
+        </div>
+        <div class="bd-fact">
+          <span>Location</span>
+          <strong style="font-size:12.5px;"><?php echo !empty($tenant['location']) ? h($tenant['location']) : '&mdash;'; ?></strong>
+        </div>
+      </div>
+
+      <?php if (!$tenantVerified): ?>
+        <div class="bd-banner bd-banner-amber" style="margin-top:14px; margin-bottom:0;">
+          <span>&#9888;&#65039;</span>
+          <span>
+            This guest is <strong>not verified</strong>.
+            <?php if ($tenantHasId && !empty($tenantMissing)): ?>
+              Their ID is received, but their profile is incomplete
+              (missing: <?php echo h(implode(', ', $tenantMissing)); ?>).
+            <?php elseif (!$tenantHasId && !empty($tenantMissing)): ?>
+              No ID uploaded, and their profile is incomplete
+              (missing: <?php echo h(implode(', ', $tenantMissing)); ?>).
+            <?php elseif (!$tenantHasId): ?>
+              No government ID uploaded yet.
+            <?php endif; ?>
+            Consider messaging them before accepting.
+          </span>
+        </div>
+      <?php endif; ?>
+      <?php endif; ?>
+
     </section>
 
     <!-- ============ PAYMENT SUMMARY ============ -->
     <section class="up-card up-reveal" style="--i: 1;">
       <div class="up-card-header">
         <h3>Payment Summary</h3>
-        <a href="/webprogg/user/userpayments.php" class="up-link-view-all">Payment History</a>
+        <?php if ($isTenantViewer): ?>
+          <a href="/webprogg/user/userpayments.php" class="up-link-view-all">Payment History</a>
+        <?php endif; ?>
       </div>
 
       <div class="bd-pay-row">

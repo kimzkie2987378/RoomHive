@@ -2,6 +2,20 @@
 /* =========================================================
    ROOMHIVE — MY MESSAGES (TENANT INBOX)
    usermessages.php
+
+   === CHANGES (SUPPORT CHAT VISIBILITY) ===
+   S1. Self-contained notifier um_notify() — the bare
+       notify_user() call could fatal if functions.php
+       didn't define it; now guarded like hostmessages.php.
+   S2. SUPPORT-CHAT AWARE — conversations whose host is the
+       system "RoomHive Admin" account (created by
+       adminchat.php) are flagged and rendered with a
+       RoomHive Admin badge, no host-profile link, and a
+       support note instead of a listing tag.
+   S3. Replies in a support conversation no longer try to
+       notify the support account (the admin panel's unread
+       badge picks them up); tenant-to-host notifications
+       keep working, host link fixed to ?c=.
 ========================================================= */
 
 session_start();
@@ -54,6 +68,57 @@ if (!function_exists('um_flash_set')) {
     }
 }
 
+/* =========================================================
+   S1 — SELF-CONTAINED NOTIFIER (guarded, mirrors hm_notify)
+========================================================= */
+if (!function_exists('um_notify')) {
+    function um_notify($pdo, $userId, $message, $link) {
+        try {
+            $userId = (int) $userId;
+            if ($userId <= 0) { return false; }
+
+            $rhNotify = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notify.php';
+            if (file_exists($rhNotify)) { require_once $rhNotify; }
+
+            if (function_exists('roomhive_notify')) {
+                if (roomhive_notify($pdo, $userId, $message, $link)) { return true; }
+            }
+
+            $n = $pdo->prepare(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at)
+                 VALUES (:u, :m, :l, 0, NOW())"
+            );
+            $n->execute([
+                'u' => $userId,
+                'm' => mb_substr($message, 0, 240),
+                'l' => $link,
+            ]);
+            return true;
+        } catch (PDOException $e) {
+            error_log('usermessages notify failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
+
+/* =========================================================
+   S2 — SUPPORT ACCOUNT DETECTOR (same email adminchat uses)
+========================================================= */
+if (!function_exists('um_support_user_id')) {
+    function um_support_user_id($pdo) {
+        static $sid = null;
+        if ($sid !== null) { return $sid; }
+        try {
+            $st = $pdo->prepare("SELECT id FROM users WHERE email = :e LIMIT 1");
+            $st->execute([':e' => 'support@roomhive.local']);
+            $sid = (int) $st->fetchColumn();
+        } catch (PDOException $e) {
+            $sid = 0;
+        }
+        return $sid;
+    }
+}
+
 /* User */
  $stmt = $pdo->prepare("SELECT id, name, email, avatar_path, is_host FROM users WHERE id = :id LIMIT 1");
  $stmt->execute(['id' => $_SESSION['user_id']]);
@@ -74,6 +139,7 @@ if ((int) $dbUser['is_host'] === 1) {
  $navAvatar = $_SESSION['avatar_path'] ?: '/webprogg/images/default-avatar.png';
  $activeSidebar = 'messages';
  $me = (int) $_SESSION['user_id'];
+ $supportId = um_support_user_id($pdo);
 
 /* Schema auto-detect */
  $_msgCols      = $pdo->query("SHOW COLUMNS FROM messages")->fetchAll(PDO::FETCH_COLUMN);
@@ -123,11 +189,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
                 );
                 $ins->execute(['c' => $convId, 's' => $me, 'b' => $body]);
 
-                                if ($ins->rowCount() === 1) {
+                if ($ins->rowCount() === 1) {
                     $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = :id")
                         ->execute(['id' => $convId]);
 
-                    /* NEW — notify the other party */
+                    /* S3 — notify the other party, EXCEPT the
+                       system support account (the admin panel's
+                       unread badge picks the reply up instead) */
                     $whoStmt = $pdo->prepare(
                         "SELECT user_id, host_id FROM conversations WHERE id = :id LIMIT 1"
                     );
@@ -139,11 +207,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
                             ? (int) $conv['host_id']
                             : (int) $conv['user_id'];
 
-                        $recipientLink = ((int) $conv['user_id'] === $me)
-                            ? '/webprogg/host/hostmessages.php?conversation=' . $convId
-                            : '/webprogg/user/usermessages.php?conversation=' . $convId;
+                        if ($recipient > 0 && $recipient !== $supportId) {
+                            $recipientLink = ((int) $conv['user_id'] === $me)
+                                ? '/webprogg/host/hostmessages.php?c=' . $convId
+                                : '/webprogg/user/usermessages.php?conversation=' . $convId;
 
-                        notify_user($pdo, $recipient, $recipientLink);
+                            um_notify(
+                                $pdo,
+                                $recipient,
+                                ($_SESSION['user_name'] ?? 'Your tenant') . ' sent you a new message.',
+                                $recipientLink
+                            );
+                        }
                     }
                 } else {
                     um_flash_set('error', 'Your message could not be saved. Please try again.');
@@ -182,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
 );
  $conversationsStmt->execute(['uid' => $me, 'uid2' => $me]);
 
- $conversations = array_map(function ($row) {
+ $conversations = array_map(function ($row) use ($supportId) {
     return [
         'id'            => (int) $row['id'],
         'listing_id'    => $row['listing_id'] ? (int) $row['listing_id'] : null,
@@ -192,6 +267,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['body'], $_POST['conve
         'host_avatar'   => um_resolve_photo($row['host_avatar'], '/webprogg/images/default-avatar.png'),
         'last_body'     => $row['last_body'] ?? '',
         'unread'        => (int) $row['unread_count'],
+
+        /* S2 — support-chat flag */
+        'is_support'    => $supportId > 0 && (int) $row['host_id'] === $supportId,
     ];
 }, $conversationsStmt->fetchAll());
 
@@ -259,6 +337,9 @@ if (!function_exists('message_day_label')) {
 .um-flash { padding: 10px 14px; margin: 0 0 12px; border-radius: 8px; font-size: 14px; }
 .um-flash-error { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
 .um-flash-success { background: #e9f7ef; color: #1e7e42; border: 1px solid #bfe8cf; }
+
+/* S2 — support badge */
+.up-support-tag{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.07em;color:#fff;background:linear-gradient(135deg,#f6b93b,#eda423);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -368,7 +449,7 @@ if (!function_exists('message_day_label')) {
                 </span>
                 <span class="up-msg-item-body">
                   <span class="up-msg-item-top">
-                    <span class="up-msg-name"><?php echo h($c['host_name']); ?></span>
+                    <span class="up-msg-name"><?php echo h($c['host_name']); ?><?php if (!empty($c['is_support'])): ?><span class="up-support-tag">SUPPORT</span><?php endif; ?></span>
                     <?php if ($isUnread): ?>
                       <span class="up-msg-badge"><?php echo h($c['unread']); ?></span>
                     <?php endif; ?>
@@ -389,18 +470,35 @@ if (!function_exists('message_day_label')) {
 
             <div class="up-msg-thread-header">
               <a href="/webprogg/user/usermessages.php" class="up-msg-back" aria-label="Back to messages">&#8249;</a>
-              <a href="/webprogg/host/hostpublicprofile.php?id=<?php echo h($activeConversation['host_id']); ?>"
-                 class="up-msg-thread-identity" title="View <?php echo h($activeConversation['host_name']); ?>'s profile">
-                <img class="up-msg-thread-avatar" src="<?php echo h($activeConversation['host_avatar']); ?>" alt="">
-                <div class="up-msg-thread-info">
-                  <div class="up-msg-thread-name"><?php echo h($activeConversation['host_name']); ?></div>
-                  <?php if ($activeConversation['listing_title'] !== ''): ?>
-                    <p class="up-msg-thread-listing"><?php echo h($activeConversation['listing_title']); ?></p>
-                  <?php endif; ?>
+
+              <?php if (!empty($activeConversation['is_support'])): ?>
+
+                <!-- S2 — support thread: no profile link -->
+                <div class="up-msg-thread-identity" title="RoomHive Support Team">
+                  <img class="up-msg-thread-avatar" src="<?php echo h($activeConversation['host_avatar']); ?>" alt="">
+                  <div class="up-msg-thread-info">
+                    <div class="up-msg-thread-name">RoomHive Admin<span class="up-support-tag">SUPPORT</span></div>
+                    <p class="up-msg-thread-listing">Official support &middot; we usually reply within 24 hours</p>
+                  </div>
                 </div>
-              </a>
+
+              <?php else: ?>
+
+                <a href="/webprogg/host/hostpublicprofile.php?id=<?php echo h($activeConversation['host_id']); ?>"
+                   class="up-msg-thread-identity" title="View <?php echo h($activeConversation['host_name']); ?>'s profile">
+                  <img class="up-msg-thread-avatar" src="<?php echo h($activeConversation['host_avatar']); ?>" alt="">
+                  <div class="up-msg-thread-info">
+                    <div class="up-msg-thread-name"><?php echo h($activeConversation['host_name']); ?></div>
+                    <?php if ($activeConversation['listing_title'] !== ''): ?>
+                      <p class="up-msg-thread-listing"><?php echo h($activeConversation['listing_title']); ?></p>
+                    <?php endif; ?>
+                  </div>
+                </a>
+
+              <?php endif; ?>
+
               <div class="up-msg-thread-actions">
-                <?php if ($activeConversation['listing_id']): ?>
+                <?php if (!empty($activeConversation['listing_id'])): ?>
                   <a href="/webprogg/Listings/listingdetails.php?id=<?php echo h($activeConversation['listing_id']); ?>"
                      class="up-msg-icon-btn" title="View listing" aria-label="View listing">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>

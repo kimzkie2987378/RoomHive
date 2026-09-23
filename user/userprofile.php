@@ -5,16 +5,29 @@
 
    HIVE CLUB INTEGRATION:
    - Real tier from the dual-bucket engine (sweep applied).
-   - 5th stat card: lifetime + spendable points (Bronze
-     auto-provisioned, so this always shows).
+   - 5th stat card: lifetime + spendable points.
    - Badge logic: active tier / lapsed / join-upsell by points.
-   - Real unread bell count (was hardcoded 0).
-   - Recent bookings show honest payment state (paid vs total).
+   - Real unread bell count.
+   - Recent bookings show honest payment state.
+
+   VERIF — ID VERIFICATION BADGE:
+   - Verified = ID uploaded + profile complete (auto rule,
+     same as the Become-a-Host gate). Badge next to name:
+     green Verified / gold Pending / gray Get Verified.
+
+   === WISHLIST FIX (this version) ===
+   The Overview wishlist remove button was wired per-button
+   in the bubble phase — javaScript.js ALSO binds
+   .rh-save-btn handlers, so ONE click fired togglewishlist.php
+   TWICE (remove + re-add) and items "came back" on refresh.
+   Now wired by DOCUMENT-LEVEL CAPTURE-PHASE delegation with
+   stopPropagation() — exactly one toggle per click.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/verification_gate.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
 /* AUTH GUARD */
@@ -40,6 +53,25 @@ if (!$dbUser) {
 if ((int) $dbUser['is_host'] === 1) {
     header("Location: /webprogg/host/hostprofile.php");
     exit;
+}
+
+/* =========================================================
+   VERIF — AUTO-VERIFICATION STATUS
+========================================================= */
+ $isVerified   = is_user_verified($pdo, $_SESSION['user_id']);
+ $hasPendingId = false;
+
+try {
+    if (!$isVerified) {
+        $hpStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM user_id_documents
+             WHERE user_id = :u AND status != 'rejected'"
+        );
+        $hpStmt->execute([':u' => $_SESSION['user_id']]);
+        $hasPendingId = (int) $hpStmt->fetchColumn() > 0;
+    }
+} catch (PDOException $e) {
+    $hasPendingId = false;
 }
 
  $navAvatar = sync_user_session($dbUser);
@@ -68,7 +100,7 @@ hive_expiry_sweep($pdo);
  $hiveDaysLeft      = hive_days_until_expiry($hiveMember);
  $hiveNextTier      = hive_next_tier($hiveLifetime);
 
-/* Real unread bell count (was hardcoded 0) */
+/* Real unread bell count */
  $ncStmt = $pdo->prepare(
     "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
  );
@@ -84,7 +116,7 @@ hive_expiry_sweep($pdo);
     ? round(array_sum($reviews) / count($reviews), 1)
     : 0;
 
-/* RECENT BOOKINGS — amount_paid added for honest payment display */
+/* RECENT BOOKINGS — honest payment display */
  $bookingsStmt = $pdo->prepare(
     "SELECT b.id, b.total, b.amount_paid, b.status, b.booked_at,
             l.title, l.location,
@@ -125,7 +157,7 @@ hive_expiry_sweep($pdo);
     ];
 }, $bookingsStmt->fetchAll());
 
-/* PAYMENT SUMMARY — BOOKINGS SPENT (actual money in) */
+/* PAYMENT SUMMARY — real money paid */
  $allBookingsStmt = $pdo->prepare(
     "SELECT amount_paid, booked_at FROM bookings WHERE user_id = :id AND status != 'cancelled'"
 );
@@ -138,8 +170,6 @@ hive_expiry_sweep($pdo);
  $bookings_spent_this_week = 0;
 
 foreach ($allBookingsForSpend as $b) {
-    /* FIXED: real money paid, not the booking total — a 50%
-       reserve no longer counts the unpaid half as "spent". */
     $amount = (float) ($b['amount_paid'] ?? 0);
     $bookings_spent_all_time += $amount;
 
@@ -226,7 +256,7 @@ foreach ($membershipTransactions as $txn) {
 
  $wishlist_total = count($wishlist);
 
-/* STATS ROW — Hive Club points card added */
+/* STATS ROW */
  $stats = [
     ['icon' => 'bookingsicon-userprofile.png',     'value' => count($bookings),  'label' => 'Bookings Total',            'count' => count($bookings), 'decimals' => 0],
     ['icon' => 'wihlistedicon-userprofile.png',    'value' => $wishlist_total,   'label' => 'Wishlisted Properties',     'count' => $wishlist_total,  'decimals' => 0],
@@ -249,7 +279,7 @@ foreach ($membershipTransactions as $txn) {
 <script>document.documentElement.classList.add("js");</script>
 
 <style>
-    /* Hive Club badge states + points sub-line (up-) */
+    /* Hive Club badge states + points sub-line */
     .up-badge-hc-active {
         background: linear-gradient(135deg, #f6b93b, #eda423);
         color: #1c2a38;
@@ -266,6 +296,29 @@ foreach ($membershipTransactions as $txn) {
         font-size: 10.5px;
         font-weight: 700;
         color: #B07708;
+    }
+
+    /* =====================================================
+       VERIF — ID VERIFICATION BADGE STATES
+    ====================================================== */
+    .up-badge-id-verified {
+        background: #E8F8F1;
+        color: #178A50;
+        border: 1px solid rgba(23, 138, 80, 0.35);
+    }
+    .up-badge-id-pending {
+        background: #FFF1DC;
+        color: #B07708;
+        border: 1px dashed rgba(237, 164, 35, 0.5);
+    }
+    .up-badge-id-none {
+        background: #F0F0F0;
+        color: #777777;
+        border-color: transparent;
+    }
+    .up-badge-id-none:hover {
+        background: #1c2a38;
+        color: #ffffff;
     }
 </style>
 </head>
@@ -362,6 +415,24 @@ foreach ($membershipTransactions as $txn) {
       <div class="up-profile-info">
         <div class="up-profile-name-row">
           <h2><?php echo h($user['name']); ?></h2>
+
+          <!-- VERIFIED BADGE (ID + complete profile) -->
+          <?php if ($isVerified): ?>
+            <span class="up-badge-verified up-badge-id-verified" title="Identity verified by RoomHive">
+              <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
+              Verified
+            </span>
+          <?php elseif ($hasPendingId): ?>
+            <a href="/webprogg/user/editprofile.php" class="up-badge-verified up-badge-id-pending"
+               title="Complete your profile to get verified">
+              Verification Pending
+            </a>
+          <?php else: ?>
+            <a href="/webprogg/user/editprofile.php" class="up-badge-verified up-badge-id-none"
+               title="Get verified to unlock listing">
+              Get Verified
+            </a>
+          <?php endif; ?>
 
           <?php if ($hiveActive && $hiveTier !== 'Bronze'): ?>
             <!-- Paid tier, active -->
@@ -485,6 +556,50 @@ foreach ($membershipTransactions as $txn) {
 
       <div class="up-right-col">
 
+        <!-- VERIFICATION STATUS CARD -->
+        <div class="up-card up-account-security up-reveal" style="--i: 0;">
+          <div class="up-card-header">
+            <h3>Identity Verification</h3>
+
+            <?php if ($isVerified): ?>
+              <span class="up-badge-verified up-badge-id-verified">
+                <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
+                Verified
+              </span>
+            <?php elseif ($hasPendingId): ?>
+              <span class="up-badge-verified up-badge-id-pending">Pending</span>
+            <?php endif; ?>
+          </div>
+
+          <?php if ($isVerified): ?>
+
+            <p style="font-size:13px; color:#178A50; font-weight:700; margin:0 0 12px;">
+              &#10003; Your identity is verified — you can list spaces and
+              enjoy faster booking approvals.
+            </p>
+
+          <?php elseif ($hasPendingId): ?>
+
+            <p style="font-size:13px; color:#B07708; font-weight:600; margin:0 0 12px;">
+              &#8987; Your ID is received — complete your profile
+              (name, phone, age, location) in Edit Profile to be
+              verified automatically.
+            </p>
+
+          <?php else: ?>
+
+            <p style="font-size:13px; color:#777777; margin:0 0 12px;">
+              Verification is required before you can list a space.
+              Upload one government-issued ID — it's free and automatic.
+            </p>
+
+          <?php endif; ?>
+
+          <a href="/webprogg/user/editprofile.php#verify-card" class="up-btn-solid" style="display:inline-block;">
+            <?php echo $isVerified ? 'VIEW VERIFICATION' : 'VERIFY NOW'; ?>
+          </a>
+        </div>
+
         <div class="up-card up-payment-summary up-reveal" style="--i: 2;">
           <div class="up-card-header">
             <h3>Payment Summary</h3>
@@ -577,7 +692,7 @@ foreach ($membershipTransactions as $txn) {
 
       <div class="up-wishlist-grid" id="up-wishlist-grid" <?php if (empty($wishlist)): ?>style="display:none;"<?php endif; ?>>
         <?php foreach ($wishlist as $item): ?>
-          <a href="/webprogg/Listings/listing.php?id=<?php echo h($item['id']); ?>" class="listing-box" data-listing-id="<?php echo h($item['id']); ?>">
+          <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($item['id']); ?>" class="listing-box" data-listing-id="<?php echo h($item['id']); ?>">
             <div class="up-wishlist-thumb">
               <img src="<?php echo h($item['thumb']); ?>" alt="<?php echo h($item['title']); ?>">
               <button type="button"
@@ -590,7 +705,7 @@ foreach ($membershipTransactions as $txn) {
             <h4><?php echo h($item['title']); ?></h4>
             <p class="up-wishlist-location"><?php echo h($item['location']); ?></p>
             <div class="up-wishlist-meta">
-              <span class="up-wishlist-price">&#8369; <?php echo h($item['price']); ?> / night</span>
+              <span class="up-wishlist-price">&#8369; <?php echo h($item['price']); ?> / month</span>
               <span class="up-wishlist-rating">&#9733; <?php echo h($item['rating']); ?> (<?php echo h($item['reviews']); ?>)</span>
             </div>
           </a>
@@ -619,9 +734,9 @@ foreach ($membershipTransactions as $txn) {
         </div>
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
         <div class="footer-links">
@@ -804,13 +919,23 @@ foreach ($membershipTransactions as $txn) {
 })();
 </script>
 
-<!-- WISHLIST REMOVE (Overview mini-grid) -->
+<!-- =========================================================
+     WISHLIST REMOVE (Overview mini-grid)
+     FIX: capture-phase document delegation. javaScript.js
+     ALSO binds .rh-save-btn handlers (bubble phase); with
+     per-button binding both fired -> togglewishlist.php ran
+     TWICE (remove + re-add) -> items came back on refresh.
+     Capture phase fires FIRST and stopPropagation() blocks
+     javaScript.js — exactly one toggle per click.
+========================================================= -->
 <script>
 (function () {
-    const grid = document.getElementById('up-wishlist-grid');
+    const grid       = document.getElementById('up-wishlist-grid');
     const emptyState = document.getElementById('up-wishlist-empty');
-    const countEl = document.querySelector('.up-wishlist-count');
-    const statValue = document.querySelector('.up-stat-wishlist strong');
+    const countEl    = document.querySelector('.up-wishlist-count');
+    const statValue  = document.querySelector('.up-stat-wishlist strong');
+
+    let busy = false;
 
     function syncWishlistUI() {
         const remaining = grid ? grid.querySelectorAll('.listing-box').length : 0;
@@ -822,41 +947,69 @@ foreach ($membershipTransactions as $txn) {
         }
     }
 
-    if (!grid) return;
+    if (!grid) { return; }
 
-    grid.querySelectorAll('.rh-save-btn').forEach(function (btn) {
-        btn.addEventListener('click', function (e) {
+    function removeFromWishlist(btn) {
+        if (busy) { return; }
+
+        const box = btn.closest('.listing-box');
+        const listingId = btn.getAttribute('data-listing-id');
+        if (!box || !listingId) { return; }
+
+        busy = true;
+        btn.disabled = true;
+
+        fetch('/webprogg/user/togglewishlist.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'listing_id=' + encodeURIComponent(listingId),
+            credentials: 'same-origin'
+        })
+        .then(function (res) {
+            if (!res.ok) {
+                return res.text().then(function (t) {
+                    throw new Error('HTTP ' + res.status + ': ' + t.substring(0, 150));
+                });
+            }
+            return res.json();
+        })
+        .then(function (data) {
+            busy = false;
+            btn.disabled = false;
+            if (data && data.success) {
+                box.remove();
+                syncWishlistUI();
+            } else if (data && data.login) {
+                window.location.href = '/webprogg/auth/loginform.php';
+            } else {
+                btn.disabled = false;
+                alert((data && data.message) || 'Could not update your wishlist.');
+            }
+        })
+        .catch(function (err) {
+            busy = false;
+            btn.disabled = false;
+            console.error('[wishlist remove]', err);
+            alert('Wishlist update failed: ' + (err && err.message ? err.message : 'network error'));
+        });
+    }
+
+    /* =====================================================
+       THE FIX — capture phase (true) on document.
+       Fires BEFORE javaScript.js's bubble-phase handlers;
+       stopPropagation() blocks them — one toggle per click.
+    ====================================================== */
+    document.addEventListener('click', function (e) {
+        if (!e.target || !e.target.closest) { return; }
+        const btn = e.target.closest('.rh-save-btn');
+        if (btn && grid.contains(btn)) {
             e.preventDefault();
             e.stopPropagation();
-
-            const box = btn.closest('.listing-box');
-            const listingId = btn.getAttribute('data-listing-id');
-            if (!box || !listingId) return;
-
-            btn.disabled = true;
-
-            fetch('/webprogg/user/togglewishlist.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'listing_id=' + encodeURIComponent(listingId)
-            })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    box.remove();
-                    syncWishlistUI();
-                } else {
-                    btn.disabled = false;
-                    alert(data.message || 'Could not update your wishlist.');
-                }
-            })
-            .catch(function () {
-                btn.disabled = false;
-                alert('Something went wrong. Please try again.');
-            });
-        });
-    });
+            removeFromWishlist(btn);
+        }
+    }, true);
 })();
 </script>
+
 </body>
 </html>

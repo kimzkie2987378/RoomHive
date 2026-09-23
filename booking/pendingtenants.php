@@ -9,9 +9,20 @@
    receipt. Only then is the application accepted
    (accept-booking.php). Reject is unchanged.
 
-   SIDEBAR FIX: the Earnings link points to
-   /webprogg/host/earning.php — the actual filename. The old
-   /webprogg/host/hostearnings.php link 404'd.
+   === TENANT VISIBILITY ===
+   Each applicant now shows their VERIFICATION STATUS:
+   - Verified / Not Verified pill next to their name (card
+     + modal), using the same auto-verify rule as the gate
+     (ID uploaded + complete profile via verification_gate).
+   - Their PERSONAL PHOTO (separate from profile picture,
+     uploaded in Edit Profile) appears in the details modal
+     for in-person recognition — click to open full size.
+   - personal_photo column self-heals if missing.
+
+   === PAY FULL PRICE (compatible) ===
+   pt_payment_breakdown() already compares amount_paid vs
+   total, so bookings paid in full via process-payment.php
+   show "Fully Paid" automatically — no changes required.
 ========================================================= */
 
 session_start();
@@ -66,7 +77,7 @@ if (!$dbUser['is_host']) {
             l.id AS listing_id, l.title AS listing_title, l.location AS listing_location, l.price,
             p.photo_path AS cover_photo,
             u.id AS tenant_id, u.name AS tenant_name, u.email AS tenant_email,
-            u.avatar_path AS tenant_avatar
+            u.avatar_path AS tenant_avatar, u.personal_photo
      FROM bookings b
      JOIN listings l ON l.id = b.listing_id
      JOIN users u ON u.id = b.user_id
@@ -74,10 +85,76 @@ if (!$dbUser['is_host']) {
      WHERE l.user_id = :id AND b.status = 'pending'
      ORDER BY b.booked_at DESC"
 );
- $pendingStmt->execute(['id' => $_SESSION['user_id']]);
- $pendingApplications = $pendingStmt->fetchAll();
+
+ $pendingApplications = [];
+ $pendingStmtRan      = false;
+
+try {
+    $pendingStmt->execute(['id' => $_SESSION['user_id']]);
+    $pendingApplications = $pendingStmt->fetchAll();
+    $pendingStmtRan      = true;
+} catch (PDOException $e) {
+    /* personal_photo column missing — self-heal, then retry */
+    try {
+        $ppCol = $pdo->query("SHOW COLUMNS FROM users LIKE 'personal_photo'")->fetch();
+        if (!$ppCol) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN personal_photo VARCHAR(255) NULL");
+        }
+        $pendingStmt->execute(['id' => $_SESSION['user_id']]);
+        $pendingApplications = $pendingStmt->fetchAll();
+        $pendingStmtRan      = true;
+    } catch (PDOException $e2) {
+        error_log('pendingtenants: query failed: ' . $e2->getMessage());
+    }
+}
 
  $pending_tenants_count = count($pendingApplications);
+
+/* -----------------------------------------------------
+   VERIFICATION + PERSONAL PHOTO per pending tenant.
+   Same auto-verify rule as the gate: ID uploaded +
+   complete profile (name, phone, age, location).
+----------------------------------------------------- */
+if (!function_exists('pt_tenant_verification')) {
+    function pt_tenant_verification($pdo, $tenantId) {
+        $out = [
+            'verified'       => false,
+            'has_id'         => false,
+            'id_status'      => null,
+            'personal_photo' => '',
+        ];
+
+        try {
+            require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/verification_gate.php';
+            $out['verified'] = is_user_verified($pdo, (int) $tenantId);
+
+            $v = $pdo->prepare(
+                "SELECT status FROM user_id_documents
+                 WHERE user_id = :u AND status != 'rejected'
+                 ORDER BY uploaded_at DESC
+                 LIMIT 1"
+            );
+            $v->execute([':u' => (int) $tenantId]);
+            $out['id_status'] = $v->fetchColumn();
+            $out['has_id']    = (bool) $out['id_status'];
+        } catch (PDOException $e) { /* guarded */ }
+
+        try {
+            $p = $pdo->prepare(
+                "SELECT personal_photo FROM users WHERE id = :u LIMIT 1"
+            );
+            $p->execute([':u' => (int) $tenantId]);
+            $out['personal_photo'] = trim((string) $p->fetchColumn());
+        } catch (PDOException $e) { /* guarded */ }
+
+        return $out;
+    }
+}
+
+/* Attach verification + personal photo to each application */
+foreach ($pendingApplications as $key => $app) {
+    $pendingApplications[$key]['verification'] = pt_tenant_verification($pdo, (int) $app['tenant_id']);
+}
 
 if (!function_exists('h')) {
     function h($value) {
@@ -222,12 +299,8 @@ function pt_payment_time_label($paidAt) {
 <main class="hp-dashboard hp-dashboard--flush-top">
 
  <?php
-/* Shared host sidebar. Set $activePage before including:
-   overview | listings | pending | bookings | earnings | payouts |
-   reviews | messages | editprofile | verification | payoutmethods |
-   notificationsettings | security | quithosting | helpcenter
-   Requires host_init.php ($host, $pending_tenants_count). */
- $activePage = $activePage ?? '';
+/* Shared host sidebar. Set $activePage before including. */
+ $activePage = $activePage ?? 'pending';
 
 function hp_side_active($activePage, $key) {
     return $activePage === $key ? ' active' : '';
@@ -253,7 +326,7 @@ function hp_side_active($activePage, $key) {
         height: 64px;
     }
 
-    /* NEW — section label + quit hosting styling */
+    /* Section label + quit hosting styling */
     .hp-side-heading {
         margin: 20px 10px 6px;
         font-size: 11px;
@@ -390,7 +463,7 @@ function hp_side_active($activePage, $key) {
     <div class="hp-page-header">
       <div>
         <h1 class="hp-page-title">Pending Tenants</h1>
-        <p class="hp-page-subtitle">Tenants who applied for your spaces sit here until you accept or reject them. Accepting now requires signing the guest's receipt first.</p>
+        <p class="hp-page-subtitle">Tenants who applied for your spaces sit here until you accept or reject them. Accepting now requires signing the guest's receipt first. Verification badges show who completed ID + profile.</p>
       </div>
     </div>
 
@@ -410,6 +483,9 @@ function hp_side_active($activePage, $key) {
         $paymentTime      = pt_payment_time_label($app['paid_at']);
         $bookingRef       = str_pad((string) $app['booking_id'], 6, '0', STR_PAD_LEFT);
 
+        $tenantVer  = $app['verification'];
+        $tenantPers = trim((string) ($tenantVer['personal_photo'] ?? ''));
+
         $receiptUrl = $payment['payment_state'] !== 'none'
             ? '/webprogg/booking/payment-confirmation.php?id=' . (int) $app['booking_id']
             : '';
@@ -425,6 +501,8 @@ function hp_side_active($activePage, $key) {
             data-tenant-name="<?php echo h($app['tenant_name']); ?>"
             data-tenant-email="<?php echo h($app['tenant_email']); ?>"
             data-tenant-avatar="<?php echo h(resolve_photo($app['tenant_avatar'], '/webprogg/images/default-avatar.png')); ?>"
+            data-tenant-personal="<?php echo h($tenantPers); ?>"
+            data-tenant-verified="<?php echo $tenantVer['verified'] ? '1' : '0'; ?>"
             data-checkin="<?php echo h(pt_checkin_label($app['checkin_date'])); ?>"
             data-checkout="<?php echo h(pt_checkout_label($app['checkin_date'], $app['checkout_date'])); ?>"
             data-daterange="<?php echo h($dateRangeLabel); ?>"
@@ -462,7 +540,14 @@ function hp_side_active($activePage, $key) {
                 alt="<?php echo h($app['tenant_name']); ?>"
               >
               <div>
-                <p class="pt-tenant-name"><?php echo h($app['tenant_name']); ?></p>
+                <p class="pt-tenant-name">
+                  <?php echo h($app['tenant_name']); ?>
+                  <?php if ($tenantVer['verified']): ?>
+                    <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;background:#E8F8F1;color:#178A50;border:1px solid rgba(23,138,80,.35);border-radius:999px;font-size:10px;font-weight:800;vertical-align:middle;">&#10003; Verified</span>
+                  <?php else: ?>
+                    <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;background:#FFF4E0;color:#C77A00;border:1px dashed rgba(237,164,35,.5);border-radius:999px;font-size:10px;font-weight:800;vertical-align:middle;">Not Verified</span>
+                  <?php endif; ?>
+                </p>
                 <p class="pt-tenant-email"><?php echo h($app['tenant_email']); ?></p>
               </div>
             </div>
@@ -542,9 +627,23 @@ function hp_side_active($activePage, $key) {
         <div class="pt-modal-tenant">
           <img class="pt-modal-tenant-avatar" id="ptModalTenantAvatar" src="" alt="">
           <div>
-            <p class="pt-modal-tenant-name" id="ptModalTenantName"></p>
+            <p class="pt-modal-tenant-name">
+              <span id="ptModalTenantName"></span>
+              <span id="ptModalTenantVerified" class="pt-verified-pill"></span>
+            </p>
             <p class="pt-modal-tenant-email" id="ptModalTenantEmail"></p>
           </div>
+        </div>
+
+        <div id="ptModalTenantPersonalWrap" style="display:none; margin:-4px 0 14px;">
+          <span style="display:block; font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#8B93A6; margin-bottom:6px;">Guest Personal Photo</span>
+          <a id="ptModalTenantPersonalLink" href="#" target="_blank" rel="noopener" title="Open full size">
+            <img id="ptModalTenantPersonal" src="" alt="Personal photo"
+                 style="width:100%; max-width:380px; height:170px; object-fit:cover; object-position:center; border-radius:10px; border:1px solid #EEF1F6; display:block;">
+          </a>
+          <span style="display:block; margin-top:5px; font-size:11px; color:#8B93A6;">
+            Used to recognize the guest in person. Click to open full size.
+          </span>
         </div>
 
         <h3 class="pt-modal-heading" id="ptModalTitle">Application Details</h3>
@@ -691,16 +790,15 @@ function hp_side_active($activePage, $key) {
 
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
 
         <div class="footer-links">
             <span class="footer-heading">QUICK LINKS</span>
             <a href="/webprogg/index.php">About Us</a>
-            <a href="/webprogg/misc/contacts.php">Contact</a>
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
             <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
@@ -771,6 +869,15 @@ function hp_side_active($activePage, $key) {
         font-size: 11px; font-weight: 700; line-height: 1;
         padding: 3px 7px; border-radius: 999px;
     }
+
+    /* Verified pill (list + modal) */
+    .pt-verified-pill {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 9px; border-radius: 999px;
+        font-size: 10px; font-weight: 800; vertical-align: middle;
+    }
+    .pt-verified-pill.yes { background: #E8F8F1; color: #178A50; border: 1px solid rgba(23,138,80,.35); }
+    .pt-verified-pill.no  { background: #FFF4E0; color: #C77A00; border: 1px dashed rgba(237,164,35,.5); }
 
     /* Cards */
     .pt-list { display: flex; flex-direction: column; gap: 14px; }
@@ -1060,9 +1167,18 @@ function hp_side_active($activePage, $key) {
 
 <script>
 (function () {
+    "use strict";
 
-    /* ---------- ACCEPT / REJECT (reject unchanged) ---------- */
+    /* =========================================================
+       SHARED HELPERS
+    ========================================================= */
+    function openOverlay(el)  { if (el) el.classList.add('open'); }
+    function closeOverlay(el) { if (el) el.classList.remove('open'); }
 
+    /* =========================================================
+       ACCEPT / REJECT (reject unchanged — accept goes through
+       the signature pad; handleDecision is used for REJECT only)
+    ========================================================= */
     function handleDecision(bookingId, tenantName, buttons, card, endpoint, confirmMessage, busyText, onSuccess) {
         if (!confirm(confirmMessage.replace('%s', tenantName || 'this tenant'))) {
             return;
@@ -1096,339 +1212,384 @@ function hp_side_active($activePage, $key) {
             });
     }
 
-    /* ---------- APPLICATION DETAILS MODAL ---------- */
+    /* =========================================================
+       APPLICATION DETAILS MODAL
+    ========================================================= */
+    var overlay         = document.getElementById('ptModalOverlay');
+    var closeBtn        = document.getElementById('ptModalClose');
+    var modalAcceptBtn  = document.getElementById('ptModalAccept');
+    var modalRejectBtn  = document.getElementById('ptModalReject');
+    var activeCard      = null;
 
-    var overlay = document.getElementById('ptModalOverlay');
-    var closeBtn = document.getElementById('ptModalClose');
-    var modalAcceptBtn = document.getElementById('ptModalAccept');
-    var modalRejectBtn = document.getElementById('ptModalReject');
-    var activeCard = null;
+    var mListingPhoto     = document.getElementById('ptModalListingPhoto');
+    var mListingTitle     = document.getElementById('ptModalListingTitle');
+    var mListingLocation  = document.getElementById('ptModalListingLocation');
+    var mTenantAvatar     = document.getElementById('ptModalTenantAvatar');
+    var mTenantName       = document.getElementById('ptModalTenantName');
+    var mTenantVerified   = document.getElementById('ptModalTenantVerified');
+    var mTenantEmail      = document.getElementById('ptModalTenantEmail');
+    var mPersonalWrap     = document.getElementById('ptModalTenantPersonalWrap');
+    var mPersonalLink     = document.getElementById('ptModalTenantPersonalLink');
+    var mPersonal         = document.getElementById('ptModalTenantPersonal');
+    var mPaymentStatus    = document.getElementById('ptModalPaymentStatus');
+    var mPaymentTime      = document.getElementById('ptModalPaymentTime');
+    var mReceiptLink      = document.getElementById('ptModalReceiptLink');
+    var mPaid             = document.getElementById('ptModalPaid');
+    var mBalance          = document.getElementById('ptModalBalance');
+    var mDateRange        = document.getElementById('ptModalDateRange');
+    var mCheckin          = document.getElementById('ptModalCheckin');
+    var mCheckout         = document.getElementById('ptModalCheckout');
+    var mGuests           = document.getElementById('ptModalGuests');
+    var mApplied          = document.getElementById('ptModalApplied');
+    var mTotal            = document.getElementById('ptModalTotal');
 
-    function openModalForCard(card) {
+    function openDetailsModal(card) {
+        if (!card) return;
         activeCard = card;
+        var d = card.dataset;
 
-        document.getElementById('ptModalListingPhoto').src = card.getAttribute('data-listing-photo');
-        document.getElementById('ptModalListingTitle').textContent = card.getAttribute('data-listing-title');
-        document.getElementById('ptModalListingLocation').textContent = card.getAttribute('data-listing-location');
-        document.getElementById('ptModalTenantAvatar').src = card.getAttribute('data-tenant-avatar');
-        document.getElementById('ptModalTenantName').textContent = card.getAttribute('data-tenant-name');
-        document.getElementById('ptModalTenantEmail').textContent = card.getAttribute('data-tenant-email');
+        mListingPhoto.src    = d.listingPhoto || '';
+        mListingTitle.textContent  = d.listingTitle || '';
+        mListingLocation.textContent = d.listingLocation || '';
 
-        var paymentStatusEl = document.getElementById('ptModalPaymentStatus');
-        paymentStatusEl.textContent = card.getAttribute('data-payment-status');
-        paymentStatusEl.className = 'pt-modal-payment-status ' + card.getAttribute('data-payment-class');
-        document.getElementById('ptModalPaymentTime').textContent = card.getAttribute('data-payment-time');
+        mTenantAvatar.src = d.tenantAvatar || '';
+        mTenantName.textContent = d.tenantName || '';
+        if (d.tenantVerified === '1') {
+            mTenantVerified.textContent = '\u2713 Verified';
+            mTenantVerified.className = 'pt-verified-pill yes';
+        } else {
+            mTenantVerified.textContent = 'Not Verified';
+            mTenantVerified.className = 'pt-verified-pill no';
+        }
+        mTenantEmail.textContent = d.tenantEmail || '';
 
-        var receiptLink = document.getElementById('ptModalReceiptLink');
-        var receiptUrl = card.getAttribute('data-receipt-url') || '';
-        if (receiptLink) {
-            if (receiptUrl) {
-                receiptLink.href = receiptUrl;
-                receiptLink.style.display = 'inline-flex';
-            } else {
-                receiptLink.style.display = 'none';
-            }
+        if (d.tenantPersonal) {
+            mPersonalWrap.style.display = 'block';
+            mPersonalLink.href = d.tenantPersonal;
+            mPersonal.src = d.tenantPersonal;
+        } else {
+            mPersonalWrap.style.display = 'none';
+            mPersonalLink.removeAttribute('href');
+            mPersonal.removeAttribute('src');
         }
 
-        document.getElementById('ptModalPaid').textContent = card.getAttribute('data-paid') || '0.00';
-        document.getElementById('ptModalBalance').textContent = card.getAttribute('data-balance') || '0.00';
+        mPaymentStatus.textContent = d.paymentStatus || '';
+        mPaymentStatus.className = 'pt-modal-payment-status ' + (d.paymentClass || 'pt-payment-pending');
+        mPaymentTime.textContent = d.paymentTime || '';
 
-        document.getElementById('ptModalDateRange').textContent = card.getAttribute('data-daterange');
-        document.getElementById('ptModalCheckin').textContent = card.getAttribute('data-checkin');
-        document.getElementById('ptModalCheckout').textContent = card.getAttribute('data-checkout');
-        document.getElementById('ptModalGuests').textContent = card.getAttribute('data-guests');
-        document.getElementById('ptModalApplied').textContent = card.getAttribute('data-applied');
-        document.getElementById('ptModalTotal').textContent = card.getAttribute('data-total');
+        if (d.receiptUrl) {
+            mReceiptLink.href = d.receiptUrl;
+            mReceiptLink.style.display = 'inline-flex';
+        } else {
+            mReceiptLink.style.display = 'none';
+        }
 
-        overlay.classList.add('open');
+        mPaid.textContent     = d.paid || '0.00';
+        mBalance.textContent  = d.balance || '0.00';
+        mDateRange.textContent = d.daterange || '';
+        mCheckin.textContent  = d.checkin || '';
+        mCheckout.textContent = d.checkout || '';
+        mGuests.textContent   = d.guests || '';
+        mApplied.textContent  = d.applied || '';
+        mTotal.textContent    = d.total || '0.00';
+
+        openOverlay(overlay);
     }
 
-    function closeModal() {
-        overlay.classList.remove('open');
-        activeCard = null;
-    }
-
+    /* Card click / keyboard opens the details modal */
     document.querySelectorAll('.pt-card').forEach(function (card) {
-        card.addEventListener('click', function () {
-            openModalForCard(card);
+        card.addEventListener('click', function (e) {
+            if (e.target.closest('.pt-btn-accept') ||
+                e.target.closest('.pt-btn-reject') ||
+                e.target.closest('a')) {
+                return;
+            }
+            openDetailsModal(card);
         });
-        card.addEventListener('keydown', function (event) {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                openModalForCard(card);
+
+        card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openDetailsModal(card);
             }
         });
     });
 
-    if (closeBtn) { closeBtn.addEventListener('click', closeModal); }
-
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function () { closeOverlay(overlay); });
+    }
     if (overlay) {
-        overlay.addEventListener('click', function (event) {
-            if (event.target === overlay) { closeModal(); }
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closeOverlay(overlay);
         });
     }
 
-    /* ---------- SIGN-TO-ACCEPT ---------- */
+    /* Reject from inside the modal */
+    if (modalRejectBtn) {
+        modalRejectBtn.addEventListener('click', function () {
+            if (!activeCard) return;
+            var card = activeCard;
+            handleDecision(
+                card.dataset.bookingId,
+                card.dataset.tenantName,
+                [modalRejectBtn],
+                card,
+                '/webprogg/booking/reject-booking.php',
+                'Reject %s\'s application? Their payment will be refunded.',
+                'Rejecting\u2026',
+                function () { closeOverlay(overlay); activeCard = null; }
+            );
+        });
+    }
 
-    var signOverlay   = document.getElementById('ptSignOverlay');
-    var signClose     = document.getElementById('ptSignClose');
-    var signCancel    = document.getElementById('ptSignCancel');
-    var signConfirm   = document.getElementById('ptSignConfirm');
-    var signClear     = document.getElementById('ptSignClear');
-    var signHint      = document.getElementById('ptSignHint');
-    var signCanvas    = document.getElementById('ptSignCanvas');
+    /* Accept from inside the modal -> SIGN-TO-ACCEPT (no direct accept) */
+    if (modalAcceptBtn) {
+        modalAcceptBtn.addEventListener('click', function () {
+            var card = activeCard;
+            closeOverlay(overlay);
+            openSignModal(card);
+        });
+    }
 
-    var signCard    = null;   /* the .pt-card being accepted */
-    var signCtx     = signCanvas ? signCanvas.getContext('2d') : null;
-    var hasInk      = false;
-    var drawing     = false;
-    var lastX       = 0;
-    var lastY       = 0;
+    /* =========================================================
+       SIGN-TO-ACCEPT MODAL (signature pad)
+    ========================================================= */
+    var signOverlay     = document.getElementById('ptSignOverlay');
+    var signClose       = document.getElementById('ptSignClose');
+    var signCancel      = document.getElementById('ptSignCancel');
+    var signClear       = document.getElementById('ptSignClear');
+    var signConfirm     = document.getElementById('ptSignConfirm');
+    var signViewReceipt = document.getElementById('ptSignViewReceipt');
 
-    function initSignCanvas() {
-        if (!signCtx) return;
-        var dpr  = window.devicePixelRatio || 1;
-        var rect = signCanvas.getBoundingClientRect();
-        var w    = Math.max(200, Math.round(rect.width));
-        var h    = 220;
+    var signBookingRef = document.getElementById('ptSignBookingRef');
+    var signTenant     = document.getElementById('ptSignTenant');
+    var signListing    = document.getElementById('ptSignListing');
+    var signPaid       = document.getElementById('ptSignPaid');
+    var signTotal      = document.getElementById('ptSignTotal');
 
-        signCanvas.width  = w * dpr;
-        signCanvas.height = h * dpr;
-        signCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var canvas = document.getElementById('ptSignCanvas');
+    var hint   = document.getElementById('ptSignHint');
+    var ctx    = canvas ? canvas.getContext('2d') : null;
 
-        /* white background so the saved PNG is not transparent */
-        signCtx.fillStyle = '#ffffff';
-        signCtx.fillRect(0, 0, w, h);
+    var signCard = null;
+    var drawing  = false;
+    var hasInk   = false;
+    var lastX = 0, lastY = 0;
 
-        /* signature baseline */
-        signCtx.strokeStyle = '#C9CDD6';
-        signCtx.lineWidth = 1.2;
-        signCtx.setLineDash([4, 6]);
-        signCtx.beginPath();
-        signCtx.moveTo(20, h - 50);
-        signCtx.lineTo(w - 20, h - 50);
-        signCtx.stroke();
-        signCtx.setLineDash([]);
+    function sizeCanvas() {
+        if (!canvas || !ctx) return;
+        var ratio = window.devicePixelRatio || 1;
+        var rect  = canvas.getBoundingClientRect();
 
-        /* ink settings */
-        signCtx.strokeStyle = '#14142B';
-        signCtx.lineWidth = 2.4;
-        signCtx.lineCap = 'round';
-        signCtx.lineJoin = 'round';
+        /* Preserve any existing strokes across resizes */
+        var snapshot = hasInk ? canvas.toDataURL() : null;
 
-        hasInk = false;
+        canvas.width  = Math.max(1, Math.round(rect.width * ratio));
+        canvas.height = Math.max(1, Math.round(rect.height * ratio));
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.lineWidth   = 2.2;
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+        ctx.strokeStyle = '#14142B';
+
+        if (snapshot) {
+            var img = new Image();
+            img.onload = function () {
+                ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            };
+            img.src = snapshot;
+        }
+    }
+
+    function resetSignature() {
+        if (!canvas || !ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hasInk  = false;
         drawing = false;
-        signConfirm.disabled = true;
-        signHint.classList.remove('hidden');
+        if (hint) hint.classList.remove('hidden');
+        if (signConfirm) {
+            signConfirm.disabled = true;
+            signConfirm.textContent = 'Sign & Accept';
+        }
     }
 
-    function canvasPos(event) {
-        var rect = signCanvas.getBoundingClientRect();
-        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    function getPoint(e) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
     }
 
-    function strokeTo(x, y) {
-        signCtx.beginPath();
-        signCtx.moveTo(lastX, lastY);
-        signCtx.lineTo(x, y);
-        signCtx.stroke();
-        lastX = x;
-        lastY = y;
-    }
-
-    if (signCanvas) {
-        signCanvas.addEventListener('pointerdown', function (event) {
-            event.preventDefault();
-            drawing = true;
-            try { signCanvas.setPointerCapture(event.pointerId); } catch (e) {}
-            var p = canvasPos(event);
-            lastX = p.x; lastY = p.y;
-
-            if (!hasInk) {
-                hasInk = true;
-                signConfirm.disabled = false;
-                signHint.classList.add('hidden');
+    if (canvas) {
+        canvas.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            if (canvas.setPointerCapture) {
+                try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
             }
-            /* dot */
-            signCtx.beginPath();
-            signCtx.arc(p.x, p.y, 1.2, 0, Math.PI * 2);
-            signCtx.fillStyle = '#14142B';
-            signCtx.fill();
+            drawing = true;
+            var p = getPoint(e);
+            lastX = p.x;
+            lastY = p.y;
+            hasInk = true;
+            if (hint) hint.classList.add('hidden');
+            /* Draw a dot for a single tap */
+            ctx.beginPath();
+            ctx.arc(lastX, lastY, 1.4, 0, Math.PI * 2);
+            ctx.fillStyle = '#14142B';
+            ctx.fill();
+            if (signConfirm) signConfirm.disabled = false;
         });
 
-        signCanvas.addEventListener('pointermove', function (event) {
+        canvas.addEventListener('pointermove', function (e) {
             if (!drawing) return;
-            var p = canvasPos(event);
-            strokeTo(p.x, p.y);
+            e.preventDefault();
+            var p = getPoint(e);
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            lastX = p.x;
+            lastY = p.y;
         });
 
         ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (evt) {
-            signCanvas.addEventListener(evt, function () { drawing = false; });
+            canvas.addEventListener(evt, function () { drawing = false; });
         });
     }
 
     function openSignModal(card) {
+        if (!card || !signOverlay) return;
         signCard = card;
+        var d = card.dataset;
 
-        document.getElementById('ptSignBookingRef').textContent =
-            '#' + (card.getAttribute('data-booking-ref') || card.getAttribute('data-booking-id') || '000000');
-        document.getElementById('ptSignTenant').textContent  = card.getAttribute('data-tenant-name') || '';
-        document.getElementById('ptSignListing').textContent = card.getAttribute('data-listing-title') || '';
-        document.getElementById('ptSignPaid').textContent    = card.getAttribute('data-paid') || '0.00';
-        document.getElementById('ptSignTotal').textContent   = card.getAttribute('data-total') || '';
+        if (signBookingRef) signBookingRef.textContent = '#' + (d.bookingRef || '000000');
+        if (signTenant)     signTenant.textContent     = d.tenantName || '';
+        if (signListing)    signListing.textContent    = d.listingTitle || '';
+        if (signPaid)       signPaid.textContent       = d.paid || '0.00';
+        if (signTotal)      signTotal.textContent      = d.total || '0.00';
 
-        var rUrl = card.getAttribute('data-receipt-url') || '';
-        var link = document.getElementById('ptSignViewReceipt');
-        if (rUrl) {
-            link.href = rUrl;
-            link.style.display = 'inline-flex';
-        } else {
-            link.style.display = 'none';
+        if (signViewReceipt) {
+            if (d.receiptUrl) {
+                signViewReceipt.href = d.receiptUrl;
+                signViewReceipt.style.display = 'inline-flex';
+            } else {
+                signViewReceipt.style.display = 'none';
+            }
         }
 
-        signOverlay.classList.add('open');
-        initSignCanvas();
+        resetSignature();
+        openOverlay(signOverlay);
+        /* Canvas must be sized while visible to get correct dimensions */
+        requestAnimationFrame(sizeCanvas);
     }
 
-    function closeSignModal() {
-        signOverlay.classList.remove('open');
+    function closeSign() {
+        closeOverlay(signOverlay);
         signCard = null;
-        signConfirm.disabled = true;
-        signConfirm.textContent = 'Sign & Accept';
+        resetSignature();
     }
 
-    if (signClose)  { signClose.addEventListener('click', closeSignModal); }
-    if (signCancel) { signCancel.addEventListener('click', closeSignModal); }
+    /* Accept buttons on the cards open the sign modal */
+    document.querySelectorAll('.pt-card .pt-btn-accept').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openSignModal(btn.closest('.pt-card'));
+        });
+    });
 
+    /* Reject buttons on the cards (unchanged flow) */
+    document.querySelectorAll('.pt-card .pt-btn-reject').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var card = btn.closest('.pt-card');
+            handleDecision(
+                btn.dataset.bookingId || (card ? card.dataset.bookingId : ''),
+                btn.dataset.tenantName || (card ? card.dataset.tenantName : ''),
+                [btn],
+                card,
+                '/webprogg/booking/reject-booking.php',
+                'Reject %s\'s application? Their payment will be refunded.',
+                'Rejecting\u2026',
+                null
+            );
+        });
+    });
+
+    if (signClose)  signClose.addEventListener('click', closeSign);
+    if (signCancel) signCancel.addEventListener('click', closeSign);
     if (signOverlay) {
-        signOverlay.addEventListener('click', function (event) {
-            if (event.target === signOverlay) { closeSignModal(); }
+        signOverlay.addEventListener('click', function (e) {
+            if (e.target === signOverlay) closeSign();
         });
     }
+    if (signClear) signClear.addEventListener('click', resetSignature);
 
-    if (signClear) {
-        signClear.addEventListener('click', function () { initSignCanvas(); });
-    }
+    window.addEventListener('resize', function () {
+        if (signOverlay && signOverlay.classList.contains('open')) {
+            sizeCanvas();
+        }
+    });
 
+    /* =========================================================
+       SIGN & ACCEPT — save signature, then accept the booking
+    ========================================================= */
     if (signConfirm) {
         signConfirm.addEventListener('click', function () {
-            if (!signCard || !hasInk) return;
+            if (!signCard || !hasInk || !canvas) return;
 
-            var bookingId = signCard.getAttribute('data-booking-id');
-            var dataUrl   = signCanvas.toDataURL('image/png');
+            var bookingId     = signCard.dataset.bookingId;
+            var signatureData = canvas.toDataURL('image/png');
 
             signConfirm.disabled = true;
             signConfirm.textContent = 'Saving signature\u2026';
 
-            /* STEP 1 — save the signature */
             fetch('/webprogg/booking/sign-receipt.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'booking_id=' + encodeURIComponent(bookingId)
-                    + '&signature=' + encodeURIComponent(dataUrl)
+                body: 'booking_id=' + encodeURIComponent(bookingId) +
+                      '&signature=' + encodeURIComponent(signatureData)
             })
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
                     if (!data.success) {
-                        alert(data.message || 'Could not save your signature.');
-                        signConfirm.disabled = false;
-                        signConfirm.textContent = 'Sign & Accept';
-                        return;
+                        throw new Error(data.message || 'Could not save the signature.');
                     }
-
-                    /* STEP 2 — accept the application (existing endpoint) */
+                    /* Signature saved — now accept the application */
                     signConfirm.textContent = 'Accepting\u2026';
-                    fetch('/webprogg/booking/accept-booking.php', {
+                    return fetch('/webprogg/booking/accept-booking.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'booking_id=' + encodeURIComponent(bookingId)
-                    })
-                        .then(function (res) { return res.json(); })
-                        .then(function (acc) {
-                            if (acc.success) {
-                                var card = signCard;
-                                closeSignModal();
-                                closeModal();
-                                if (card) card.remove();
-                            } else {
-                                alert(acc.message || 'Signature saved, but the booking could not be accepted.');
-                                signConfirm.disabled = false;
-                                signConfirm.textContent = 'Sign & Accept';
-                            }
-                        })
-                        .catch(function () {
-                            alert('Signature saved, but the booking could not be accepted. Please try Accept again.');
-                            signConfirm.disabled = false;
-                            signConfirm.textContent = 'Sign & Accept';
-                        });
+                    }).then(function (res) { return res.json(); });
                 })
-                .catch(function () {
-                    alert('Something went wrong while saving your signature. Please try again.');
+                .then(function (data) {
+                    if (!data.success) {
+                        throw new Error(data.message || 'Could not accept this application.');
+                    }
+                    if (signCard) signCard.remove();
+                    closeSign();
+                })
+                .catch(function (err) {
+                    alert(err && err.message ? err.message : 'Something went wrong. Please try again.');
                     signConfirm.disabled = false;
                     signConfirm.textContent = 'Sign & Accept';
                 });
         });
     }
 
-    /* Esc closes whichever modal is open */
-    document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape') {
-            if (signOverlay.classList.contains('open')) { closeSignModal(); }
-            else if (overlay.classList.contains('open')) { closeModal(); }
+    /* =========================================================
+       GLOBAL ESC — close whichever modal is open
+    ========================================================= */
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (overlay && overlay.classList.contains('open')) {
+            closeOverlay(overlay);
+        }
+        if (signOverlay && signOverlay.classList.contains('open')) {
+            closeSign();
         }
     });
-
-    /* ---------- WIRE THE BUTTONS ---------- */
-
-    /* Card Accept -> open signature pad (NOT direct accept) */
-    document.querySelectorAll('.pt-card').forEach(function (card) {
-        var acceptBtn = card.querySelector('.pt-btn-accept');
-        var rejectBtn = card.querySelector('.pt-btn-reject');
-        var buttons = card.querySelectorAll('button');
-        var bookingId = card.getAttribute('data-booking-id');
-        var tenantName = card.getAttribute('data-tenant-name');
-
-        if (acceptBtn) {
-            acceptBtn.addEventListener('click', function (event) {
-                event.stopPropagation();
-                openSignModal(card);
-            });
-        }
-
-        if (rejectBtn) {
-            rejectBtn.addEventListener('click', function (event) {
-                event.stopPropagation();
-                handleDecision(bookingId, tenantName, buttons, card, '/webprogg/booking/reject-booking.php',
-                    'Reject %s\'s application for this listing?', 'Rejecting...');
-            });
-        }
-    });
-
-    /* Receipt links open in a new tab — don't trigger the card modal */
-    document.querySelectorAll('.pt-receipt-link').forEach(function (link) {
-        link.addEventListener('click', function (event) {
-            event.stopPropagation();
-        });
-    });
-
-    /* Modal Accept -> signature pad; Modal Reject -> unchanged */
-    if (modalAcceptBtn) {
-        modalAcceptBtn.addEventListener('click', function () {
-            if (!activeCard) return;
-            openSignModal(activeCard);
-        });
-    }
-
-    if (modalRejectBtn) {
-        modalRejectBtn.addEventListener('click', function () {
-            if (!activeCard) return;
-            var bookingId = activeCard.getAttribute('data-booking-id');
-            var tenantName = activeCard.getAttribute('data-tenant-name');
-            var card = activeCard;
-            handleDecision(bookingId, tenantName, [modalAcceptBtn, modalRejectBtn], card, '/webprogg/booking/reject-booking.php',
-                'Reject %s\'s application for this listing?', 'Rejecting...', closeModal);
-        });
-    }
 
 })();
 </script>

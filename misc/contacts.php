@@ -1,20 +1,37 @@
 <?php
+/* =========================================================
+   ROOMHIVE - CONTACTS PAGE
+   The contact form now SAVES to the database (contact_messages
+   table, self-healing) so the Admin > Messages page can show
+   real user questions. Logged-in users get name/email
+   prefilled and their submission linked to their account.
+========================================================= */
+
 session_start();
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
  $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&
     $_SESSION["logged_in"] === true
 );
 
-// Default notification count (used for guests or if query fails)
  $notification_count = 0;
 
-if ($isLoggedIn && isset($_SESSION['user_id'])) {
-    require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+/* Prefill values (used by the form fields) */
+ $firstName = "";
+ $lastName  = "";
+ $email     = "";
+ $subject   = "";
+ $message   = "";
 
-    // Single query: fetch avatar + unread notification count
+/* Logged-in users: fetch avatar + unread count + name/email
+   (name and email prefill the contact form) */
+if ($isLoggedIn && isset($_SESSION['user_id'])) {
+
     $userStmt = $pdo->prepare(
         "SELECT u.avatar_path,
+                u.name,
+                u.email,
                 (SELECT COUNT(*)
                    FROM notifications n
                   WHERE n.user_id = u.id
@@ -28,19 +45,22 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 
     $_SESSION['avatar_path'] = $userRow['avatar_path'] ?? null;
     $notification_count = (int)($userRow['unread_count'] ?? 0);
+
+    if (!empty($userRow['name'])) {
+        $parts     = preg_split('/\s+/', trim($userRow['name']), 2);
+        $firstName = $parts[0] ?? '';
+        $lastName  = $parts[1] ?? '';
+        $email     = $userRow['email'] ?? '';
+    }
 }
 
  $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-/* NEW — FLOATING LOGIN MODAL
+/* FLOATING LOGIN MODAL
    Guests get the login card popped over the page once per
    browser session. Flip to false to disable auto-open (the
    modal still opens from the navbar BECOME A HOST link). */
  $autoOpenLoginPopup = !$isLoggedIn && empty($_SESSION['admin_logged_in']);
-
-// =========================================================
-// ROOMHIVE - CONTACTS PAGE
-// =========================================================
 
  $currentYear = date("Y");
 
@@ -54,11 +74,12 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 ];
 
  $successMessage = "";
- $errorMessage = "";
+ $errorMessage   = "";
 
-// =========================================================
-// HANDLE CONTACT FORM
-// =========================================================
+/* =========================================================
+   HANDLE CONTACT FORM — saves to the database
+   (contact_messages — shown in Admin > Messages)
+========================================================= */
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -84,18 +105,56 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     } else {
 
-        $successMessage = "Thank you, $firstName! Your message has been received.";
+        /* Self-heal: create the table if it doesn't exist */
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS contact_messages (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NULL,
+                    first_name VARCHAR(100) NOT NULL,
+                    last_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(150) NOT NULL,
+                    subject VARCHAR(255) NOT NULL,
+                    message TEXT NOT NULL,
+                    status ENUM('open','in_progress','resolved','closed') NOT NULL DEFAULT 'open',
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
 
-        $firstName = "";
-        $lastName  = "";
-        $email     = "";
-        $subject   = "";
-        $message   = "";
+            $ins = $pdo->prepare(
+                "INSERT INTO contact_messages
+                    (user_id, first_name, last_name, email, subject, message)
+                 VALUES
+                    (:u, :fn, :ln, :em, :sj, :msg)"
+            );
+            $ins->execute([
+                ':u'   => ($isLoggedIn && isset($_SESSION['user_id'])) ? (int) $_SESSION['user_id'] : null,
+                ':fn'  => $firstName,
+                ':ln'  => $lastName,
+                ':em'  => $email,
+                ':sj'  => $subject,
+                ':msg' => $message,
+            ]);
+
+            $successMessage = "Thank you, {$firstName}! Your message has been received — we'll reply to {$email} within 24 hours.";
+
+            /* Clear the form after a successful send */
+            $firstName = "";
+            $lastName  = "";
+            $email     = "";
+            $subject   = "";
+            $message   = "";
+
+        } catch (PDOException $e) {
+            error_log('Contact form insert failed: ' . $e->getMessage());
+            $errorMessage = "Sorry, we couldn't send your message right now. Please try again.";
+        }
     }
 }
 ?>
 
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
@@ -129,7 +188,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <script>document.documentElement.classList.add("js");</script>
 
     <!-- =====================================================
-         NEW — FLOATING LOGIN MODAL STYLES
+         FLOATING LOGIN MODAL STYLES
          Self-contained so it can't be broken by a stale
          cached contacts.css / style.css.
     ====================================================== -->
@@ -1056,7 +1115,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         id="cxFirstName"
                         name="first_name"
                         placeholder="Juan"
-                        value="<?php echo htmlspecialchars($firstName ?? ''); ?>"
+                        value="<?php echo htmlspecialchars($firstName); ?>"
                         required
                     >
 
@@ -1074,7 +1133,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         id="cxLastName"
                         name="last_name"
                         placeholder="Dela Cruz"
-                        value="<?php echo htmlspecialchars($lastName ?? ''); ?>"
+                        value="<?php echo htmlspecialchars($lastName); ?>"
                         required
                     >
 
@@ -1096,7 +1155,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     id="cxEmail"
                     name="email"
                     placeholder="you@example.com"
-                    value="<?php echo htmlspecialchars($email ?? ''); ?>"
+                    value="<?php echo htmlspecialchars($email); ?>"
                     required
                 >
 
@@ -1116,7 +1175,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     id="cxSubject"
                     name="subject"
                     placeholder="How can we help?"
-                    value="<?php echo htmlspecialchars($subject ?? ''); ?>"
+                    value="<?php echo htmlspecialchars($subject); ?>"
                     required
                 >
 
@@ -1137,7 +1196,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     placeholder="Tell us more about your question or concern..."
                     rows="5"
                     required
-                ><?php echo htmlspecialchars($message ?? ''); ?></textarea>
+                ><?php echo htmlspecialchars($message); ?></textarea>
 
             </div>
 
@@ -1427,7 +1486,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
         <div class="footer-brand">
 
-            <a href="<?php echo $isLoggedIn ? '/webprogg/user/myaccount.php' : '/webprogg/index.php'; ?>">
+            <a href="<?php echo $isLoggedIn ? '/webprogg/user/usershome.php' : '/webprogg/index.php'; ?>">
 
                 <img
                     src="/webprogg/images/RoomHiveLogos.png"
@@ -1608,7 +1667,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 <!-- =========================================================
-     NEW — FLOATING LOGIN MODAL (guests)
+     FLOATING LOGIN MODAL (guests)
      Auto-opens once per browser session, and opens from any
      link pointing at loginform.php — the navbar BECOME A HOST
      link is caught automatically, no markup changes needed.
@@ -1841,7 +1900,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 <!-- =========================================================
-     NEW — FLOATING LOGIN MODAL SCRIPT (self-contained)
+     FLOATING LOGIN MODAL SCRIPT (self-contained)
 ========================================================= -->
 <script>
 (function () {
@@ -1946,10 +2005,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
         }
     });
 
-    /* ---- Submit through loginform.php's AJAX path ----
-       The X-Requested-With header makes loginform.php answer
-       with JSON (already supported), so errors show inside the
-       card and success redirects without a full reload. */
+    /* ---- Submit through loginform.php's AJAX path ---- */
     form.addEventListener("submit", function (event) {
         event.preventDefault();
 

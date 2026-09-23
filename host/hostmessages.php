@@ -3,19 +3,45 @@
    ROOMHIVE — HOST MESSAGES
    hostmessages.php
 
-   FIXED vs previous version:
-   1. The file ended with DUPLICATED </body></html> tags —
-      now ends cleanly with one pair.
-   2. Sending a message now NOTIFIES THE TENANT (matching
-      usermessages.php) — self-contained notifier, never breaks
-      the send.
+   === CHANGES (SUPPORT CHAT VISIBILITY) ===
+   S1. The conversation list now ALSO includes support chats —
+       conversations where THIS host is the user_id and the
+       partner is the system "RoomHive Admin" account created
+       by adminchat.php (support@roomhive.local). Previously a
+       host who asked a question via Contacts could never see
+       the admin's replies: usermessages.php redirects hosts,
+       and this page only matched c.host_id = me.
+   S2. Support chats render with a RoomHive Admin · SUPPORT
+       header and no listing tag; normal tenant chats unchanged.
+   S3. Send handler ownership now accepts either side
+       (host_id = me OR user_id = me); replies inside a
+       support chat skip notifying the support account
+       (the admin panel's unread badge picks them up).
+   S4. Bell badge counts unread across BOTH roles.
    Kept: CSRF on send, rowCount check, schema auto-detect
-   (sent_at/created_at, is_read/read_at), real bell count.
+   (sent_at/created_at, is_read/read_at), tenant notification
+   on host replies.
 ========================================================= */
 
 require_once __DIR__ . '/host_init.php';
 
  $me = (int) $_SESSION['user_id'];
+
+/* ---------- S1 — support account detector ---------- */
+if (!function_exists('hp_support_user_id')) {
+    function hp_support_user_id($pdo) {
+        static $sid = null;
+        if ($sid !== null) { return $sid; }
+        try {
+            $st = $pdo->prepare("SELECT id FROM users WHERE email = :e LIMIT 1");
+            $st->execute([':e' => 'support@roomhive.local']);
+            $sid = (int) $st->fetchColumn();
+        } catch (PDOException $e) {
+            $sid = 0;
+        }
+        return $sid;
+    }
+}
 
 /* ---------- Guarded CSRF helpers (host side) ---------- */
 if (!function_exists('hp_csrf_token')) {
@@ -87,6 +113,8 @@ if ($HAS_IS_READ) {
     $markReadStmt = null;
 }
 
+ $supportId = hp_support_user_id($pdo);
+
 /* ---- Send a message (PRG) ---- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POST['conversation_id'])) {
     $convId = (int) $_POST['conversation_id'];
@@ -102,9 +130,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POS
 
     } else {
 
-        /* Ownership: conversation must belong to THIS host */
-        $own = $pdo->prepare("SELECT id FROM conversations WHERE id = :id AND host_id = :h LIMIT 1");
-        $own->execute(['id' => $convId, 'h' => $me]);
+        /* S3 — ownership: this host may be the host_id (tenant
+           chats) OR the user_id (support chats with the admin) */
+        $own = $pdo->prepare(
+            "SELECT id FROM conversations
+             WHERE id = :id AND (host_id = :h1 OR user_id = :h2) LIMIT 1"
+        );
+        $own->execute(['id' => $convId, 'h1' => $me, 'h2' => $me]);
 
         if (!$own->fetch()) {
 
@@ -123,20 +155,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POS
                     $pdo->prepare("UPDATE conversations SET last_message_at = NOW() WHERE id = :id")
                         ->execute(['id' => $convId]);
 
-                    /* NEW — notify the tenant */
+                    /* S3 — notify the other party, EXCEPT the system
+                       support account (the admin panel's unread badge
+                       picks the reply up instead) */
                     $whoStmt = $pdo->prepare(
-                        "SELECT user_id FROM conversations WHERE id = :id LIMIT 1"
+                        "SELECT user_id, host_id FROM conversations WHERE id = :id LIMIT 1"
                     );
                     $whoStmt->execute(['id' => $convId]);
-                    $tenantId = (int) $whoStmt->fetchColumn();
+                    $convRow = $whoStmt->fetch();
 
-                    hm_notify(
-                        $pdo,
-                        $tenantId,
-                        ($_SESSION['user_name'] ?? 'Your host')
-                            . ' sent you a new message.',
-                        '/webprogg/user/usermessages.php?conversation=' . $convId
-                    );
+                    if ($convRow) {
+                        $recipient = ((int) $convRow['user_id'] === $me)
+                            ? (int) $convRow['host_id']
+                            : (int) $convRow['user_id'];
+
+                        if ($recipient > 0 && $recipient !== $supportId) {
+
+                            $recipientLink = ((int) $convRow['user_id'] === $recipient)
+                                ? '/webprogg/user/usermessages.php?conversation=' . $convId
+                                : '/webprogg/host/hostmessages.php?c=' . $convId;
+
+                            hm_notify(
+                                $pdo,
+                                $recipient,
+                                ($_SESSION['user_name'] ?? 'Your host')
+                                    . ' sent you a new message.',
+                                $recipientLink
+                            );
+                        }
+                    }
                 } else {
                     hp_flash_set('error', 'Your message could not be saved. Please try again.');
                     error_log('hostmessages.php: insert reported rowCount=0 for conversation ' . $convId);
@@ -152,35 +199,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_message'], $_POS
     exit;
 }
 
-/* ---- Conversation list ---- */
+/* ---- Conversation list (S1 — both roles) ----
+   Normal chats:  c.host_id = me  → partner is the tenant (u)
+   Support chats: c.user_id = me AND c.host_id = support
+                  → partner is the support account (s)      */
  $convStmt = $pdo->prepare(
     "SELECT c.id, c.listing_id, c.last_message_at, c.created_at,
-            u.name AS tenant_name, u.avatar_path AS tenant_avatar,
+            CASE WHEN c.host_id = :hA THEN u.name        ELSE s.name        END AS partner_name,
+            CASE WHEN c.host_id = :hB THEN u.avatar_path ELSE s.avatar_path END AS partner_avatar,
+            (c.host_id = :hC) AS i_am_host_side,
             l.title AS listing_title,
             (SELECT body FROM messages m
               WHERE m.conversation_id = c.id
               ORDER BY m.$MSG_TIME DESC LIMIT 1) AS last_body,
             (SELECT COUNT(*) FROM messages m
               WHERE m.conversation_id = c.id
-                AND m.sender_id != :h2
+                AND m.sender_id != :hD
                 AND $MSG_UNREAD_SQL) AS unread_count
      FROM conversations c
      JOIN users u ON u.id = c.user_id
+     JOIN users s ON s.id = c.host_id
      LEFT JOIN listings l ON l.id = c.listing_id
-     WHERE c.host_id = :h
+     WHERE c.host_id = :hE
+        OR (c.user_id = :hF AND c.host_id = :sup)
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC"
 );
- $convStmt->execute(['h' => $me, 'h2' => $me]);
+ $convStmt->execute([
+    'hA'  => $me,
+    'hB'  => $me,
+    'hC'  => $me,
+    'hD'  => $me,
+    'hE'  => $me,
+    'hF'  => $me,
+    'sup' => $supportId,
+ ]);
 
- $conversations = array_map(function ($row) {
+ $conversations = array_map(function ($row) use ($supportId) {
+    $iAmHostSide = ((int) $row['i_am_host_side']) === 1;
+
     return [
         'id'            => (int) $row['id'],
         'listing_id'    => $row['listing_id'] ? (int) $row['listing_id'] : null,
         'listing_title' => $row['listing_title'] ?? '',
-        'tenant_name'   => $row['tenant_name'],
-        'tenant_avatar' => resolve_photo($row['tenant_avatar'], '/webprogg/images/default-avatar.png'),
+        'tenant_name'   => $row['partner_name'],
+        'tenant_avatar' => resolve_photo($row['partner_avatar'], '/webprogg/images/default-avatar.png'),
         'last_body'     => $row['last_body'] ?? '',
         'unread'        => (int) $row['unread_count'],
+
+        /* S2 — support-chat flag (I'm the user side, partner
+           is the RoomHive Admin account) */
+        'is_support'    => !$iAmHostSide && $supportId > 0,
     ];
 }, $convStmt->fetchAll());
 
@@ -213,14 +281,16 @@ if ($selectedId) {
     }
 }
 
-/* Bell badge = real unread total (overrides host_init's 0) */
+/* ---- S4 — bell badge = unread across BOTH roles ---- */
  $bellStmt = $pdo->prepare(
     "SELECT COUNT(*)
      FROM messages m
      JOIN conversations c ON c.id = m.conversation_id
-     WHERE c.host_id = :h AND m.sender_id != :h2 AND $MSG_UNREAD_SQL"
+     WHERE (c.host_id = :h1 OR c.user_id = :h2)
+       AND m.sender_id != :h3
+       AND $MSG_UNREAD_SQL"
 );
- $bellStmt->execute(['h' => $me, 'h2' => $me]);
+ $bellStmt->execute(['h1' => $me, 'h2' => $me, 'h3' => $me]);
  $notification_count = (int) $bellStmt->fetchColumn();
 
 if (!function_exists('hp_message_day_label')) {
@@ -244,6 +314,10 @@ if (!function_exists('hp_message_day_label')) {
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/hostprofile.css">
 <link rel="stylesheet" href="/webprogg/assets/hostmessages.css">
+<style>
+/* S2 — support badge (host side) */
+.hp-support-tag{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.07em;color:#fff;background:linear-gradient(135deg,#f6b93b,#eda423);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+</style>
 </head>
 <body>
 
@@ -316,7 +390,7 @@ if (!function_exists('hp_message_day_label')) {
                                 </span>
                                 <span class="hp-msg-item-body">
                                     <span class="hp-msg-item-top">
-                                        <span class="hp-msg-name"><?php echo h($c['tenant_name']); ?></span>
+                                        <span class="hp-msg-name"><?php echo h($c['tenant_name']); ?><?php if (!empty($c['is_support'])): ?><span class="hp-support-tag">SUPPORT</span><?php endif; ?></span>
                                         <?php if ($isUnread): ?>
                                             <span class="hp-msg-badge"><?php echo h($c['unread']); ?></span>
                                         <?php endif; ?>
@@ -339,13 +413,27 @@ if (!function_exists('hp_message_day_label')) {
                         <div class="hp-msg-thread-header">
                             <a href="/webprogg/host/hostmessages.php" class="hp-msg-back" aria-label="Back to messages">&#8249;</a>
                             <img class="hp-msg-thread-avatar" src="<?php echo h($selected['tenant_avatar']); ?>" alt="">
-                            <div class="hp-msg-thread-info">
-                                <div class="hp-msg-thread-name"><?php echo h($selected['tenant_name']); ?></div>
-                                <?php if ($selected['listing_title'] !== ''): ?>
-                                    <p class="hp-msg-thread-listing"><?php echo h($selected['listing_title']); ?></p>
-                                <?php endif; ?>
-                            </div>
-                            <?php if ($selected['listing_id']): ?>
+
+                            <?php if (!empty($selected['is_support'])): ?>
+
+                                <!-- S2 — support thread header -->
+                                <div class="hp-msg-thread-info">
+                                    <div class="hp-msg-thread-name">RoomHive Admin<span class="hp-support-tag">SUPPORT</span></div>
+                                    <p class="hp-msg-thread-listing">Official support &middot; we usually reply within 24 hours</p>
+                                </div>
+
+                            <?php else: ?>
+
+                                <div class="hp-msg-thread-info">
+                                    <div class="hp-msg-thread-name"><?php echo h($selected['tenant_name']); ?></div>
+                                    <?php if ($selected['listing_title'] !== ''): ?>
+                                        <p class="hp-msg-thread-listing"><?php echo h($selected['listing_title']); ?></p>
+                                    <?php endif; ?>
+                                </div>
+
+                            <?php endif; ?>
+
+                            <?php if (!empty($selected['listing_id'])): ?>
                                 <div class="hp-msg-thread-actions">
                                     <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($selected['listing_id']); ?>"
                                        class="hp-msg-icon-btn" title="View listing" aria-label="View listing">

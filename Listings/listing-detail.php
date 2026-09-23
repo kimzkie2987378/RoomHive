@@ -1,7 +1,14 @@
 <?php
-/* =========================
+/* =========================================================
    listing-detail.php
-========================== */
+
+   === NUDGE (NEW) ===
+   When an UNVERIFIED RENTER clicks "Send Inquiry", a
+   suggestion modal appears: "Get Verified Now" (→
+   editprofile#verify-card) or "Continue without verifying"
+   (proceeds normally). Suggestion only — never a block.
+   Hosts never see it. Verified users never see it.
+========================================================= */
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php'; /* HIVE CLUB */
@@ -25,7 +32,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php'; /* HIV
  $showUnavailableNotice     = isset($_GET['unavailable']);
  $showOwnBookingNotice      = isset($_GET['ownbooking']);
  $showAlreadyListedNotice   = isset($_GET['alreadylisted']);
- $showIncompleteDatesNotice = isset($_GET['incompletedates']); /* ===== NEW ===== */
+ $showIncompleteDatesNotice = isset($_GET['incompletedates']);
 
 /* =========================
    AMENITY ICON MAP
@@ -228,6 +235,19 @@ foreach ($unavailableRanges as $range) {
  $listingStatus   = $listingRow['status'] ?? '';
  $isAlreadyListed = ($listingStatus === 'approved');
 
+/* =========================================================
+   NUDGE — verify suggestion flag.
+   Logged-in RENTERS only (never hosts). True when the
+   viewer is not yet verified (ID + complete profile).
+========================================================= */
+ $viewerIsHost    = !empty($_SESSION['is_host']);
+ $showVerifyNudge = false;
+
+if ($isLoggedIn && !$viewerIsHost && !$isOwnListing) {
+    require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/verification_gate.php';
+    $showVerifyNudge = !is_user_verified($pdo, $_SESSION['user_id']);
+}
+
 /* =========================
    MY APPLICATION STATUS
 ========================== */
@@ -251,8 +271,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
 /* =========================================================
    HIVE CLUB — member price preview (Phase 4 consistency)
-   Payment pages recompute the discount server-side; this
-   page PREVIEWS the same math. Own-listing view: no discount.
 ========================================================= */
  $hiveDiscountPct = 0;
  $hiveTierLabel   = null;
@@ -1549,19 +1567,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
                 <?php endif; ?>
 
-                <?php $mapsQuery = !is_null($listing['latitude']) && !is_null($listing['longitude'])
-                    ? $listing['latitude'] . ',' . $listing['longitude']
-                    : $listing['location_full']; ?>
-
-                <a
-                    href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($mapsQuery) ?>"
-                    target="_blank"
-                    rel="noopener"
-                    class="rd-btn rd-btn-outline rd-map-btn"
-                >
-                    View on Google Maps &#8599;
-                </a>
-
             </div>
 
         </aside>
@@ -1571,299 +1576,372 @@ if ($isLoggedIn && !$isOwnListing) {
 </main>
 
 <!-- =========================================================
-     SCRIPTS — flatpickr, Leaflet, gallery, save/share,
-     account dropdown.
-     NOTE: gallery/save/share/dropdown reconstructed from the
-     markup IDs above; the calendar + map follow the same
-     data payload your original used. If your originals
-     differed, keep yours — everything above the cut is
-     yours verbatim.
-========================================================= -->
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+     NUDGE — VERIFY SUGGESTION MODAL
+     Shown once per click, unverified renters only.
+========================================================== -->
+<div id="verifyNudgeModal" style="position:fixed;inset:0;z-index:3000;display:none;align-items:center;justify-content:center;background:rgba(15,25,20,.72);padding:20px;">
+  <div style="background:#ffffff;border-radius:18px;max-width:400px;width:100%;padding:28px 24px 24px;text-align:center;box-shadow:0 30px 70px rgba(0,0,0,.4);">
+    <div style="width:64px;height:64px;border-radius:50%;background:#FFF1DC;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;">&#128737;&#65039;</div>
+    <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#1c2a38;">Get Verified before you inquire</h3>
+    <p style="margin:0 0 18px;font-size:13.5px;color:#5d6875;line-height:1.6;">
+      Verified renters get <strong>priority approval</strong> from hosts.
+      It's free and automatic &mdash; complete your profile (name, phone,
+      age, location) and upload one valid ID.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <a href="/webprogg/user/editprofile.php#verify-card"
+         style="display:block;padding:13px;border-radius:10px;background:linear-gradient(135deg,#f6b93b,#eda423);color:#1c2a38;font-weight:800;font-size:13.5px;text-decoration:none;">
+        &#10003; Get Verified Now
+      </a>
+      <button type="button" id="verifyNudgeSkip"
+              style="padding:12px;border:1px solid #e3e7ec;border-radius:10px;background:#ffffff;color:#1c2a38;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;">
+        Continue without verifying
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet + flatpickr libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <script>
+/* =========================
+   SERVER DATA FOR JS
+========================== */
+window.rhUnavailable = <?php
+    echo json_encode(
+        $unavailableRangesJs,
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    );
+?>;
+
+/* =========================
+   MAP — Leaflet
+========================== */
 (function () {
-    "use strict";
+    var embed = document.getElementById('rdMapEmbed');
+    if (!embed || typeof L === 'undefined') { return; }
 
-    /* =========================
-       ACCOUNT DROPDOWN
-    ========================== */
-    var ddToggle = document.querySelector('.account-dropdown .my-account');
-    var ddWrap   = document.querySelector('.account-dropdown');
+    var lat = parseFloat(embed.getAttribute('data-lat'));
+    var lng = parseFloat(embed.getAttribute('data-lng'));
 
-    if (ddToggle && ddWrap) {
-        ddToggle.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var isOpen = ddWrap.classList.toggle('open');
-            ddToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-        document.addEventListener('click', function (e) {
-            if (!ddWrap.contains(e.target)) {
-                ddWrap.classList.remove('open');
-                ddToggle.setAttribute('aria-expanded', 'false');
-            }
-        });
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
-                ddWrap.classList.remove('open');
-                ddToggle.setAttribute('aria-expanded', 'false');
-            }
-        });
-    }
+    if (isNaN(lat) || isNaN(lng)) { return; }
 
-    /* =========================
-       GALLERY
-    ========================== */
-    var galleryImg   = document.getElementById('rd-gallery-image');
-    var galleryCount = document.getElementById('rd-gallery-count');
-    var thumbs       = Array.prototype.slice.call(document.querySelectorAll('.rd-thumb'));
-    var galleryIndex = 0;
+    var map = L.map(embed, { scrollWheelZoom: false }).setView([lat, lng], 15);
 
-    var gallerySources = thumbs.length
-        ? thumbs.map(function (t) { return t.getAttribute('src'); })
-        : (galleryImg ? [galleryImg.getAttribute('src')] : []);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-    function showGalleryImage(i) {
-        if (!gallerySources.length) return;
-        galleryIndex = (i + gallerySources.length) % gallerySources.length;
-        if (galleryImg) galleryImg.src = gallerySources[galleryIndex];
-        if (galleryCount) galleryCount.textContent = (galleryIndex + 1) + ' / ' + gallerySources.length;
-        thumbs.forEach(function (t, ti) {
-            t.classList.toggle('active', ti === galleryIndex);
-        });
-    }
+    L.marker([lat, lng]).addTo(map);
+})();
 
-    var gPrev = document.getElementById('rd-gallery-prev');
-    var gNext = document.getElementById('rd-gallery-next');
-    if (gPrev) gPrev.addEventListener('click', function () { showGalleryImage(galleryIndex - 1); });
-    if (gNext) gNext.addEventListener('click', function () { showGalleryImage(galleryIndex + 1); });
+/* =========================
+   DATE PICKER — flatpickr
+   (range for normal stays, single date for Long Term)
+========================== */
+(function () {
+    var calEl      = document.getElementById('rd-calendar');
+    var longTerm   = document.getElementById('rd-long-term');
+    var checkinEl  = document.getElementById('rd-checkin');
+    var checkoutEl = document.getElementById('rd-checkout');
+    var inDisp     = document.getElementById('rd-checkin-display');
+    var outDisp    = document.getElementById('rd-checkout-display');
+    var outField   = document.getElementById('rd-checkout-summary-field');
+    var sep        = document.getElementById('rd-date-sep');
+    var submitBtn  = document.getElementById('rd-inquiry-submit');
+    var hint       = document.getElementById('rd-date-hint');
 
-    thumbs.forEach(function (t) {
-        t.addEventListener('click', function () {
-            showGalleryImage(parseInt(t.getAttribute('data-index'), 10) || 0);
-        });
+    if (!calEl || typeof flatpickr === 'undefined') { return; }
+
+    /* build the disable list from unavailable ranges */
+    var disabledRanges = [];
+    (window.rhUnavailable || []).forEach(function (r) {
+        if (r.start && r.end) {
+            disabledRanges.push({ from: r.start, to: r.end });
+        } else if (r.start) {
+            /* long-term occupancy: block from check-in onward */
+            disabledRanges.push({ from: r.start, to: '2100-12-31' });
+        }
     });
 
-    var tPrev = document.getElementById('rd-thumbs-prev');
-    var tNext = document.getElementById('rd-thumbs-next');
-    var thumbsWrap = document.getElementById('rd-gallery-thumbs');
-    if (tPrev && thumbsWrap) tPrev.addEventListener('click', function () { thumbsWrap.scrollBy({ left: -220, behavior: 'smooth' }); });
-    if (tNext && thumbsWrap) tNext.addEventListener('click', function () { thumbsWrap.scrollBy({ left: 220, behavior: 'smooth' }); });
+    var picker = null;
 
-    /* =========================
-       ABOUT — SHOW MORE
-    ========================== */
-    var aboutText = document.getElementById('rd-about-text');
-    var showMore  = document.getElementById('rd-show-more');
+    function refreshState() {
+        var hasIn  = !!(checkinEl && checkinEl.value);
+        var hasOut = !!(checkoutEl && checkoutEl.value);
+        var long   = !!(longTerm && longTerm.checked);
 
-    if (aboutText && showMore) {
-        var expanded = false;
-        showMore.addEventListener('click', function () {
-            expanded = !expanded;
-            aboutText.style.maxHeight = expanded ? 'none' : '';
-            aboutText.style.overflow = expanded ? 'visible' : '';
-            showMore.innerHTML = expanded
-                ? 'Show less &#9652;'
-                : 'Show more &#9662;';
+        if (inDisp && hasIn) {
+            inDisp.textContent = flatpickr.formatDate(
+                flatpickr.parseDate(checkinEl.value, 'Y-m-d'), 'M j, Y'
+            );
+        } else if (inDisp) {
+            inDisp.textContent = 'Select date';
+        }
+
+        if (outDisp && hasOut && !long) {
+            outDisp.textContent = flatpickr.formatDate(
+                flatpickr.parseDate(checkoutEl.value, 'Y-m-d'), 'M j, Y'
+            );
+        } else if (outDisp) {
+            outDisp.textContent = long ? 'Open-ended' : 'Select date';
+        }
+
+        var ok = long ? hasIn : (hasIn && hasOut);
+
+        if (submitBtn) { submitBtn.disabled = !ok; }
+        if (hint) {
+            hint.textContent = ok
+                ? '\u2713 Dates ready \u2014 continue to reserve'
+                : (long
+                    ? 'Select your move-in date to continue'
+                    : 'Select check-in and check-out to continue');
+            hint.className = 'rd-date-hint' + (ok ? ' rd-hint-ok' : '');
+        }
+    }
+
+    function initPicker() {
+        var long = !!(longTerm && longTerm.checked);
+
+        if (picker) { picker.destroy(); picker = null; }
+
+        if (!long) {
+            picker = flatpickr(calEl, {
+                inline: true,
+                mode: 'range',
+                minDate: 'today',
+                dateFormat: 'Y-m-d',
+                disable: disabledRanges,
+                onChange: function (selectedDates) {
+                    if (selectedDates.length >= 1) {
+                        checkinEl.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
+                    }
+                    if (selectedDates.length >= 2) {
+                        checkoutEl.value = flatpickr.formatDate(selectedDates[1], 'Y-m-d');
+                    } else {
+                        checkoutEl.value = '';
+                    }
+                    refreshState();
+                }
+            });
+        } else {
+            picker = flatpickr(calEl, {
+                inline: true,
+                mode: 'single',
+                minDate: 'today',
+                dateFormat: 'Y-m-d',
+                disable: disabledRanges,
+                onChange: function (selectedDates) {
+                    if (selectedDates.length >= 1) {
+                        checkinEl.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
+                    } else {
+                        checkinEl.value = '';
+                    }
+                    checkoutEl.value = '';
+                    refreshState();
+                }
+            });
+        }
+
+        refreshState();
+    }
+
+    /* long-term toggle: swap modes + hide the checkout field */
+    if (longTerm) {
+        longTerm.addEventListener('change', function () {
+            var long = longTerm.checked;
+
+            if (outField) { outField.classList.toggle('rd-date-hidden', long); }
+            if (sep)      { sep.classList.toggle('rd-date-hidden', long); }
+            if (checkoutEl) { checkoutEl.value = ''; }
+
+            initPicker();
         });
     }
 
-    /* =========================
-       SAVE (wishlist toggle)
-    ========================== */
+    initPicker();
+})();
+
+/* =========================
+   GALLERY
+========================== */
+(function () {
+    var img    = document.getElementById('rd-gallery-image');
+    var count  = document.getElementById('rd-gallery-count');
+    var prev   = document.getElementById('rd-gallery-prev');
+    var next   = document.getElementById('rd-gallery-next');
+    var thumbs = document.getElementById('rd-gallery-thumbs');
+
+    if (!img) { return; }
+
+    /* the PHP page already renders the list; rebuild from DOM */
+    var sources = [];
+    if (thumbs) {
+        thumbs.querySelectorAll('img.rd-thumb').forEach(function (t) {
+            sources.push(t.getAttribute('src'));
+        });
+    } else {
+        sources.push(img.getAttribute('src'));
+    }
+
+    var index = 0;
+
+    function show(i) {
+        index = (i + sources.length) % sources.length;
+        img.src = sources[index];
+        if (count) { count.textContent = (index + 1) + ' / ' + sources.length; }
+        if (thumbs) {
+            thumbs.querySelectorAll('img.rd-thumb').forEach(function (t, ti) {
+                t.classList.toggle('active', ti === index);
+            });
+        }
+    }
+
+    if (prev) { prev.addEventListener('click', function () { show(index - 1); }); }
+    if (next) { next.addEventListener('click', function () { show(index + 1); }); }
+
+    if (thumbs) {
+        thumbs.querySelectorAll('img.rd-thumb').forEach(function (t) {
+            t.addEventListener('click', function () {
+                show(parseInt(t.getAttribute('data-index'), 10) || 0);
+            });
+        });
+    }
+})();
+
+/* =========================
+   ABOUT — SHOW MORE / LESS
+========================== */
+(function () {
+    var btn  = document.getElementById('rd-show-more');
+    var text = document.getElementById('rd-about-text');
+
+    if (!btn || !text) { return; }
+
+    text.style.maxHeight = '120px';
+    text.style.overflow = 'hidden';
+    text.style.transition = 'max-height .3s ease';
+
+    var open = false;
+
+    btn.addEventListener('click', function () {
+        open = !open;
+        text.style.maxHeight = open ? 'none' : '120px';
+        btn.innerHTML = open
+            ? 'Show less &#9652;'
+            : 'Show more &#9662;';
+    });
+})();
+
+/* =========================
+   SAVE (wishlist) + SHARE
+========================== */
+(function () {
     var saveBtn = document.getElementById('rd-save-btn');
+
     if (saveBtn) {
-        var saveBusy = false;
         saveBtn.addEventListener('click', function () {
-            if (saveBusy) return;
-
-            <?php if (!$isLoggedIn): ?>
-            /* Guests: bounce to login */
-            window.location.href = '/webprogg/auth/loginform.php';
-            return;
-            <?php endif; ?>
-
-            saveBusy = true;
+            var listingId = new URLSearchParams(window.location.search).get('id');
+            if (!listingId) { return; }
 
             fetch('/webprogg/user/togglewishlist.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'listing_id=' + encodeURIComponent(<?= (int) $listing['id'] ?>),
+                body: 'listing_id=' + encodeURIComponent(listingId),
                 credentials: 'same-origin'
             })
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                saveBusy = false;
                 if (data && data.success) {
-                    var active = saveBtn.classList.toggle('active');
+                    var saved = !!data.saved;
+                    saveBtn.classList.toggle('active', saved);
                     var heart = saveBtn.querySelector('.rd-heart-icon');
-                    if (heart) heart.innerHTML = active ? '&#9829;' : '&#9825;';
+                    if (heart) {
+                        heart.innerHTML = saved ? '&#9829;' : '&#9825;';
+                    }
+                } else if (data && data.login) {
+                    window.location.href = '/webprogg/auth/loginform.php';
                 } else {
                     alert((data && data.message) || 'Could not update your wishlist.');
                 }
             })
             .catch(function () {
-                saveBusy = false;
                 alert('Something went wrong. Please try again.');
             });
         });
     }
 
-    /* =========================
-       SHARE
-    ========================== */
     var shareBtn = document.getElementById('rd-share-btn');
+
     if (shareBtn) {
         shareBtn.addEventListener('click', function () {
-            var shareData = {
-                title: document.title,
-                text: 'Check out this space on RoomHive: ' + document.title,
-                url: window.location.href
-            };
+            var url = window.location.href;
+            var title = document.title;
+
             if (navigator.share) {
-                navigator.share(shareData).catch(function () {});
+                navigator.share({ title: title, url: url }).catch(function () {});
             } else if (navigator.clipboard) {
-                navigator.clipboard.writeText(window.location.href).then(function () {
+                navigator.clipboard.writeText(url).then(function () {
                     alert('Link copied to clipboard!');
-                }).catch(function () {});
+                }).catch(function () {
+                    prompt('Copy this link:', url);
+                });
+            } else {
+                prompt('Copy this link:', url);
             }
         });
     }
+})();
+</script>
 
-    /* =========================
-       LEAFLET MAP (exact pin)
-    ========================== */
-    var mapEl = document.getElementById('rdMapEmbed');
-    if (mapEl && typeof L !== 'undefined') {
-        var lat = parseFloat(mapEl.getAttribute('data-lat'));
-        var lng = parseFloat(mapEl.getAttribute('data-lng'));
+<!-- =========================================================
+     NUDGE — VERIFY SUGGESTION SCRIPT
+     Intercepts Send Inquiry ONCE for unverified renters.
+========================================================== -->
+<script>
+(function () {
+    "use strict";
 
-        if (!isNaN(lat) && !isNaN(lng)) {
-            var map = L.map('rdMapEmbed', { scrollWheelZoom: false }).setView([lat, lng], 15);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-            L.marker([lat, lng], {
-                icon: L.divIcon({
-                    className: 'rd-pin-icon',
-                    html: '<span class="rd-pin">&#128205;</span>',
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 28]
-                })
-            }).addTo(map);
+    /* PHP decides: only unverified renters get true */
+    var nudgeEnabled = <?php echo $showVerifyNudge ? 'true' : 'false'; ?>;
+
+    var form    = document.getElementById('rd-inquiry-form');
+    var modal   = document.getElementById('verifyNudgeModal');
+    var skipBtn = document.getElementById('verifyNudgeSkip');
+    var nudged  = false;
+
+    if (!nudgeEnabled || !form || !modal || !skipBtn) { return; }
+
+    /* First click: suggest verification instead of navigating */
+    form.addEventListener('submit', function (e) {
+        if (nudged) { return; }   /* second click proceeds */
+        e.preventDefault();
+        e.stopPropagation();
+        modal.style.display = 'flex';
+    }, true);
+
+    /* "Continue without verifying" — submit for real this time */
+    skipBtn.addEventListener('click', function () {
+        nudged = true;
+        modal.style.display = 'none';
+        form.submit();
+    });
+
+    /* Backdrop click closes the suggestion */
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) {
+            modal.style.display = 'none';
         }
-    }
+    });
 
-    /* =========================
-       FLATPICKR CALENDAR
-       Wired to the unavailable-dates payload; supports the
-       Long Term toggle (check-in only, no check-out).
-    ========================== */
-    var calendarEl  = document.getElementById('rd-calendar');
-    var checkinEl   = document.getElementById('rd-checkin');
-    var checkoutEl  = document.getElementById('rd-checkout');
-    var inDisplay   = document.getElementById('rd-checkin-display');
-    var outDisplay  = document.getElementById('rd-checkout-display');
-    var outField    = document.getElementById('rd-checkout-summary-field');
-    var sepEl       = document.getElementById('rd-date-sep');
-    var longTermEl  = document.getElementById('rd-long-term');
-    var submitBtn   = document.getElementById('rd-inquiry-submit');
-    var hintEl      = document.getElementById('rd-date-hint');
-
-    var unavailable = <?= json_encode($unavailableRangesJs) ?>;
-
-    function pad2(n) { return (n < 10 ? '0' : '') + n; }
-    function ymd(d) {
-        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-    }
-    var FAR_FUTURE = (function () {
-        var d = new Date();
-        d.setFullYear(d.getFullYear() + 3);
-        return ymd(d);
-    })();
-
-    function isDateUnavailable(dateStr) {
-        for (var i = 0; i < unavailable.length; i++) {
-            var r = unavailable[i];
-            if (!r.start) continue;
-            var to = r.end || FAR_FUTURE;
-            if (dateStr >= r.start && dateStr <= to) return true;
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal.style.display === 'flex') {
+            modal.style.display = 'none';
         }
-        return false;
-    }
-
-    var selectedCheckin  = null;
-    var selectedCheckout = null;
-    var fp = null;
-
-    function refreshSummary() {
-        var longTerm = longTermEl && longTermEl.checked;
-
-        inDisplay.textContent  = selectedCheckin
-            ? new Date(selectedCheckin + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : 'Select date';
-        outDisplay.textContent = (!longTerm && selectedCheckout)
-            ? new Date(selectedCheckout + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : (longTerm ? 'Long Term' : 'Select date');
-
-        if (checkinEl)  checkinEl.value  = selectedCheckin || '';
-        if (checkoutEl) checkoutEl.value = (longTerm ? '' : (selectedCheckout || ''));
-
-        /* Hide the checkout half when Long Term */
-        if (outField) outField.classList.toggle('rd-date-hidden', !!longTerm);
-        if (sepEl)    sepEl.classList.toggle('rd-date-hidden', !!longTerm);
-
-        var complete = !!selectedCheckin && (longTerm || !!selectedCheckout);
-        if (submitBtn) submitBtn.disabled = !complete;
-        if (hintEl) {
-            hintEl.textContent = complete
-                ? '\u2713 Dates ready \u2014 continue to the 50% reserve'
-                : (longTerm
-                    ? 'Select your move-in date to continue'
-                    : 'Select check-in and check-out to continue');
-            hintEl.classList.toggle('rd-hint-ok', complete);
-        }
-    }
-
-    function buildCalendar(mode) {
-        if (fp) { fp.destroy(); fp = null; }
-        if (!calendarEl || typeof flatpickr === 'undefined') return;
-
-        fp = flatpickr(calendarEl, {
-            inline: true,
-            mode: mode,
-            minDate: 'today',
-            showMonths: 1,
-            disable: [
-                function (date) {
-                    return isDateUnavailable(ymd(date));
-                }
-            ],
-            onChange: function (selectedDates) {
-                if (mode === 'single') {
-                    selectedCheckin  = selectedDates[0] ? ymd(selectedDates[0]) : null;
-                    selectedCheckout = null;
-                } else {
-                    selectedCheckin  = selectedDates[0] ? ymd(selectedDates[0]) : null;
-                    selectedCheckout = selectedDates[1] ? ymd(selectedDates[1]) : null;
-                }
-                refreshSummary();
-            }
-        });
-    }
-
-    buildCalendar('range');
-    refreshSummary();
-
-    if (longTermEl) {
-        longTermEl.addEventListener('change', function () {
-            selectedCheckin  = null;
-            selectedCheckout = null;
-            buildCalendar(longTermEl.checked ? 'single' : 'range');
-            refreshSummary();
-        });
-    }
+    });
 })();
 </script>
 

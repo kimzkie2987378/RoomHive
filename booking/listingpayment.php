@@ -3,22 +3,17 @@
    ROOMHIVE — LISTING PAYMENT (Inquiry Step 2: Payment)
    listingpayment.php
 
-   === HIVE CLUB PHASE 4 — MEMBER DISCOUNT LIVE ===
-   Members get their tier discount (Bronze 5% / Gold 10% /
-   Platinum 15%) on the listing price:
-     - The expired-membership sweep runs on load (lazy).
-     - Membership chip shown in the sidebar (tier, %, days
-       left, or "Join Hive Club" upsell).
-     - Summary shows: Monthly Rent -> Member Discount (-P)
-       -> Discounted Total -> Reserve Now (50%) ->
-       Balance After Accept. The Reserve button says
-       "Pay Reserve P<X> (50% of member price)".
-   `bookings.total` will store the DISCOUNTED total (written
-   by process-payment.php) so the balance flow and point
-   earning stay consistent with what was actually paid.
-
-   KEPT: 50% reserve model, balance mode, owner "List Now"
-   flow, guards, map pin, same POST target/field names.
+   === CHANGES (this version) ===
+   - NAVBAR REMOVED — the custom lp-nav header is deleted;
+     the page is a focused payment step between Details and
+     Confirmation (back links handle navigation).
+   - PAY FULL PRICE BUTTON — under "Pay Reserve", guests can
+     pay the ENTIRE discounted total up front. Posts the same
+     form with payment_purpose_full=1; process-payment.php
+     reads the flag and charges the full amount instead of
+     the 50% reserve. Hive discount still applies once.
+   - KEPT: Hive Club discount, balance mode, owner "List Now"
+     flow, guards, map pin, same POST target/field names.
 ========================================================= */
 
 session_start();
@@ -54,16 +49,12 @@ hive_expiry_sweep($pdo);
  $hiveTier     = $hiveMember ? (string) $hiveMember['tier'] : null;
  $hiveDaysLeft = hive_days_until_expiry($hiveMember);
 
-/* Small helper so we're not repeating htmlspecialchars() everywhere */
 if (!function_exists('h')) {
     function h($value) {
         return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
     }
 }
 
-/* -----------------------------------------------------
-   PHOTO PATH FIX
------------------------------------------------------ */
 if (!function_exists('resolve_photo')) {
     function resolve_photo($path, $fallback) {
         if (empty($path)) {
@@ -209,8 +200,6 @@ if ($balanceBooking === null) {
  $listing_rating_avg   = count($listingRatings) > 0 ? round(array_sum($listingRatings) / count($listingRatings), 1) : 0;
  $listing_rating_count = count($listingRatings);
 
-/* FIXED: host rating = reviews ON the host's listings,
-   not reviews the host wrote as a guest. */
  $hostReviewsStmt = $pdo->prepare(
     "SELECT r.rating
      FROM reviews r
@@ -227,10 +216,6 @@ if ($balanceBooking === null) {
 
 /* =========================================================
    HIVE CLUB PRICING (Phase 4)
-   Discount applies to the listing's monthly price.
-   Balance mode: NO new discount — the discount was already
-   baked into b.total when the reserve was paid; charging a
-   second discount here would double-dip.
 ========================================================= */
  $monthlyRent = (float) $listing['price'];
 
@@ -321,81 +306,8 @@ if ($balanceBooking !== null) {
         color: #14142B;
     }
 
-    /* ===== TOP NAVBAR ===== */
-    .lp-nav {
-        position: sticky;
-        top: 0;
-        z-index: 100;
-        background: #fff;
-        border-bottom: 1px solid #EEF1F6;
-    }
-    .lp-nav-inner {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 12px 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .lp-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        text-decoration: none;
-    }
-    .lp-brand-mark {
-        width: 34px; height: 34px;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #FFB94E, #F5A623);
-        display: flex; align-items: center; justify-content: center;
-        color: #fff;
-        box-shadow: 0 4px 10px rgba(245,166,35,.35);
-    }
-    .lp-brand-mark svg { width: 18px; height: 18px; }
-    .lp-brand-text {
-        font-size: 17px;
-        font-weight: 400;
-        color: #14142B;
-        letter-spacing: -0.2px;
-    }
-    .lp-brand-text b { font-weight: 800; }
-    .lp-nav-right { display: flex; align-items: center; gap: 14px; }
-    .lp-nav-bell {
-        position: relative;
-        width: 38px; height: 38px;
-        border-radius: 50%;
-        border: 1px solid #EEF1F6;
-        background: #fff;
-        display: flex; align-items: center; justify-content: center;
-        color: #5B6172;
-        text-decoration: none;
-        transition: background .15s;
-    }
-    .lp-nav-bell:hover { background: #F6F7FB; }
-    .lp-nav-bell svg { width: 17px; height: 17px; }
-    .lp-nav-badge {
-        position: absolute;
-        top: -4px; right: -4px;
-        min-width: 17px; height: 17px;
-        border-radius: 999px;
-        background: #E14B4B;
-        color: #fff;
-        font-size: 10px; font-weight: 700;
-        display: flex; align-items: center; justify-content: center;
-        padding: 0 4px;
-        border: 2px solid #fff;
-    }
-    .lp-nav-user img {
-        width: 38px; height: 38px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 2px solid #FFE3B3;
-        display: block;
-        background: #F6F4EE;
-    }
-
     /* ===== PAGE SHELL ===== */
-    .bp-page { max-width: 1100px; margin: 0 auto; padding: 22px 20px 70px; }
+    .bp-page { max-width: 1100px; margin: 0 auto; padding: 30px 20px 70px; }
 
     .bp-back-link {
         display: inline-flex;
@@ -466,7 +378,7 @@ if ($balanceBooking !== null) {
         flex-direction: column;
         gap: 16px;
         position: sticky;
-        top: 84px;
+        top: 20px;
     }
     @media (max-width: 900px) {
         .bp-sidebar { position: static; max-width: none; }
@@ -521,7 +433,7 @@ if ($balanceBooking !== null) {
     .bp-reserve-note strong { display: block; color: #8A5A10; font-size: 13.5px; }
     .bp-reserve-note p { margin: 2px 0 0; color: #A97B2F; font-size: 12.5px; line-height: 1.5; }
 
-    /* ===== NEW: HIVE CLUB MEMBER CHIP (sidebar) ===== */
+    /* ===== HIVE CLUB MEMBER CHIP (sidebar) ===== */
     .bp-hive-chip {
         display: flex;
         gap: 12px;
@@ -546,7 +458,7 @@ if ($balanceBooking !== null) {
     }
     .bp-hive-chip a:hover { text-decoration: underline; }
 
-    /* ===== NEW: DISCOUNT ROW (summary) ===== */
+    /* ===== DISCOUNT ROW (summary) ===== */
     .bp-summary-row-disc strong { color: #1FA971; }
     .bp-summary-row-disc span::before {
         content: "";
@@ -654,7 +566,7 @@ if ($balanceBooking !== null) {
     .bp-hiw-step p { margin: 0; font-size: 12px; color: #8B93A6; line-height: 1.45; }
     .bp-hiw-arrow { color: #C9CDD6; font-size: 16px; padding-top: 4px; }
 
-    /* ===== PAY BUTTON ===== */
+    /* ===== PAY BUTTONS ===== */
     .bp-btn-pay {
         display: block;
         width: 100%;
@@ -674,6 +586,19 @@ if ($balanceBooking !== null) {
     .bp-btn-pay:hover { filter: brightness(1.04); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(245,166,35,0.45); }
     .bp-btn-pay:active { transform: translateY(0); }
     .bp-btn-pay:disabled { opacity: 0.7; cursor: default; transform: none; }
+
+    /* ===== PAY FULL BUTTON (NEW) ===== */
+    .bp-btn-full {
+        background: #ffffff;
+        color: #14142B;
+        border: 2px solid #F5A623;
+        box-shadow: none;
+        margin-bottom: 14px;
+    }
+    .bp-btn-full:hover {
+        background: #FFF9F0;
+        box-shadow: 0 6px 16px rgba(245,166,35,0.25);
+    }
 
     .bp-secure-note {
         text-align: center;
@@ -836,38 +761,8 @@ if ($balanceBooking !== null) {
     .bp-btn-outline:hover { background: #F6F7FB; border-color: #E3E7EF; }
 </style>
 </head>
-<body>
 
-<!-- =========================================================
-     TOP NAVBAR
-========================================================= -->
-<header class="lp-nav">
-    <div class="lp-nav-inner">
-        <a class="lp-brand" href="/webprogg/Listings/listing.php">
-            <span class="lp-brand-mark">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
-                </svg>
-            </span>
-            <span class="lp-brand-text">Room<b>Hive</b></span>
-        </a>
-        <div class="lp-nav-right">
-            <a class="lp-nav-bell" href="/webprogg/user/notifications.php" aria-label="Notifications">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 8a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 14.5 18 8Z"/>
-                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-                </svg>
-                <?php if ($notification_count > 0): ?>
-                    <span class="lp-nav-badge"><?php echo (int) $notification_count; ?></span>
-                <?php endif; ?>
-            </a>
-            <a class="lp-nav-user" href="/webprogg/user/userprofile.php" aria-label="Your account">
-                <img src="<?php echo h($navAvatar); ?>" alt="Your avatar"
-                     onerror="this.onerror=null;this.src='/webprogg/images/default-avatar.png';">
-            </a>
-        </div>
-    </div>
-</header>
+<body>
 
 <main class="bp-page">
 
@@ -952,7 +847,8 @@ if ($balanceBooking !== null) {
                             If the host doesn't accept within 24 hours, the reserve is automatically declined
                             and your payment is refunded to your RoomHive wallet. Pay the remaining
                             &#8369;<?php echo h(number_format($reserveBalance, 2)); ?> after acceptance to
-                            fully enjoy your stay.
+                            fully enjoy your stay. Prefer to settle everything up front? Use
+                            <b>Pay Full Price</b> below.
                         </p>
                     </div>
                 </div>
@@ -972,6 +868,8 @@ if ($balanceBooking !== null) {
                     <?php else: ?>
                         <input type="hidden" name="payment_purpose" value="reservation">
                     <?php endif; ?>
+                    <!-- Full-payment toggle — flipped by the Pay Full Price button -->
+                    <input type="hidden" name="payment_purpose_full" id="payment_purpose_full" value="0">
 
                     <p class="bp-methods-label">Select a payment method</p>
 
@@ -1011,8 +909,8 @@ if ($balanceBooking !== null) {
                         <div class="bp-howitworks-steps">
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">1</span>
-                                <strong>Reserve (50%)</strong>
-                                <p>Pay 50% of the price now to lock in your dates.</p>
+                                <strong>Reserve (50%) or Pay Full</strong>
+                                <p>Pay 50% to lock your dates, or pay the full price up front.</p>
                             </div>
                             <span class="bp-hiw-arrow">&#8594;</span>
                             <div class="bp-hiw-step">
@@ -1023,8 +921,8 @@ if ($balanceBooking !== null) {
                             <span class="bp-hiw-arrow">&#8594;</span>
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">3</span>
-                                <strong>Pay Balance &amp; Enjoy</strong>
-                                <p>After acceptance, pay the remaining 50% to fully enjoy your stay.</p>
+                                <strong>Enjoy Your Stay</strong>
+                                <p>After acceptance you're all set — or just enjoy, if you paid in full.</p>
                             </div>
                         </div>
                     </div>
@@ -1035,11 +933,20 @@ if ($balanceBooking !== null) {
                         &#8369; <?php echo h(number_format($totalDueToday, 2)); ?>
                     </button>
 
+                    <?php if ($balanceBooking === null): ?>
+                    <!-- FULL PAYMENT — pay the entire discounted total now -->
+                    <button type="submit" class="bp-btn-pay bp-btn-full" id="bp-btn-full">
+                        Pay Full Price
+                        &#8369; <?php echo h(number_format($discountedTotal, 2)); ?>
+                    </button>
+                    <?php endif; ?>
+
                     <p class="bp-secure-note">
                         <?php if ($balanceBooking !== null): ?>
                             This payment will be added to booking #<?php echo h($payBalanceBookingId); ?>.
                         <?php else: ?>
-                            This 50% reserve holds your dates for 24 hours while the host reviews.
+                            Paying 50% holds your dates for 24 hours while the host reviews.
+                            Pay Full Price settles everything now — still refundable if declined.
                         <?php endif; ?>
                     </p>
 
@@ -1067,7 +974,7 @@ if ($balanceBooking !== null) {
         <aside class="bp-sidebar">
 
             <?php if ($hiveActive && $hiveTier !== null): ?>
-            <!-- NEW: HIVE CLUB MEMBER CHIP -->
+            <!-- HIVE CLUB MEMBER CHIP -->
             <div class="bp-hive-chip">
                 <span class="bp-secure-icon">&#127858;</span>
                 <div class="bp-hive-chip-body">
@@ -1195,7 +1102,7 @@ if ($balanceBooking !== null) {
                         </div>
 
                         <?php if ($hiveDiscount > 0): ?>
-                        <!-- NEW: Hive Club discount line -->
+                        <!-- Hive Club discount line -->
                         <div class="bp-summary-row bp-summary-row-disc">
                             <span>Hive Club <?php echo h($hiveTier); ?> (<?php echo (int) $hiveDiscount; ?>% off)</span>
                             <strong>&minus; &#8369; <?php echo h(number_format($discountAmount, 2)); ?></strong>
@@ -1232,59 +1139,49 @@ if ($balanceBooking !== null) {
                         class="bp-host-avatar"
                         src="<?php echo h(resolve_photo($listing['host_avatar'], '/webprogg/images/default-avatar.png')); ?>"
                         alt="<?php echo h($listing['host_name']); ?>"
-                        onerror="this.onerror=null;this.src='/webprogg/images/default-avatar.png';"
                     >
-                    <div>
+                    <div style="flex:1; min-width:0;">
                         <p class="bp-host-name">
                             <?php echo h($listing['host_name']); ?>
                             <?php if ($isSuperhost): ?>
                                 <span class="bp-badge-superhost">Superhost</span>
                             <?php endif; ?>
                         </p>
-                        <p class="bp-host-since">
-                            Hosting since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?>
-                        </p>
-                        <p class="bp-host-rating">
-                            <span class="bp-star">&#9733;</span> <?php echo h($host_rating_avg); ?>
-                            <span>(<?php echo h($host_rating_count); ?> reviews)</span>
-                        </p>
+                        <p class="bp-host-since">Hosting since <?php echo h(date('F Y', strtotime($listing['host_since']))); ?></p>
+                        <?php if ($host_rating_count > 0): ?>
+                            <p class="bp-host-rating">
+                                <span class="bp-star">&#9733;</span> <?php echo h($host_rating_avg); ?>
+                                <span>(<?php echo h($host_rating_count); ?> reviews)</span>
+                            </p>
+                        <?php else: ?>
+                            <p class="bp-host-rating"><span>No reviews yet</span></p>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <p class="bp-host-response">Typically responds within a day</p>
+                <p class="bp-host-response">&#9203; Typically responds within a day</p>
             </div>
 
             <!-- LOCATION CARD -->
             <div class="bp-card bp-location-card">
                 <h3>Location</h3>
                 <p class="bp-location-address">
-                    <?php echo h(trim($listing['exact_address'] . ', ' . $listing['location'])); ?>
+                    <?php echo h($listing['exact_address'] !== '' ? $listing['exact_address'] . ', ' : ''); ?>
+                    <?php echo h($listing['location']); ?>
                 </p>
 
                 <?php if ($hasMapPin): ?>
                     <div class="bp-map-embed">
                         <iframe
-                            src="https://www.openstreetmap.org/export/embed.html?bbox=<?php
-                                echo h(($pinLongitude - 0.004) . ',' . ($pinLatitude - 0.0025) . ','
-                                     . ($pinLongitude + 0.004) . ',' . ($pinLatitude + 0.0025));
-                            ?>&layer=mapnik&marker=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>"
+                            src="https://www.google.com/maps?q=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>&output=embed"
                             loading="lazy"
-                            title="Listing location map"></iframe>
+                            referrerpolicy="no-referrer-when-downgrade"
+                            title="Map of the listing"
+                        ></iframe>
                     </div>
-                    <p class="bp-map-exact-note">&#128205; Exact location shared after booking</p>
-                <?php else: ?>
-                    <div class="bp-map-embed">
-                        <iframe
-                            src="https://www.openstreetmap.org/export/embed.html?bbox=<?php
-                                echo h(($pinLongitude - 0.004) . ',' . ($pinLatitude - 0.0025) . ','
-                                     . ($pinLongitude + 0.004) . ',' . ($pinLatitude + 0.0025));
-                            ?>&layer=mapnik&marker=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>"
-                            loading="lazy"
-                            title="Listing location map"></iframe>
-                    </div>
-                    <p class="bp-map-exact-note">&#128205; Approximate area shown</p>
+                    <p class="bp-map-exact-note">&#128205; Exact pin dropped by the host</p>
                 <?php endif; ?>
 
-                <a href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener" class="bp-btn-outline">
+                <a class="bp-btn-outline" href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener">
                     Open in Google Maps
                 </a>
             </div>
@@ -1296,28 +1193,20 @@ if ($balanceBooking !== null) {
 </main>
 
 <script>
-/* Payment method selection highlight */
-document.querySelectorAll(".bp-method").forEach(function (option) {
-    option.addEventListener("click", function () {
-        document.querySelectorAll(".bp-method").forEach(function (item) {
-            item.classList.remove("bp-method-selected");
-        });
-        option.classList.add("bp-method-selected");
-        const radio = option.querySelector("input[type=radio]");
-        if (radio) { radio.checked = true; }
-    });
-});
-
-/* Double-submit guard */
+/* =========================================================
+   PAY FULL PRICE — flips the flag before the form posts.
+   The Pay Reserve button leaves the flag at 0 (50% reserve).
+========================================================== */
 (function () {
-    var form = document.getElementById('bp-payment-form');
-    if (!form) return;
-    form.addEventListener('submit', function () {
-        var btn = form.querySelector('.bp-btn-pay');
-        if (btn && !btn.disabled) {
-            btn.disabled = true;
-            btn.textContent = 'Processing\u2026';
-        }
+    "use strict";
+
+    var fullBtn  = document.getElementById('bp-btn-full');
+    var fullFlag = document.getElementById('payment_purpose_full');
+
+    if (!fullBtn || !fullFlag) { return; }
+
+    fullBtn.addEventListener('click', function () {
+        fullFlag.value = '1';
     });
 })();
 </script>

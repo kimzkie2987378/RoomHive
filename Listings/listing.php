@@ -3,19 +3,18 @@
     listing.php
 
     === CHANGES ===
-    1-10. (previous fixes: layout, filters synced with host form)
-    11. HEARTS = WISHLIST (one source of truth):
-        - Saved IDs loaded from the wishlist table on load;
-          hearts render already-filled for saved listings.
-        - Heart click POSTs to /webprogg/user/togglewishlist.php
-          (same endpoint the wishlist page uses) — no more
-          localStorage, so favorites and My Wishlist match.
-        - Guests clicking a heart get the login modal.
-    12. ACTIVE-FILTER CHIP ROW HIDDEN — javaScript.js injects
-        the "Wi-fi x Parking x ..." row; its gold styles live
-        in listings-interactive.css which this page doesn't
-        load, so it rendered as default blue links. Now
-        display:none via CSS kill switch.
+    1-12. (previous fixes: layout, filters synced with host
+       form, hearts = wishlist via togglewishlist.php, chip
+       row kill switch)
+    13. WISHLIST BUTTON FIX v2 — the heart handler now runs
+        from a small EARLY script placed BEFORE javaScript.js
+        loads, registered on document in CAPTURE phase with
+        stopImmediatePropagation(). Whatever handler
+        javaScript.js adds (bubble OR capture, any order),
+        ours fires first and blocks it — exactly ONE
+        togglewishlist.php call per click. Guests get the
+        login modal. Late script no longer handles hearts
+        (no double-fire from our own code either).
     ========================== */
     session_start();
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
@@ -130,7 +129,7 @@
     }
 
     /* =========================================================
-       CHANGE #11 — WISHLIST (same table userwishlist.php reads)
+       WISHLIST — saved IDs from the DB (one source of truth)
     ========================================================== */
     $savedListingIds = [];
     if ($isLoggedIn && isset($_SESSION['user_id'])) {
@@ -144,8 +143,6 @@
                 $wStmt->fetchAll(PDO::FETCH_COLUMN)
             );
         } catch (PDOException $e) {
-            /* table missing — hearts still work because
-               togglewishlist.php self-heals it */
             $savedListingIds = [];
         }
     }
@@ -559,15 +556,7 @@
 .rh-chip-mini{font-size:.68rem;font-weight:600;color:#b8760a;background:#fbf1dc;border:1px solid #f0dcb4;border-radius:999px;padding:3px 9px;white-space:nowrap}
 .rh-chip-more{font-size:.68rem;font-weight:600;color:#62705f;align-self:center}
 
-/* =========================================================
-   CHANGE #12 — KILL ACTIVE-FILTER CHIP ROW
-   javaScript.js injects the "Wi-fi x Parking x ..." row by
-   reading the URL. Its gold styling lives in
-   listings-interactive.css, which this page doesn't load —
-   so the row rendered as default blue underlined links.
-   Hidden entirely; the amenity pill bar + Clear button
-   already provide the same function.
-========================================================= */
+/* ============ KILL ACTIVE-FILTER CHIP ROW ============ */
 .rh-chip-row,
 .rh-chip {
     display: none !important;
@@ -1368,16 +1357,130 @@
     </div>
     <?php endif; ?>
 
-    <script src="/webprogg/assets/javaScript.js"></script>
-
     <!-- =========================================================
-         PAGE SCRIPTS
+         CHANGE #13 v2 — HEARTS, EARLY SCRIPT.
+         Registered BEFORE javaScript.js loads, document
+         CAPTURE phase, stopImmediatePropagation(): our handler
+         fires first no matter what javaScript.js registers
+         (bubble or capture, any order), and blocks every other
+         handler. Exactly ONE togglewishlist.php call per click.
+         The late script no longer touches hearts at all.
     ========================================================== -->
     <script>
     (function () {
         "use strict";
 
         var isLoggedIn = document.body.getAttribute('data-logged-in') === '1';
+        var saveBusy = false;
+
+        function openLoginForWishlist() {
+            var loginModal = document.getElementById('lx-login-modal');
+            var loginHint  = document.getElementById('lx-login-hint');
+
+            if (loginModal) {
+                if (loginHint) loginHint.style.display = '';
+                loginModal.classList.add('open');
+            } else {
+                window.location.href = '/webprogg/auth/loginform.php';
+            }
+        }
+
+        function toggleWishlist(btn) {
+            if (saveBusy) { return; }
+
+            if (!isLoggedIn) {
+                openLoginForWishlist();
+                return;
+            }
+
+            var listingId = btn.getAttribute('data-listing-id');
+            if (!listingId) { return; }
+
+            saveBusy = true;
+            btn.disabled = true;
+
+            fetch('/webprogg/user/togglewishlist.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'listing_id=' + encodeURIComponent(listingId),
+                credentials: 'same-origin'
+            })
+            .then(function (res) {
+                if (!res.ok) {
+                    return res.text().then(function (t) {
+                        throw new Error('HTTP ' + res.status + ': ' + t.substring(0, 150));
+                    });
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                saveBusy = false;
+                btn.disabled = false;
+
+                if (!data || !data.success) {
+                    if (data && data.login) {
+                        isLoggedIn = false;
+                        openLoginForWishlist();
+                    } else {
+                        alert((data && data.message) || 'Could not update your wishlist.');
+                    }
+                    return;
+                }
+
+                var saved = !!data.saved;
+
+                btn.classList.toggle('saved', saved);
+                btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+                btn.innerHTML = saved ? '&#9829;' : '&#9825;';
+            })
+            .catch(function (err) {
+                saveBusy = false;
+                btn.disabled = false;
+                console.error('[wishlist toggle]', err);
+                alert('Wishlist update failed: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        /* Capture-phase + registered FIRST + stopImmediatePropagation
+           = nothing can run before or after us for this click. */
+        document.addEventListener('click', function (e) {
+            if (!e.target || !e.target.closest) { return; }
+
+            var heart = e.target.closest('.rh-save-btn');
+            if (heart) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                toggleWishlist(heart);
+                return;
+            }
+
+            /* login modal close (data-lx-close) — also early */
+            if (e.target.closest('[data-lx-close]')) {
+                var m = document.getElementById('lx-login-modal');
+                if (m) { m.classList.remove('open'); }
+            }
+        }, true);
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                var m = document.getElementById('lx-login-modal');
+                if (m) { m.classList.remove('open'); }
+            }
+        });
+    })();
+    </script>
+
+    <script src="/webprogg/assets/javaScript.js"></script>
+
+    <!-- =========================================================
+         PAGE SCRIPTS (late) — everything EXCEPT hearts.
+    ========================================================== -->
+    <script>
+    (function () {
+        "use strict";
+
         var resultsGrid = document.getElementById('rh-listings-results');
 
         /* ============ PRICE RANGE SLIDER ============ */
@@ -1409,13 +1512,6 @@
 
             document.addEventListener('click', function (e) {
                 if (!catPanel.contains(e.target) && e.target !== catToggle) {
-                    catPanel.classList.remove('open');
-                    catToggle.setAttribute('aria-expanded', 'false');
-                }
-            });
-
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') {
                     catPanel.classList.remove('open');
                     catToggle.setAttribute('aria-expanded', 'false');
                 }
@@ -1481,90 +1577,6 @@
             });
         });
 
-        /* =========================================================
-           CHANGE #11 — HEARTS WRITE TO THE DATABASE WISHLIST
-        ========================================================== */
-        var loginModal = document.getElementById('lx-login-modal');
-        var loginHint  = document.getElementById('lx-login-hint');
-
-        function openLoginForWishlist() {
-            if (loginModal) {
-                if (loginHint) loginHint.style.display = '';
-                loginModal.classList.add('open');
-            } else {
-                window.location.href = '/webprogg/auth/loginform.php';
-            }
-        }
-
-        function cardIsSaved(card) {
-            var b = card.querySelector('.rh-save-btn');
-            return !!(b && b.classList.contains('saved'));
-        }
-
-        var savedOnly = false;
-
-        function applySavedOnlyFilter() {
-            if (!resultsGrid) return;
-
-            resultsGrid.querySelectorAll('.listing-box').forEach(function (card) {
-                card.classList.toggle(
-                    'js-hidden',
-                    savedOnly && !cardIsSaved(card)
-                );
-            });
-        }
-
-        document.querySelectorAll('.rh-save-btn').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                if (!isLoggedIn) {
-                    openLoginForWishlist();
-                    return;
-                }
-
-                var listingId = btn.getAttribute('data-listing-id');
-                if (!listingId) return;
-
-                btn.disabled = true;
-
-                fetch('/webprogg/user/togglewishlist.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: 'listing_id=' + encodeURIComponent(listingId)
-                })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    btn.disabled = false;
-
-                    if (!data.success) {
-                        if (data.login) {
-                            isLoggedIn = false;
-                            openLoginForWishlist();
-                        } else {
-                            alert(data.message || 'Could not update your wishlist.');
-                        }
-                        return;
-                    }
-
-                    var saved = !!data.saved;
-
-                    btn.classList.toggle('saved', saved);
-                    btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
-                    btn.innerHTML = saved ? '&#9829;' : '&#9825;';
-
-                    applySavedOnlyFilter();
-                })
-                .catch(function () {
-                    btn.disabled = false;
-                    alert('Something went wrong. Please try again.');
-                });
-            });
-        });
-
         /* ============ SAVE THIS SEARCH (localStorage) ============ */
         var saveSearchBtn = document.getElementById('rh-save-search-btn');
 
@@ -1606,23 +1618,13 @@
             });
         }
 
-        /* ============ FLOATING LOGIN MODAL ============ */
-        if (loginModal) {
+        /* ============ LOGIN MODAL AUTO-OPEN (guests) ============ */
+        var loginModal = document.getElementById('lx-login-modal');
+
+        if (loginModal && document.body.getAttribute('data-logged-in') !== '1') {
             setTimeout(function () {
                 loginModal.classList.add('open');
             }, 600);
-
-            loginModal.querySelectorAll('[data-lx-close]').forEach(function (el) {
-                el.addEventListener('click', function () {
-                    loginModal.classList.remove('open');
-                });
-            });
-
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape') {
-                    loginModal.classList.remove('open');
-                }
-            });
         }
 
     })();
