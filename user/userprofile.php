@@ -3,30 +3,32 @@
    ROOMHIVE — MY ACCOUNT
    userprofile.php
 
-   HIVE CLUB INTEGRATION:
-   - Real tier from the dual-bucket engine (sweep applied).
-   - 5th stat card: lifetime + spendable points.
-   - Badge logic: active tier / lapsed / join-upsell by points.
-   - Real unread bell count.
-   - Recent bookings show honest payment state.
-
    VERIF — ID VERIFICATION BADGE:
-   - Verified = ID uploaded + profile complete (auto rule,
-     same as the Become-a-Host gate). Badge next to name:
-     green Verified / gold Pending / gray Get Verified.
+   - Verified / Pending / Get Verified badge next to name.
 
-   === WISHLIST FIX (this version) ===
-   The Overview wishlist remove button was wired per-button
-   in the bubble phase — javaScript.js ALSO binds
-   .rh-save-btn handlers, so ONE click fired togglewishlist.php
-   TWICE (remove + re-add) and items "came back" on refresh.
-   Now wired by DOCUMENT-LEVEL CAPTURE-PHASE delegation with
-   stopPropagation() — exactly one toggle per click.
+   === HIVE CLUB REMOVED (this version) ===
+   - Membership engine, tier badge chain, Hive points chart,
+     membership payment queries and the footer link are gone.
+   - Spending / pending totals now come from BOOKINGS ONLY.
+   - Stats row is now FOUR charts:
+     1. Bookings  — 6-month bars (all-time total highlighted)
+     2. Spending  — 6-month ₱ bars (all-time total highlighted)
+     3. Rating    — donut with the average as the center number
+     4. Wishlist  — stacked bar by category + legend
+
+   === WISHLIST FIX ===
+   Overview wishlist remove button wired by DOCUMENT-LEVEL
+   CAPTURE-PHASE delegation with stopPropagation().
+
+   === HERO REMOVED ===
+   Body carries `up-no-hero`; dashboard clears the navbar.
+
+   === PHOTO PICKER — NATIVE LABEL ===
+   The profile photo is a native <label for="avatarFileInput">.
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/verification_gate.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/functions.php';
 
@@ -87,19 +89,6 @@ try {
     'about'         => '',
 ];
 
-/* =========================================================
-   HIVE CLUB MEMBERSHIP (engine: sweep + dual buckets)
-========================================================= */
-hive_expiry_sweep($pdo);
- $hiveMember = hive_member($pdo, $_SESSION['user_id']);
-
- $hiveTier          = $hiveMember ? (string) $hiveMember['tier'] : 'Bronze';
- $hiveLifetime      = $hiveMember ? (int) $hiveMember['lifetime_points'] : 0;
- $hiveRedeemable    = $hiveMember ? (int) $hiveMember['redeemable_points'] : 0;
- $hiveActive        = hive_active($hiveMember);
- $hiveDaysLeft      = hive_days_until_expiry($hiveMember);
- $hiveNextTier      = hive_next_tier($hiveLifetime);
-
 /* Real unread bell count */
  $ncStmt = $pdo->prepare(
     "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
@@ -112,9 +101,7 @@ hive_expiry_sweep($pdo);
  $reviewsStmt->execute(['id' => $_SESSION['user_id']]);
  $reviews = array_map('floatval', array_column($reviewsStmt->fetchAll(), 'rating'));
 
- $average_rating = count($reviews) > 0
-    ? round(array_sum($reviews) / count($reviews), 1)
-    : 0;
+ $average_rating = count($reviews) > 0 ? round(array_sum($reviews) / count($reviews), 1) : 0;
 
 /* RECENT BOOKINGS — honest payment display */
  $bookingsStmt = $pdo->prepare(
@@ -157,7 +144,7 @@ hive_expiry_sweep($pdo);
     ];
 }, $bookingsStmt->fetchAll());
 
-/* PAYMENT SUMMARY — real money paid */
+/* PAYMENT SUMMARY — real money paid (bookings only) */
  $allBookingsStmt = $pdo->prepare(
     "SELECT amount_paid, booked_at FROM bookings WHERE user_id = :id AND status != 'cancelled'"
 );
@@ -178,30 +165,16 @@ foreach ($allBookingsForSpend as $b) {
     }
 }
 
-/* HIVE CLUB MEMBERSHIP PAYMENTS */
- $transactionsStmt = $pdo->prepare(
-    "SELECT amount, purchased_at FROM hiveclub_transactions WHERE user_id = :id AND payment_status = 'paid'"
-);
- $transactionsStmt->execute(['id' => $_SESSION['user_id']]);
- $membershipTransactions = $transactionsStmt->fetchAll();
+/* All-time booking count (drives the bookings chart highlight) */
+ $lifeBkStmt = $pdo->prepare("SELECT COUNT(*) FROM bookings WHERE user_id = :id");
+ $lifeBkStmt->execute(['id' => $_SESSION['user_id']]);
+ $total_bookings_all = (int) $lifeBkStmt->fetchColumn();
 
- $membership_spent_all_time = 0;
- $membership_spent_this_week = 0;
+/* COMBINED TOTALS — bookings only (Hive Club removed) */
+ $total_spent_this_week = number_format($bookings_spent_this_week, 2);
+ $total_spent_all_time  = number_format($bookings_spent_all_time, 2);
 
-foreach ($membershipTransactions as $txn) {
-    $amount = (float) $txn['amount'];
-    $membership_spent_all_time += $amount;
-
-    if (strtotime($txn['purchased_at']) >= $oneWeekAgo) {
-        $membership_spent_this_week += $amount;
-    }
-}
-
-/* COMBINED TOTALS */
- $total_spent_this_week = number_format($bookings_spent_this_week + $membership_spent_this_week, 2);
- $total_spent_all_time  = number_format($bookings_spent_all_time + $membership_spent_all_time, 2);
-
-/* PENDING TO PAY */
+/* PENDING TO PAY — bookings only (Hive Club removed) */
  $pendingBookingsStmt = $pdo->prepare(
     "SELECT GREATEST(total - amount_paid, 0) AS owed
      FROM bookings
@@ -213,16 +186,7 @@ foreach ($membershipTransactions as $txn) {
     array_column($pendingBookingsStmt->fetchAll(), 'owed')
  ));
 
- $pendingTxnStmt = $pdo->prepare(
-    "SELECT amount FROM hiveclub_transactions WHERE user_id = :id AND payment_status = 'pending'"
-);
- $pendingTxnStmt->execute(['id' => $_SESSION['user_id']]);
- $membership_pending_to_pay = array_sum(array_map(
-    'floatval',
-    array_column($pendingTxnStmt->fetchAll(), 'amount')
- ));
-
- $total_pending_to_pay = number_format($bookings_pending_to_pay + $membership_pending_to_pay, 2);
+ $total_pending_to_pay = number_format($bookings_pending_to_pay, 2);
 
  $payment_methods = [];
  $two_factor_enabled = false;
@@ -256,14 +220,78 @@ foreach ($membershipTransactions as $txn) {
 
  $wishlist_total = count($wishlist);
 
-/* STATS ROW */
- $stats = [
-    ['icon' => 'bookingsicon-userprofile.png',     'value' => count($bookings),  'label' => 'Bookings Total',            'count' => count($bookings), 'decimals' => 0],
-    ['icon' => 'wihlistedicon-userprofile.png',    'value' => $wishlist_total,   'label' => 'Wishlisted Properties',     'count' => $wishlist_total,  'decimals' => 0],
-    ['icon' => 'averageratinsicon-userprofile.png','value' => $average_rating,   'label' => 'Average Rating From Reviews','count' => $average_rating, 'decimals' => 1],
-    ['icon' => 'totalspenticon-userprofile.png',   'value' => '&#8369; ' . $total_spent_all_time, 'label' => 'Total Spent All Time', 'count' => null, 'decimals' => 0],
-    ['icon' => 'GoldIcon-HiveClub.png',            'value' => number_format($hiveLifetime), 'label' => 'Hive Club Points (' . $hiveTier . ')', 'count' => $hiveLifetime, 'decimals' => 0],
-];
+/* =========================================================
+   CHART DATA (replaces the icon stats row)
+========================================================= */
+
+/* 1 + 2) Bookings & spend per month, last 6 months */
+ $upMonthMap = [];
+try {
+    $cmStmt = $pdo->prepare(
+        "SELECT DATE_FORMAT(booked_at, '%Y-%m') AS ym,
+                COUNT(*) AS c,
+                COALESCE(SUM(amount_paid), 0) AS s
+         FROM bookings
+         WHERE user_id = :id
+           AND booked_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+         GROUP BY ym"
+    );
+    $cmStmt->execute(['id' => $_SESSION['user_id']]);
+    foreach ($cmStmt->fetchAll() as $row) {
+        $upMonthMap[$row['ym']] = [
+            'c' => (int) $row['c'],
+            's' => (float) $row['s'],
+        ];
+    }
+} catch (PDOException $e) {
+    $upMonthMap = [];
+}
+
+ $chartMonths = [];
+for ($i = 5; $i >= 0; $i--) {
+    $ts  = strtotime("-{$i} months");
+    $key = date('Y-m', $ts);
+    $chartMonths[] = [
+        'label'    => date('M', $ts),
+        'bookings' => $upMonthMap[$key]['c'] ?? 0,
+        'spend'    => $upMonthMap[$key]['s'] ?? 0.0,
+    ];
+}
+
+ $bkMax = 1;
+ $spMax = 0.01;
+foreach ($chartMonths as $m) {
+    $bkMax = max($bkMax, $m['bookings']);
+    $spMax = max($spMax, $m['spend']);
+}
+
+ $upMoneyShort = function ($v) {
+    $v = (float) $v;
+    if ($v >= 1000000) { return number_format($v / 1000000, 1) . 'M'; }
+    if ($v >= 1000)    { return number_format($v / 1000, 1) . 'K'; }
+    return number_format($v, 0);
+ };
+
+/* 4) Wishlist by category (stacked bar) */
+ $wlCats = [];
+try {
+    $wcStmt = $pdo->prepare(
+        "SELECT l.category, COUNT(*) AS c
+         FROM wishlist w
+         JOIN listings l ON l.id = w.listing_id
+         WHERE w.user_id = :id
+         GROUP BY l.category
+         ORDER BY c DESC
+         LIMIT 4"
+    );
+    $wcStmt->execute(['id' => $_SESSION['user_id']]);
+    $wlCats = $wcStmt->fetchAll();
+} catch (PDOException $e) {
+    $wlCats = [];
+}
+
+ $wlCatColors = ['#eda423', '#2F7DE1', '#1fa971', '#7a4bb0'];
+ $wlCatTotal  = array_sum(array_map(fn($r) => (int) $r['c'], $wlCats));
 
  $activeSidebar = 'overview';
 ?>
@@ -279,28 +307,7 @@ foreach ($membershipTransactions as $txn) {
 <script>document.documentElement.classList.add("js");</script>
 
 <style>
-    /* Hive Club badge states + points sub-line */
-    .up-badge-hc-active {
-        background: linear-gradient(135deg, #f6b93b, #eda423);
-        color: #1c2a38;
-        border-color: transparent;
-    }
-    .up-badge-hc-lapsed {
-        background: #FDF1DC;
-        color: #B07708;
-        border: 1px dashed rgba(237, 164, 35, 0.5);
-    }
-    .up-stat-card .up-hc-sub {
-        display: block;
-        margin-top: 2px;
-        font-size: 10.5px;
-        font-weight: 700;
-        color: #B07708;
-    }
-
-    /* =====================================================
-       VERIF — ID VERIFICATION BADGE STATES
-    ====================================================== */
+    /* VERIF — ID VERIFICATION BADGE STATES */
     .up-badge-id-verified {
         background: #E8F8F1;
         color: #178A50;
@@ -320,9 +327,353 @@ foreach ($membershipTransactions as $txn) {
         background: #1c2a38;
         color: #ffffff;
     }
+
+    /* HERO REMOVED — navbar clearance */
+    .up-no-hero .up-notice {
+        margin: 110px auto 0;
+    }
+    .up-no-hero .up-dashboard {
+        margin-top: 110px;
+    }
+    .up-no-hero.has-notice .up-dashboard {
+        margin-top: 26px;
+    }
+
+    /* =====================================================
+       PHOTO PICKER — NATIVE LABEL + WHITE BADGE
+    ====================================================== */
+    .up-profile-photo .up-photo-hit {
+        display: block;
+        width: 100%;
+        height: 100%;
+
+        cursor: pointer;
+        position: relative;
+    }
+
+    .up-profile-photo .up-photo-hit > img {
+        width: 96px;
+        height: 96px;
+
+        border-radius: 12px;
+        object-fit: cover;
+        display: block;
+
+        border: 3px solid #ffffff;
+        box-shadow:
+            0 0 0 3px var(--up-orange, #eda423),
+            0 10px 22px rgba(237, 164, 35, 0.3);
+    }
+
+    /* WHITE circular badge behind the upload icon */
+    .up-profile-photo .up-photo-edit {
+        position: absolute;
+        right: -4px;
+        bottom: 0;
+
+        width: 32px;
+        height: 32px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        background: #ffffff;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+
+        box-shadow: 0 4px 12px rgba(28, 42, 56, 0.28);
+
+        z-index: 6;
+
+        transition: transform 0.2s ease;
+    }
+
+    .up-profile-photo .up-photo-hit:hover .up-photo-edit {
+        transform: scale(1.12) rotate(8deg);
+    }
+
+    .up-profile-photo .up-photo-edit img {
+        width: 18px;
+        height: 18px;
+
+        object-fit: contain;
+        display: block;
+
+        /* the icon keeps its own colors on the white badge */
+        filter: none !important;
+
+        pointer-events: none;
+    }
+
+    .up-profile-photo .up-photo-hit.is-busy {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    /* =====================================================
+       STATS -> LIVE CHARTS (icon-free, numbers highlighted)
+    ====================================================== */
+    .up-charts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 16px;
+    }
+
+    .up-chart-card {
+        background: #ffffff;
+        border: 1px solid var(--up-border, rgba(28, 42, 56, 0.08));
+        border-radius: var(--up-radius, 18px);
+        box-shadow: var(--up-shadow, 0 6px 20px rgba(28, 42, 56, 0.06));
+        padding: 18px 16px 16px;
+
+        transition:
+            transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+            box-shadow 0.3s ease,
+            border-color 0.3s ease;
+    }
+
+    .up-chart-card:hover {
+        transform: translateY(-5px);
+        border-color: rgba(237, 164, 35, 0.4);
+        box-shadow: var(--up-shadow-lift, 0 18px 34px rgba(237, 164, 35, 0.16));
+    }
+
+    .up-ch-label {
+        display: block;
+        color: var(--up-text-muted, #6b7684);
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+
+    /* THE HIGHLIGHT — big, colored key number per chart */
+    .up-ch-highlight {
+        display: block;
+        margin: 4px 0 2px;
+
+        color: var(--up-navy, #1c2a38);
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        line-height: 1.1;
+    }
+
+    .up-ch-highlight.up-hl-gold  { color: #b07708; }
+    .up-ch-highlight.up-hl-green { color: #1e7a3d; }
+    .up-ch-highlight.up-hl-blue  { color: #2F7DE1; }
+
+    .up-ch-sub {
+        display: block;
+        margin-bottom: 12px;
+
+        color: #8B93A6;
+        font-size: 10.5px;
+    }
+
+    /* vertical bars (bookings + spend) */
+    .up-ch-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 5px;
+
+        height: 74px;
+    }
+
+    .up-ch-barcol {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+
+        height: 100%;
+    }
+
+    .up-ch-barval {
+        font-size: 9.5px;
+        font-weight: 800;
+        color: var(--up-navy, #1c2a38);
+        white-space: nowrap;
+    }
+
+    .up-ch-bartrack {
+        flex: 1;
+        width: 100%;
+
+        display: flex;
+        align-items: flex-end;
+
+        background: #F6F7F9;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .up-ch-bar {
+        width: 100%;
+        height: var(--h, 4%);
+
+        border-radius: 6px 6px 0 0;
+
+        transition: height 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .up-ch-bar.gold { background: linear-gradient(180deg, #f6c04e, #eda423); }
+    .up-ch-bar.green { background: linear-gradient(180deg, #43bd67, #1fa971); }
+
+    .up-ch-barlbl {
+        font-size: 9.5px;
+        color: #8B93A6;
+        white-space: nowrap;
+    }
+
+    /* donut (rating) */
+    .up-ch-donut-wrap {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .up-ch-donut {
+        position: relative;
+        width: 84px;
+        height: 84px;
+        flex-shrink: 0;
+    }
+
+    .up-ch-donut svg { width: 100%; height: 100%; display: block; }
+
+    .up-ch-donut-bg {
+        fill: none;
+        stroke: #F0F1F6;
+        stroke-width: 9;
+    }
+
+    .up-ch-donut-fg {
+        fill: none;
+        stroke: #eda423;
+        stroke-width: 9;
+        stroke-linecap: round;
+        stroke-dasharray: 125.66;
+        stroke-dashoffset: 125.66;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+        transition: stroke-dashoffset 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .up-ch-donut.on .up-ch-donut-fg {
+        stroke-dashoffset: var(--off, 125.66);
+    }
+
+    .up-ch-donut-num {
+        position: absolute;
+        inset: 0;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        color: var(--up-navy, #1c2a38);
+        font-size: 18px;
+        font-weight: 800;
+    }
+
+    .up-ch-donut-side {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 10.5px;
+        color: #8B93A6;
+    }
+
+    .up-ch-donut-side strong {
+        color: var(--up-navy, #1c2a38);
+        font-size: 12px;
+    }
+
+    /* stacked bar (wishlist categories) */
+    .up-ch-stack {
+        display: flex;
+        height: 14px;
+
+        background: #F0F1F6;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .up-ch-stack span {
+        width: 0%;
+        transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .up-ch-stack.on span {
+        width: var(--w, 0%);
+    }
+
+    .up-ch-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 12px;
+
+        margin-top: 10px;
+    }
+
+    .up-ch-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+
+        font-size: 10px;
+        color: #5d6875;
+    }
+
+    .up-ch-legend i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .up-ch-empty {
+        padding: 16px 4px;
+        text-align: center;
+
+        color: #8B93A6;
+        font-size: 11px;
+        font-style: italic;
+    }
+
+    /* dark mode */
+    body[data-theme="dark"] .up-chart-card,
+    html[data-theme-preview="1"] .up-chart-card {
+        background: #1a222b;
+    }
+
+    body[data-theme="dark"] .up-ch-bartrack,
+    html[data-theme-preview="1"] .up-ch-bartrack,
+    body[data-theme="dark"] .up-ch-stack,
+    html[data-theme-preview="1"] .up-ch-stack,
+    body[data-theme="dark"] .up-ch-donut-bg,
+    html[data-theme-preview="1"] .up-ch-donut-bg {
+        background: #0d1218;
+        stroke: #0d1218;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .up-ch-bar,
+        .up-ch-stack span,
+        .up-ch-donut-fg {
+            transition: none !important;
+        }
+
+        .up-ch-bar { height: var(--h, 4%) !important; }
+        .up-ch-stack span { width: var(--w, 0%) !important; }
+        .up-ch-donut-fg { stroke-dashoffset: var(--off, 125.66) !important; }
+    }
 </style>
 </head>
-<body>
+<body class="up-no-hero<?php echo isset($_GET['booked']) ? ' has-notice' : ''; ?>">
 
 <!-- SHARED NAVBAR (includes/usernav.php) -->
 <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
@@ -333,67 +684,7 @@ foreach ($membershipTransactions as $txn) {
 </section>
 <?php endif; ?>
 
-<!-- WELCOME HERO -->
-<section class="up-hero">
-    <div aria-hidden="true">
-        <span class="up-hero-blob up-hero-blob-1"></span>
-        <span class="up-hero-blob up-hero-blob-2"></span>
-    </div>
-
-    <div class="up-hero-inner">
-        <div class="up-hero-text">
-            <span class="up-hero-badge up-anim" style="--d: .05s;">
-                <span class="up-pulse-dot"></span>
-                Member Dashboard
-            </span>
-
-            <p class="up-hero-eyebrow up-anim" style="--d: .12s;">Welcome back,</p>
-
-            <h1 class="up-anim" style="--d: .18s;">
-                <span class="up-shimmer"><?php echo h($user['name']); ?>!</span>
-            </h1>
-
-            <span class="up-welcome-underline up-anim" style="--d: .24s;"></span>
-
-            <p class="up-hero-sub up-anim" style="--d: .3s;">
-                Manage your bookings, favorites, and account
-                settings all in one place.
-            </p>
-        </div>
-
-        <div class="up-hero-art up-anim" style="--d: .3s;">
-            <span class="up-art-glow" aria-hidden="true"></span>
-            <img src="/webprogg/images/livingroomicon-userprofile.png" alt="">
-
-            <div class="up-chip up-chip-1">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="5" width="18" height="14" rx="2.5"/>
-                    <path d="m3.5 7 8.5 6 8.5-6"/>
-                </svg>
-                <span>Recent Bookings</span>
-            </div>
-
-            <div class="up-chip up-chip-2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 21s-7.5-4.7-9.5-9A5.4 5.4 0 0 1 12 6.5 5.4 5.4 0 0 1 21.5 12c-2 4.3-9.5 9-9.5 9z"/>
-                </svg>
-                <span>Saved Favorites</span>
-            </div>
-
-            <div class="up-chip up-chip-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/>
-                    <path d="m9 12 2 2 4-4"/>
-                </svg>
-                <span>Secure Account</span>
-            </div>
-        </div>
-    </div>
-
-    <svg class="up-hero-wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0,48 C240,90 480,6 760,30 C1040,54 1240,90 1440,40 L1440,90 L0,90 Z" fill="#ffffff"></path>
-    </svg>
-</section>
+<!-- WELCOME HERO — REMOVED -->
 
 <!-- MAIN DASHBOARD LAYOUT -->
 <main class="up-dashboard">
@@ -405,11 +696,27 @@ foreach ($membershipTransactions as $txn) {
     <!-- PROFILE CARD -->
     <section class="up-card up-profile-card up-reveal">
       <div class="up-profile-photo">
-        <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>" id="profileAvatarImg">
-        <button type="button" class="up-photo-edit" id="photoButton" aria-label="Change profile photo">
-          <img src="/webprogg/images/cameraicon-userprofile.png" alt="">
-        </button>
-        <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+        <!-- NATIVE PICKER: the label's default action opens the
+             choose-file dialog at the browser level. -->
+        <label
+            for="avatarFileInput"
+            class="up-photo-hit"
+            id="photoHit"
+            title="Change profile photo"
+            aria-label="Change profile photo"
+        >
+          <img src="<?php echo h($user['avatar']); ?>" alt="<?php echo h($user['name']); ?>" id="profileAvatarImg">
+          <span class="up-photo-edit" id="photoEditBadge">
+            <img src="/webprogg/images/UploadPhotosIcon-BecomeAHost.png" alt="">
+          </span>
+        </label>
+        <input
+            type="file"
+            id="avatarFileInput"
+            name="avatar"
+            accept="image/jpeg,image/png,image/webp"
+            style="position:absolute; width:1px; height:1px; opacity:0; overflow:hidden;"
+        >
       </div>
 
       <div class="up-profile-info">
@@ -434,32 +741,7 @@ foreach ($membershipTransactions as $txn) {
             </a>
           <?php endif; ?>
 
-          <?php if ($hiveActive && $hiveTier !== 'Bronze'): ?>
-            <!-- Paid tier, active -->
-            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-active" style="text-decoration:none;">
-              <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
-              <?php echo h($hiveTier); ?> Member
-              <?php if ($hiveDaysLeft !== null && $hiveDaysLeft <= 30): ?>
-                &middot; <?php echo (int) $hiveDaysLeft; ?>d left
-              <?php endif; ?>
-            </a>
-          <?php elseif ($hiveActive && $hiveLifetime > 0): ?>
-            <!-- Bronze with earned points -->
-            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-active" style="text-decoration:none;">
-              <img src="/webprogg/images/verifiedicon-userprofile.png" alt="">
-              Bronze Member
-            </a>
-          <?php elseif ($hiveLifetime > 0): ?>
-            <!-- Lapsed paid plan — points intact -->
-            <a href="/webprogg/user/membership.php" class="up-badge-verified up-badge-hc-lapsed" style="text-decoration:none;">
-              Plan lapsed &mdash; renew
-            </a>
-          <?php else: ?>
-            <!-- No points yet — join upsell -->
-            <a href="/webprogg/hiveclub.php" class="up-badge-verified" style="text-decoration:none; background:#f0f0f0; color:#777777; border-color:transparent;">
-              Join Hive Club
-            </a>
-          <?php endif; ?>
+          <!-- HIVE CLUB BADGES REMOVED -->
         </div>
 
         <ul class="up-profile-meta">
@@ -483,28 +765,127 @@ foreach ($membershipTransactions as $txn) {
       <a href="/webprogg/user/editprofile.php" class="up-btn-outline up-edit-profile" id="editProfileButton">Edit Profile</a>
     </section>
 
-    <!-- STATS ROW -->
-    <section class="up-stats">
-      <?php foreach ($stats as $i => $stat): ?>
-        <div class="up-stat-card up-reveal" style="--i: <?php echo (int) $i; ?>;">
-          <img src="/webprogg/images/<?php echo h($stat['icon']); ?>" alt="">
-          <div>
-            <?php if ($stat['count'] !== null): ?>
-                <strong
-                    data-count="<?php echo h($stat['count']); ?>"
-                    data-decimals="<?php echo (int) $stat['decimals']; ?>"
-                ><?php echo $stat['value']; ?></strong>
-            <?php else: ?>
-                <strong><?php echo $stat['value']; ?></strong>
-            <?php endif; ?>
-            <span><?php echo h($stat['label']); ?></span>
-            <?php if ($stat['label'] === 'Hive Club Points (' . $hiveTier . ')'): ?>
-                <span class="up-hc-sub">&#128176; <?php echo number_format($hiveRedeemable); ?> spendable</span>
-            <?php endif; ?>
-          </div>
+    <!-- =====================================================
+         STATS AS LIVE CHARTS (4 charts — Hive points chart
+         removed; key numbers highlighted big and colored)
+    ====================================================== -->
+    <section class="up-charts">
+
+        <!-- 1) BOOKINGS — 6-month bars -->
+        <div class="up-chart-card up-reveal" style="--i: 0;">
+            <span class="up-ch-label">Bookings</span>
+            <strong class="up-ch-highlight up-hl-blue"><?php echo number_format($total_bookings_all); ?></strong>
+            <span class="up-ch-sub">all-time total</span>
+
+            <div class="up-ch-bars" data-chart>
+                <?php foreach ($chartMonths as $m):
+                    $h = max(5, (int) round(($m['bookings'] / $bkMax) * 100));
+                ?>
+                <div class="up-ch-barcol" title="<?php echo h($m['label']); ?>: <?php echo (int) $m['bookings']; ?> booking<?php echo $m['bookings'] === 1 ? '' : 's'; ?>">
+                    <span class="up-ch-barval"><?php echo (int) $m['bookings']; ?></span>
+                    <div class="up-ch-bartrack">
+                        <div class="up-ch-bar gold" style="--h: <?php echo $h; ?>%;"></div>
+                    </div>
+                    <span class="up-ch-barlbl"><?php echo h($m['label']); ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
-      <?php endforeach; ?>
-      </section>
+
+        <!-- 2) SPENDING — 6-month ₱ bars -->
+        <div class="up-chart-card up-reveal" style="--i: 1;">
+            <span class="up-ch-label">Total Spent</span>
+            <strong class="up-ch-highlight up-hl-gold">&#8369;<?php echo h($total_spent_all_time); ?></strong>
+            <span class="up-ch-sub">all-time (bookings)</span>
+
+            <div class="up-ch-bars" data-chart>
+                <?php foreach ($chartMonths as $m):
+                    $h = max(4, (int) round(($m['spend'] / $spMax) * 100));
+                ?>
+                <div class="up-ch-barcol" title="<?php echo h($m['label']); ?>: &#8369;<?php echo number_format($m['spend'], 2); ?>">
+                    <span class="up-ch-barval">&#8369;<?php echo h($upMoneyShort($m['spend'])); ?></span>
+                    <div class="up-ch-bartrack">
+                        <div class="up-ch-bar green" style="--h: <?php echo $h; ?>%;"></div>
+                    </div>
+                    <span class="up-ch-barlbl"><?php echo h($m['label']); ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- 3) AVERAGE RATING — donut -->
+        <div class="up-chart-card up-reveal" style="--i: 2;">
+            <span class="up-ch-label">Average Rating</span>
+            <strong class="up-ch-highlight up-hl-gold"><?php echo number_format($average_rating, 1); ?> / 5</strong>
+            <span class="up-ch-sub">from your reviews</span>
+
+            <?php if (count($reviews) > 0): ?>
+            <div class="up-ch-donut-wrap">
+                <div
+                    class="up-ch-donut"
+                    data-donut
+                    data-pct="<?php echo (int) round(($average_rating / 5) * 100); ?>"
+                >
+                    <svg viewBox="0 0 48 48" aria-hidden="true">
+                        <circle class="up-ch-donut-bg" cx="24" cy="24" r="20"></circle>
+                        <circle class="up-ch-donut-fg" cx="24" cy="24" r="20"></circle>
+                    </svg>
+                    <span class="up-ch-donut-num">&#9733;</span>
+                </div>
+                <div class="up-ch-donut-side">
+                    <strong><?php echo count($reviews); ?> review<?php echo count($reviews) === 1 ? '' : 's'; ?></strong>
+                    <span>rating fills the ring</span>
+                    <span>(<?php echo (int) round(($average_rating / 5) * 100); ?>% of 5 stars)</span>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="up-ch-empty">
+                No reviews yet — ratings from hosts will fill this ring.
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- 4) WISHLIST — stacked bar by category -->
+        <div class="up-chart-card up-reveal" style="--i: 3;">
+            <span class="up-ch-label">Wishlist</span>
+            <strong class="up-ch-highlight up-hl-blue"><?php echo number_format($wishlist_total); ?></strong>
+            <span class="up-ch-sub">saved propert<?php echo $wishlist_total === 1 ? 'y' : 'ies'; ?></span>
+
+            <?php if ($wishlist_total > 0 && !empty($wlCats)): ?>
+                <div class="up-ch-stack" data-chart>
+                    <?php foreach ($wlCats as $i => $cat):
+                        $c = (int) $cat['c'];
+                        if ($c <= 0) { continue; }
+                        $w = round(($c / max(1, $wlCatTotal)) * 100, 1);
+                        $color = $wlCatColors[$i % count($wlCatColors)];
+                        $label = ucwords(str_replace('-', ' ', (string) $cat['category']));
+                    ?>
+                    <span
+                        style="--w: <?php echo $w; ?>%; background: <?php echo $color; ?>;"
+                        title="<?php echo h($label); ?>: <?php echo $c; ?>"
+                    ></span>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="up-ch-legend">
+                    <?php foreach ($wlCats as $i => $cat):
+                        $color = $wlCatColors[$i % count($wlCatColors)];
+                        $label = ucwords(str_replace('-', ' ', (string) $cat['category']));
+                    ?>
+                    <span>
+                        <i style="background: <?php echo $color; ?>;"></i>
+                        <?php echo h($label); ?>: <?php echo (int) $cat['c']; ?>
+                    </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="up-ch-empty">
+                    Nothing saved yet — tap the heart on any listing.
+                </div>
+            <?php endif; ?>
+        </div>
+
+    </section>
 
     <!-- RECENT BOOKINGS + PAYMENT SUMMARY -->
     <section class="up-two-col">
@@ -744,7 +1125,6 @@ foreach ($membershipTransactions as $txn) {
             <a href="/webprogg/index.php">About Us</a>
             <a href="/webprogg/misc/contacts.php">Contact</a>
             <a href="/webprogg/host/becomeahost.php">Become a Host</a>
-            <a href="/webprogg/hiveclub.php">Hive Club</a>
         </div>
         <div class="footer-contact">
             <span class="footer-heading">GET THE APP</span>
@@ -761,12 +1141,15 @@ foreach ($membershipTransactions as $txn) {
 
 <script src="/webprogg/assets/javaScript.js"></script>
 
-<!-- SCROLL REVEAL + STAT COUNT-UP -->
+<!-- SCROLL REVEAL + CHART ANIMATIONS + PAGE BEHAVIOR
+     (tail reconstructed from the docblock — VERIFY the two
+     fetch endpoint URLs against your backend) -->
 <script>
 (function () {
     "use strict";
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+    /* ---- Scroll reveal ---- */
     var revealEls = Array.prototype.slice.call(document.querySelectorAll(".up-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
         revealEls.forEach(function (el) { el.classList.add("in-view"); });
@@ -783,231 +1166,151 @@ foreach ($membershipTransactions as $txn) {
         revealEls.forEach(function (el) { io.observe(el); });
     }
 
-    var counters = document.querySelectorAll("[data-count]");
-    if (counters.length && !reduced && "IntersectionObserver" in window) {
-        var countIo = new IntersectionObserver(function (entries) {
+    /* ---- Chart animations (bars / stack / donut) ---- */
+    var vizEls = Array.prototype.slice.call(
+        document.querySelectorAll("[data-chart], [data-donut]")
+    );
+
+    if (reduced || !("IntersectionObserver" in window)) {
+        vizEls.forEach(function (el) { el.classList.add("on"); });
+    } else {
+        var vIO = new IntersectionObserver(function (entries) {
             entries.forEach(function (entry) {
                 if (!entry.isIntersecting) return;
-                var el = entry.target;
-                countIo.unobserve(el);
+                vIO.unobserve(entry.target);
 
-                var target = parseFloat(el.getAttribute("data-count")) || 0;
-                var decimals = parseInt(el.getAttribute("data-decimals"), 10) || 0;
-                var t0 = null;
-                var DURATION = 1300;
+                /* stagger the bars for a cascade */
+                var bars = entry.target.querySelectorAll(".up-ch-bar");
+                Array.prototype.forEach.call(bars, function (bar, i) {
+                    bar.style.transitionDelay = (i * 45) + "ms";
+                });
 
-                var stepFn = function (ts) {
-                    if (!t0) t0 = ts;
-                    var k = Math.min((ts - t0) / DURATION, 1);
-                    var eased = 1 - Math.pow(1 - k, 3);
-                    el.textContent = (target * eased).toLocaleString(
-                        undefined,
-                        { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
-                    );
-                    if (k < 1) window.requestAnimationFrame(stepFn);
-                };
+                /* donut: compute the dash offset from data-pct */
+                if (entry.target.hasAttribute("data-donut")) {
+                    var pct = parseFloat(entry.target.getAttribute("data-pct")) || 0;
+                    var C = 125.66;
+                    entry.target.style.setProperty("--off", (C * (1 - pct / 100)).toFixed(2));
+                }
 
-                window.requestAnimationFrame(stepFn);
+                entry.target.classList.add("on");
             });
-        }, { threshold: 0.6 });
-        Array.prototype.forEach.call(counters, function (el) { countIo.observe(el); });
+        }, { threshold: 0.4 });
+        vizEls.forEach(function (el) { vIO.observe(el); });
     }
-})();
-</script>
 
-<!-- PAYMENT SUMMARY TOGGLE -->
-<script>
-(function () {
-    const tabs = document.querySelectorAll('.up-summary-tab');
-    const amountEl = document.querySelector('.up-summary-amount');
-    const rangeLabel = document.querySelector('.up-summary-range-label');
-    const amountLabel = document.querySelector('.up-summary-label');
+    /* ---- Payment summary toggle (This Week / Pending to Pay) ---- */
+    var sumTabs   = Array.prototype.slice.call(document.querySelectorAll(".up-summary-tab"));
+    var sumAmount = document.querySelector(".up-summary-amount");
+    var sumRange  = document.querySelector(".up-summary-range-label");
 
-    if (!tabs.length || !amountEl) return;
+    sumTabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+            sumTabs.forEach(function (t) { t.classList.remove("active"); });
+            tab.classList.add("active");
 
-    tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () {
-            tabs.forEach(function (t) { t.classList.remove('active'); });
-            tab.classList.add('active');
-
-            const range = tab.getAttribute('data-range');
-            if (range === 'pending') {
-                amountEl.textContent = amountEl.getAttribute('data-pending');
-                if (rangeLabel) rangeLabel.textContent = 'Awaiting Host Approval';
-                if (amountLabel) amountLabel.textContent = 'Pending to Pay';
+            if (!sumAmount) { return; }
+            if (tab.getAttribute("data-range") === "pending") {
+                sumAmount.textContent = sumAmount.getAttribute("data-pending") || "0.00";
+                if (sumRange) { sumRange.textContent = "Pending to Pay"; }
             } else {
-                amountEl.textContent = amountEl.getAttribute('data-week');
-                if (rangeLabel) rangeLabel.textContent = 'Last 7 Days';
-                if (amountLabel) amountLabel.textContent = 'Total Spent';
+                sumAmount.textContent = sumAmount.getAttribute("data-week") || "0.00";
+                if (sumRange) { sumRange.textContent = "Last 7 Days"; }
             }
         });
     });
-})();
-</script>
-
-<!-- PROFILE PHOTO UPLOAD -->
-<script>
-(function () {
-    const photoButton = document.getElementById('photoButton');
-    const fileInput    = document.getElementById('avatarFileInput');
-    const avatarImg    = document.getElementById('profileAvatarImg');
-    const navAvatarImg = document.getElementById('navAccountAvatarImg');
-
-    if (!photoButton || !fileInput || !avatarImg) return;
-
-    photoButton.addEventListener('click', function () {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', function () {
-        const file = fileInput.files[0];
-        if (!file) return;
-
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
-            alert('Please choose a JPG, PNG, or WEBP image.');
-            fileInput.value = '';
-            return;
-        }
-
-        if (file.size > 5 * 1024 * 1024) {
-            alert('That image is too large. Please choose one under 5MB.');
-            fileInput.value = '';
-            return;
-        }
-
-        const previewUrl = URL.createObjectURL(file);
-        const previousSrc = avatarImg.src;
-        avatarImg.src = previewUrl;
-        photoButton.disabled = true;
-
-        const formData = new FormData();
-        formData.append('avatar', file);
-
-        fetch('/webprogg/user/uploadavatar.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (res) {
-            if (!res.ok) {
-                return res.json().catch(function () {
-                    throw new Error('Upload endpoint returned ' + res.status);
-                });
-            }
-            return res.json();
-        })
-        .then(function (data) {
-            if (data.success) {
-                avatarImg.src = data.avatar_url;
-                if (navAvatarImg) navAvatarImg.src = data.avatar_url;
-            } else {
-                avatarImg.src = previousSrc;
-                alert(data.error || 'Could not update your profile photo.');
-            }
-        })
-        .catch(function (err) {
-            avatarImg.src = previousSrc;
-            console.error('[avatar upload]', err);
-            alert('Something went wrong uploading your photo. Please try again.');
-        })
-        .finally(function () {
-            URL.revokeObjectURL(previewUrl);
-            photoButton.disabled = false;
-            fileInput.value = '';
-        });
-    });
-})();
-</script>
-
-<!-- =========================================================
-     WISHLIST REMOVE (Overview mini-grid)
-     FIX: capture-phase document delegation. javaScript.js
-     ALSO binds .rh-save-btn handlers (bubble phase); with
-     per-button binding both fired -> togglewishlist.php ran
-     TWICE (remove + re-add) -> items came back on refresh.
-     Capture phase fires FIRST and stopPropagation() blocks
-     javaScript.js — exactly one toggle per click.
-========================================================= -->
-<script>
-(function () {
-    const grid       = document.getElementById('up-wishlist-grid');
-    const emptyState = document.getElementById('up-wishlist-empty');
-    const countEl    = document.querySelector('.up-wishlist-count');
-    const statValue  = document.querySelector('.up-stat-wishlist strong');
-
-    let busy = false;
-
-    function syncWishlistUI() {
-        const remaining = grid ? grid.querySelectorAll('.listing-box').length : 0;
-        if (countEl) countEl.textContent = remaining;
-        if (statValue) statValue.textContent = remaining;
-        if (grid && emptyState) {
-            grid.style.display = remaining === 0 ? 'none' : '';
-            emptyState.style.display = remaining === 0 ? '' : 'none';
-        }
-    }
-
-    if (!grid) { return; }
-
-    function removeFromWishlist(btn) {
-        if (busy) { return; }
-
-        const box = btn.closest('.listing-box');
-        const listingId = btn.getAttribute('data-listing-id');
-        if (!box || !listingId) { return; }
-
-        busy = true;
-        btn.disabled = true;
-
-        fetch('/webprogg/user/togglewishlist.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'listing_id=' + encodeURIComponent(listingId),
-            credentials: 'same-origin'
-        })
-        .then(function (res) {
-            if (!res.ok) {
-                return res.text().then(function (t) {
-                    throw new Error('HTTP ' + res.status + ': ' + t.substring(0, 150));
-                });
-            }
-            return res.json();
-        })
-        .then(function (data) {
-            busy = false;
-            btn.disabled = false;
-            if (data && data.success) {
-                box.remove();
-                syncWishlistUI();
-            } else if (data && data.login) {
-                window.location.href = '/webprogg/auth/loginform.php';
-            } else {
-                btn.disabled = false;
-                alert((data && data.message) || 'Could not update your wishlist.');
-            }
-        })
-        .catch(function (err) {
-            busy = false;
-            btn.disabled = false;
-            console.error('[wishlist remove]', err);
-            alert('Wishlist update failed: ' + (err && err.message ? err.message : 'network error'));
-        });
-    }
 
     /* =====================================================
-       THE FIX — capture phase (true) on document.
-       Fires BEFORE javaScript.js's bubble-phase handlers;
-       stopPropagation() blocks them — one toggle per click.
+       WISHLIST REMOVE — DOCUMENT-LEVEL CAPTURE-PHASE
+       delegation with stopPropagation, so the row's own
+       link navigation never fires before we decide.
     ====================================================== */
-    document.addEventListener('click', function (e) {
-        if (!e.target || !e.target.closest) { return; }
-        const btn = e.target.closest('.rh-save-btn');
-        if (btn && grid.contains(btn)) {
-            e.preventDefault();
-            e.stopPropagation();
-            removeFromWishlist(btn);
-        }
-    }, true);
+    document.addEventListener("click", function (e) {
+
+        var btn = e.target.closest ? e.target.closest(".rh-save-btn") : null;
+        if (!btn) { return; }
+
+        var grid = document.getElementById("up-wishlist-grid");
+        if (!grid || !grid.contains(btn)) { return; }
+
+        /* We're on the overview wishlist — intercept the click
+           and remove the item instead of navigating. */
+        e.preventDefault();
+        e.stopPropagation();
+
+        var card      = btn.closest(".listing-box");
+        var listingId = btn.getAttribute("data-listing-id");
+        if (!card || !listingId) { return; }
+
+        btn.classList.remove("saved");
+        btn.disabled = true;
+
+        fetch("/webprogg/user/wishlist-toggle.php", { /* VERIFY endpoint */
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "listing_id=" + encodeURIComponent(listingId)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && data.success === false) {
+                    throw new Error(data.message || "Could not remove.");
+                }
+                card.remove();
+
+                var countEl = document.querySelector(".up-wishlist-count");
+                var left    = grid.querySelectorAll(".listing-box").length;
+
+                if (countEl) { countEl.textContent = String(left); }
+
+                var empty = document.getElementById("up-wishlist-empty");
+                if (empty && left === 0) {
+                    grid.style.display = "none";
+                    empty.style.display = "";
+                }
+            })
+            .catch(function () {
+                /* restore on failure */
+                btn.classList.add("saved");
+            })
+            .then(function () {
+                btn.disabled = false;
+            });
+
+    }, true); /* capture phase */
+
+    /* ---- Avatar upload (native label picker) ---- */
+    var avatarInput = document.getElementById("avatarFileInput");
+    var avatarImg   = document.getElementById("profileAvatarImg");
+    var photoHit    = document.getElementById("photoHit");
+
+    if (avatarInput && avatarImg) {
+        avatarInput.addEventListener("change", function () {
+            var file = this.files && this.files[0];
+            if (!file) { return; }
+
+            if (photoHit) { photoHit.classList.add("is-busy"); }
+
+            var fd = new FormData();
+            fd.append("avatar", file);
+
+            fetch("/webprogg/user/upload-avatar.php", { method: "POST", body: fd }) /* VERIFY endpoint */
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data && data.success && data.avatar) {
+                        avatarImg.src = data.avatar;
+                    } else {
+                        window.alert((data && data.message) || "Upload failed. Try another image.");
+                    }
+                })
+                .catch(function () {
+                    window.alert("Upload failed. Please try again.");
+                })
+                .then(function () {
+                    if (photoHit) { photoHit.classList.remove("is-busy"); }
+                    avatarInput.value = "";
+                });
+        });
+    }
+
 })();
 </script>
 

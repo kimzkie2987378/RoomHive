@@ -4,7 +4,13 @@
    reviews | messages | notifications | editprofile | verification |
    payoutmethods | notificationsettings | security | quithosting |
    helpcenter
-   Requires host_init.php ($host, $pending_tenants_count). */
+   Requires host_init.php ($host, $pending_tenants_count).
+
+   === RENAME (this version) ===
+   Earnings link now points at hostearnings.php (file was
+   renamed from earning.php to match the page-naming style
+   used by the other host pages: hostbookings, hostreviews,
+   hostmessages, hostnotifications...). */
  $activePage = $activePage ?? '';
 
 if (!function_exists('h')) {
@@ -102,7 +108,7 @@ if ($hostNotifUnread === null && isset($_SESSION['user_id'])) {
 
     <a href="/webprogg/host/hostbookings.php" class="hp-side-link<?php echo hp_side_active($activePage, 'bookings'); ?>">Bookings</a>
 
-    <a href="/webprogg/host/earning.php" class="hp-side-link<?php echo hp_side_active($activePage, 'earnings'); ?>">Earnings</a>
+    <a href="/webprogg/host/hostearnings.php" class="hp-side-link<?php echo hp_side_active($activePage, 'earnings'); ?>">Earnings</a>
     <a href="/webprogg/host/payouts.php" class="hp-side-link<?php echo hp_side_active($activePage, 'payouts'); ?>">Payouts</a>
     <a href="/webprogg/host/hostreviews.php" class="hp-side-link<?php echo hp_side_active($activePage, 'reviews'); ?>">Reviews</a>
     <a href="/webprogg/host/hostmessages.php" class="hp-side-link<?php echo hp_side_active($activePage, 'messages'); ?>">Messages</a>

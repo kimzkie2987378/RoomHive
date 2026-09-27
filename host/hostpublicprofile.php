@@ -962,4 +962,4 @@ function roomhive_detail_url($listing)
 <script src="/webprogg/assets/javaScript.js"></script>
 
 </body>
-</html>
+</html> 

@@ -11,6 +11,30 @@
    === UPDATED === added the 50% reserve breakdown rows,
    guests display box, application-status pill base and the
    map-pin classes used by the current listing-detail.php.
+
+   === LAYOUT FIXES ===
+   1. GRID OVERFLOW GUARD: .rd-main gets min-width: 0 so long
+      words / the gallery can never force the 1fr column wider
+      and crush the 400px booking sidebar.
+   2. STATIC SIDEBAR: sticky removed — the booking card no
+      longer follows the scroll.
+   3. SPACE DETAILS FILLS THE RIGHT COLUMN: the Space Details
+      block was moved OUT of the left column and into the
+      sidebar (last card, .rd-details-card). The sidebar
+      stretches to the full height of the grid row and the
+      details card flex-grows to occupy all leftover space —
+      no dead gap under the booking card. Its rows spread
+      evenly inside the stretched card. Stacks normally
+      under 1080px.
+
+   === THIS FIX — TOP PADDING ===
+   The 130px top padding was reserving room for the fixed
+   ~90px navbar, but no navbar is rendering on the page, so
+   that space sat empty above "Back to Listings". Reduced
+   to 32px so the content moves up and occupies the space.
+   ⚠ IF THE FIXED NAVBAR IS RE-ADDED to listing-detail.php,
+   change the top padding back to 130px (90px navbar + 40px
+   air) or the topbar will render underneath it.
 ========================== */
 
 :root {
@@ -43,10 +67,22 @@
 .listing-detail-page {
   max-width: 1280px;
   margin: 0 auto;
+
+  /* TOP PADDING FIX — was 130px to clear a fixed navbar that
+     isn't currently on the page (dead blank space). 32px now.
+     Re-add the navbar include? Bump this back to 130px. */
   padding: 32px 40px 80px;
+
   font-family: var(--font-ui);
   color: var(--rh-ink);
   background: var(--rh-canvas);
+}
+
+@media (max-width: 600px) {
+  .listing-detail-page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }
 
 /* =========================
@@ -121,10 +157,69 @@
   align-items: start;
 }
 
+/* LAYOUT FIX 1 — let the left column shrink; long words and
+   wide media can't push it past 1fr and crush the sidebar. */
+.rd-main {
+  min-width: 0;
+}
+
+/* LAYOUT FIX 2 + 3 — sticky removed; the sidebar stretches to
+   match the grid row's full height and becomes a flex column
+   so its LAST card (Space Details) can grow to occupy all the
+   leftover vertical space in the right column. */
+.rd-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch; /* overrides .rd-layout's align-items:start */
+}
+
+/* SPACE DETAILS CARD — the last card in the sidebar.
+   flex-grow makes the card itself expand to OCCUPY every bit
+   of the leftover space in the right column, so there is no
+   dead gap under the booking card. It is also a flex column
+   so its spec rows can spread out inside it. */
+.rd-details-card {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Card heading — display font like the section headings, with
+   the same gold underline so it feels native to the page. */
+.rd-details-card h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--rh-ink);
+}
+
+.rd-details-card h3::after {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 3px;
+  margin-top: 7px;
+  background: linear-gradient(90deg, #f6b93b, #eda423);
+  border-radius: 2px;
+}
+
+/* Rows spread evenly through the stretched card so the
+   occupied space looks intentional, like a tall spec sheet.
+   Delete this block if you prefer the rows compact at the
+   top of the card instead of spread out. */
+.rd-details-card .rd-detail-row {
+  flex: 1 0 auto;
+}
+
 @media (max-width: 1080px) {
   .rd-layout {
     grid-template-columns: 1fr;
   }
+
+  /* Sidebar stacks full-width below the main column — its
+     height becomes auto, so the details card's flex-grow
+     resolves to nothing and everything flows normally. */
 }
 
 /* =========================
@@ -294,6 +389,7 @@
   font-size: 1.9rem;
   margin: 26px 0 6px;
   color: var(--rh-ink);
+  overflow-wrap: break-word;
 }
 
 .rd-subline {
@@ -515,7 +611,7 @@
 }
 
 /* =========================
-   === NEW === 50% RESERVE BREAKDOWN (booking card)
+   50% RESERVE BREAKDOWN (booking card)
 ========================== */
 
 .rd-reserve-rows {
@@ -627,7 +723,7 @@
 }
 
 /* =========================
-   === NEW === GUESTS DISPLAY BOX
+   GUESTS DISPLAY BOX
    (the page shows a fixed capacity, not a select)
 ========================== */
 
@@ -651,7 +747,7 @@
 }
 
 /* =========================
-   === NEW === APPLICATION STATUS PILL (base)
+   APPLICATION STATUS PILL (base)
 ========================== */
 
 .rd-application-status {
@@ -688,7 +784,7 @@
 }
 
 /* =========================
-   === NEW === NOTICE BANNER (base)
+   NOTICE BANNER (base)
 ========================== */
 
 .rd-notice {
@@ -711,7 +807,7 @@
 }
 
 /* =========================
-   === NEW === DATE COMPLETION HINT
+   DATE COMPLETION HINT
 ========================== */
 
 .rd-date-hint {
@@ -811,7 +907,10 @@
   margin: 6px 0 0;
 }
 
-/* PROPERTY DETAILS CARD */
+/* SPACE DETAILS ROWS
+   (the card itself lives at the bottom of the sidebar via
+   .rd-details-card { flex: 1 0 auto } — see the LAYOUT
+   section above) */
 
 .rd-detail-row {
   display: flex;
@@ -883,7 +982,11 @@
 }
 
 /* =========================
-   === NEW === LEAFLET EXACT-LOCATION MAP
+   LEAFLET EXACT-LOCATION MAP
+   FIX: position was changed to `fixed`, which detached the
+   map from the page — it floated over the viewport and
+   covered content while scrolling. Restored to `relative`
+   (Leaflet also requires a positioned container).
 ========================== */
 
 .rd-map-embed {

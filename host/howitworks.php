@@ -22,15 +22,11 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 }
  $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-/* Notification bell badge count — same placeholder used across
-   every logged-in page's navbar until real notifications land. */
+/* Notification bell badge count */
  $notification_count = 0;
 
-/* NEW — FLOATING LOGIN MODAL
-   Guests get the login card popped over the page once per
-   browser session. Flip to false to disable auto-open (the
-   modal still opens from the BECOME A HOST buttons). */
- $autoOpenLoginPopup = !$isLoggedIn && empty($_SESSION['admin_logged_in']);
+/* FLOATING LOGIN MODAL — DELETED. Guests who click any
+   login link now navigate to loginform.php directly. */
 
 /* =========================================================
    ROOMHIVE - HOW IT WORKS
@@ -40,7 +36,6 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => $isLoggedIn ? "/webprogg/host/becomeahost.php" : "/webprogg/auth/loginform.php",
-    "HIVE CLUB" => "/webprogg/hiveclub.php",
     "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
 
@@ -139,7 +134,6 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
     "About Us" => "/webprogg/index.php",
     "How It Works" => "/webprogg/host/howitworks.php",
     "Become a Host" => "/webprogg/host/becomeahost.php",
-    "Hive Club" => "/webprogg/hiveclub.php",
     "Contacts" => "/webprogg/misc/contacts.php"
 ];
 
@@ -185,418 +179,28 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
          only start hidden when they can actually be revealed. -->
     <script>document.documentElement.classList.add("js");</script>
 
+    <!-- FLOATING LOGIN MODAL STYLES — DELETED -->
+
     <!-- =====================================================
-         NEW — FLOATING LOGIN MODAL STYLES
-         Self-contained so it can't be broken by a stale
-         cached howitworks.css / style.css.
+         BRIGHT THEME PATCH (kept — page-level styles only)
     ====================================================== -->
     <style>
 
-/* =========================================================
-   FLOATING LOGIN MODAL — hive-styled, self-contained
-========================================================= */
-
-.lx-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 24px;
-
-  visibility: hidden;
-  pointer-events: none;
+:root {
+  color-scheme: light;
 }
 
-.lx-modal.open {
-  visibility: visible;
-  pointer-events: auto;
+/* ---- Brighten the page itself ---- */
+body {
+  background: #fffdf8;
 }
 
-.lx-modal-backdrop {
-  position: absolute;
-  inset: 0;
-
-  background: rgba(28, 42, 56, 0.38);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
-
-  opacity: 0;
-  transition: opacity 0.3s ease;
+.hiw-hero {
+  background: linear-gradient(180deg, #fff4d6 0%, #fffdf8 78%, #ffffff 100%);
 }
 
-.lx-modal.open .lx-modal-backdrop {
-  opacity: 1;
-}
-
-.lx-modal-card {
-  position: relative;
-  z-index: 1;
-
-  width: 362px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-
-  background: #ffffff;
-
-  border-radius: 22px;
-
-  padding: 32px 30px 26px;
-
-  box-shadow: 0 30px 70px rgba(28, 42, 56, 0.35);
-
-  opacity: 0;
-  transform: translateY(26px) scale(0.96);
-
-  transition:
-    opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.lx-modal.open .lx-modal-card {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-
-  animation: lxFloat 5s ease-in-out 0.4s infinite;
-}
-
-/* Honey accent bar across the top */
-.lx-modal-card::before {
-  content: "";
-
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-
-  height: 5px;
-
-  background: linear-gradient(90deg, #eda423, #f6c04e, #eda423);
-
-  border-radius: 22px 22px 0 0;
-}
-
-.lx-modal-close {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-
-  width: 32px;
-  height: 32px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  background: #f4f1e7;
-
-  border: none;
-  border-radius: 50%;
-
-  color: #6b7684;
-
-  font-size: 17px;
-  line-height: 1;
-
-  cursor: pointer;
-
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.lx-modal-close:hover {
-  background: #eda423;
-
-  color: #ffffff;
-
-  transform: rotate(90deg);
-}
-
-.lx-modal-logo {
-  text-align: center;
-
-  margin-bottom: 10px;
-}
-
-.lx-modal-logo img {
-  width: 96px;
-
-  display: inline-block;
-}
-
-.lx-modal-title {
-  margin: 0 0 16px;
-
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-
-  text-align: center;
-
-  color: #1c2a38;
-}
-
-.lx-error {
-  padding: 11px 14px;
-
-  margin-bottom: 14px;
-
-  background: #fdecec;
-
-  border: 1px solid #f3b9b9;
-  border-radius: 11px;
-
-  color: #a4302f;
-
-  font-size: 0.82rem;
-  font-weight: 500;
-
-  text-align: center;
-}
-
-.lx-field {
-  margin-bottom: 12px;
-}
-
-.lx-field label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  margin-bottom: 6px;
-
-  color: #1c2a38;
-
-  font-size: 0.82rem;
-  font-weight: 500;
-}
-
-.lx-field label img {
-  width: 16px;
-  height: 16px;
-
-  object-fit: contain;
-}
-
-.lx-input {
-  width: 100%;
-  height: 44px;
-
-  padding: 0 13px;
-
-  background: #fbfcfd;
-
-  border: 1.5px solid #e3e7ec;
-  border-radius: 11px;
-
-  outline: none;
-
-  color: #1c2a38;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.9rem;
-
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease;
-}
-
-.lx-input:focus {
-  background: #ffffff;
-
-  border-color: #eda423;
-
-  box-shadow: 0 0 0 4px rgba(237, 164, 35, 0.15);
-}
-
-.lx-forgot {
-  text-align: center;
-
-  margin: 4px 0 12px;
-}
-
-.lx-forgot a {
-  color: #1c2a38;
-
-  font-size: 0.8rem;
-  font-weight: 600;
-
-  text-decoration: none;
-}
-
-.lx-forgot a:hover {
-  color: #b07708;
-}
-
-.lx-submit {
-  width: 100%;
-  height: 46px;
-
-  background: linear-gradient(135deg, #f6b93b, #eda423);
-
-  border: none;
-  border-radius: 12px;
-
-  color: #1c2a38;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-
-  cursor: pointer;
-
-  box-shadow: 0 8px 18px rgba(237, 164, 35, 0.35);
-
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.lx-submit:hover {
-  transform: translateY(-2px);
-
-  box-shadow: 0 12px 24px rgba(237, 164, 35, 0.45);
-}
-
-.lx-submit:disabled {
-  opacity: 0.7;
-
-  cursor: not-allowed;
-
-  transform: none;
-}
-
-.lx-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  margin: 16px 0;
-
-  color: #6b7684;
-
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.lx-divider::before,
-.lx-divider::after {
-  content: "";
-
-  flex: 1;
-  height: 1px;
-
-  background: #e3e7ec;
-}
-
-.lx-social {
-  width: 100%;
-  height: 44px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-
-  background: #ffffff;
-
-  border: 1.5px solid #e3e7ec;
-  border-radius: 11px;
-
-  color: #1c2a38;
-
-  font-family: "Poppins", sans-serif;
-  font-size: 0.85rem;
-  font-weight: 500;
-
-  cursor: pointer;
-
-  margin-bottom: 10px;
-
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.2s ease;
-}
-
-.lx-social:hover {
-  border-color: #eda423;
-
-  background: #fff8ec;
-
-  transform: translateY(-1px);
-}
-
-.lx-social img {
-  width: 17px;
-  height: 17px;
-
-  object-fit: contain;
-}
-
-.lx-create {
-  margin: 6px 0 0;
-
-  text-align: center;
-
-  color: #6b7684;
-
-  font-size: 0.83rem;
-}
-
-.lx-create a {
-  color: #b07708;
-
-  font-weight: 700;
-
-  text-decoration: none;
-}
-
-.lx-create a:hover {
-  text-decoration: underline;
-}
-
-@keyframes lxFloat {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-@media (max-width: 480px) {
-  .lx-modal {
-    padding: 14px;
-  }
-
-  .lx-modal-card {
-    width: 100%;
-
-    padding: 26px 20px 22px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lx-modal-card,
-  .lx-modal-backdrop {
-    transition: none;
-  }
-
-  .lx-modal.open .lx-modal-card {
-    animation: none;
-  }
-}
+.hiw-renters { background: #fffdf8; }
+.hiw-hosts   { background: #fff8e9; }
 
     </style>
 
@@ -674,9 +278,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
                 </a>
 
 
-                <!-- For guests this links to loginform.php — the
-                     floating modal's JS catches it and opens the
-                     card in place instead of navigating. -->
+                <!-- Navigates to loginform.php for guests — no popup -->
                 <a
                     href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
                     class="hiw-btn hiw-btn-outline"
@@ -997,9 +599,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
             </a>
 
 
-            <!-- For guests this links to loginform.php — the
-                 floating modal's JS catches it and opens the
-                 card in place instead of navigating. -->
+            <!-- Navigates to loginform.php for guests — no popup -->
             <a
                 href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
                 class="hiw-btn hiw-btn-ghost-light"
@@ -1215,156 +815,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 </footer>
 
 
-<!-- =========================================================
-     NEW — FLOATING LOGIN MODAL (guests)
-     Auto-opens once per browser session, and opens from any
-     link pointing at loginform.php — the hero and CTA
-     BECOME A HOST buttons are caught automatically.
-========================================================= -->
-<div class="lx-modal" id="lxModal" aria-hidden="true">
-
-    <div class="lx-modal-backdrop" data-lx-close></div>
-
-    <div class="lx-modal-card" role="dialog" aria-modal="true" aria-label="Log in to RoomHive">
-
-        <button type="button" class="lx-modal-close" data-lx-close aria-label="Close">
-            &times;
-        </button>
-
-        <div class="lx-modal-logo">
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive logo"
-            >
-
-        </div>
-
-        <h2 class="lx-modal-title">
-            Welcome back!
-        </h2>
-
-        <!-- Error message (filled in by JS on a failed attempt) -->
-        <div class="lx-error" id="lxModalError" hidden></div>
-
-        <form id="lxModalForm" novalidate>
-
-            <input type="hidden" name="redirect" value="">
-
-            <!-- Email -->
-            <div class="lx-field">
-
-                <label for="lx-email">
-
-                    <img
-                        src="/webprogg/images/EmailIcon.jpg"
-                        alt=""
-                    >
-
-                    Email Address
-
-                </label>
-
-                <input
-                    class="lx-input"
-                    type="email"
-                    id="lx-email"
-                    name="email"
-                    autocomplete="email"
-                    required
-                >
-
-            </div>
-
-            <!-- Password -->
-            <div class="lx-field">
-
-                <label for="lx-password">
-
-                    <img
-                        src="/webprogg/images/LockIcon.png"
-                        alt=""
-                    >
-
-                    Password
-
-                </label>
-
-                <input
-                    class="lx-input"
-                    type="password"
-                    id="lx-password"
-                    name="password"
-                    autocomplete="current-password"
-                    required
-                >
-
-            </div>
-
-            <!-- Forgot password -->
-            <div class="lx-forgot">
-
-                <a href="/webprogg/auth/forgotpassword.php">
-                    Forgot Password?
-                </a>
-
-            </div>
-
-            <button type="submit" class="lx-submit">
-                Log in
-            </button>
-
-        </form>
-
-        <div class="lx-divider">
-            or
-        </div>
-
-        <!-- NOTE: absolute paths — this page lives in /host/,
-             so relative hrefs like 'google-login.php' would 404. -->
-        <button
-            type="button"
-            class="lx-social"
-            onclick="window.location.href='/webprogg/auth/google-login.php'"
-        >
-
-            <img
-                src="/webprogg/images/Googlecons.png"
-                alt=""
-            >
-
-            Continue with Google
-
-        </button>
-
-        <button
-            type="button"
-            class="lx-social"
-            onclick="window.location.href='/webprogg/auth/apple-login.php'"
-        >
-
-            <img
-                src="/webprogg/images/AppleIcons.png"
-                alt=""
-            >
-
-            Continue with Apple
-
-        </button>
-
-        <p class="lx-create">
-
-            Not registered yet?
-
-            <a href="/webprogg/auth/createaccount.php">
-                Create Account Here
-            </a>
-
-        </p>
-
-    </div>
-
-</div>
+<!-- FLOATING LOGIN MODAL MARKUP — DELETED -->
 
 
 <!-- =========================================================
@@ -1458,153 +909,7 @@ if ($isLoggedIn && isset($_SESSION['user_id'])) {
 </script>
 
 
-<!-- =========================================================
-     NEW — FLOATING LOGIN MODAL SCRIPT (self-contained)
-========================================================= -->
-<script>
-(function () {
-    "use strict";
-
-    var modal = document.getElementById("lxModal");
-    var form  = document.getElementById("lxModalForm");
-
-    if (!modal || !form) {
-        return;
-    }
-
-    var errorBox   = document.getElementById("lxModalError");
-    var emailInput = document.getElementById("lx-email");
-
-    function openModal() {
-        modal.classList.add("open");
-        modal.setAttribute("aria-hidden", "false");
-        document.body.style.overflow = "hidden";
-
-        if (emailInput) {
-            window.setTimeout(function () {
-                emailInput.focus();
-            }, 350);
-        }
-    }
-
-    function closeModal() {
-        modal.classList.remove("open");
-        modal.setAttribute("aria-hidden", "true");
-        document.body.style.overflow = "";
-
-        if (errorBox) {
-            errorBox.hidden = true;
-            errorBox.textContent = "";
-        }
-    }
-
-    /* ---- AUTO-OPEN: guests, once per browser session ----
-       Shares the same sessionStorage flag as index.php and
-       listing.php, so the card only nags once no matter which
-       page you land on. */
-    var autoOpen = <?php echo $autoOpenLoginPopup ? "true" : "false"; ?>;
-
-    if (autoOpen) {
-        var alreadyShown = false;
-
-        try {
-            alreadyShown =
-                sessionStorage.getItem("rhLoginModalShown") === "1";
-            sessionStorage.setItem("rhLoginModalShown", "1");
-        } catch (err) {
-            /* storage unavailable — just show it */
-        }
-
-        if (!alreadyShown) {
-            window.setTimeout(openModal, 700);
-        }
-    }
-
-    /* ---- Any link to loginform.php opens the modal instead of
-            navigating — covers the hero BECOME A HOST button and
-            the CTA LIST YOUR SPACE button with zero markup
-            changes. ---- */
-    document.addEventListener("click", function (event) {
-        if (!event.target || !event.target.closest) {
-            return;
-        }
-
-        var loginLink = event.target.closest('a[href*="loginform.php"]');
-
-        if (loginLink) {
-            event.preventDefault();
-            openModal();
-            return;
-        }
-
-        if (event.target.closest("[data-lx-close]")) {
-            closeModal();
-        }
-    });
-
-    /* ---- Esc closes it ---- */
-    document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && modal.classList.contains("open")) {
-            closeModal();
-        }
-    });
-
-    /* ---- Submit through loginform.php's AJAX path ----
-       The X-Requested-With header makes loginform.php answer
-       with JSON (already supported), so errors show inside the
-       card and success redirects without a full reload. */
-    form.addEventListener("submit", function (event) {
-        event.preventDefault();
-
-        if (errorBox) {
-            errorBox.hidden = true;
-        }
-
-        var submitBtn = form.querySelector(".lx-submit");
-        var originalLabel = submitBtn ? submitBtn.textContent : "";
-
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = "Logging in...";
-        }
-
-        fetch("/webprogg/auth/loginform.php", {
-            method: "POST",
-            headers: { "X-Requested-With": "XMLHttpRequest" },
-            body: new FormData(form),
-            credentials: "same-origin"
-        })
-            .then(function (response) {
-                return response.json();
-            })
-            .then(function (data) {
-                if (data && data.success) {
-                    window.location.href = data.redirect;
-                    return;
-                }
-
-                if (errorBox) {
-                    errorBox.textContent =
-                        (data && data.error) || "Something went wrong.";
-                    errorBox.hidden = false;
-                }
-            })
-            .catch(function () {
-                if (errorBox) {
-                    errorBox.textContent =
-                        "Couldn't reach the server. Please try again.";
-                    errorBox.hidden = false;
-                }
-            })
-            .finally(function () {
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = originalLabel || "Log in";
-                }
-            });
-    });
-})();
-</script>
+<!-- FLOATING LOGIN MODAL SCRIPT — DELETED -->
 
 
 </body>

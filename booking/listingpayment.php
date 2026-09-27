@@ -3,22 +3,27 @@
    ROOMHIVE — LISTING PAYMENT (Inquiry Step 2: Payment)
    listingpayment.php
 
-   === CHANGES (this version) ===
-   - NAVBAR REMOVED — the custom lp-nav header is deleted;
-     the page is a focused payment step between Details and
-     Confirmation (back links handle navigation).
-   - PAY FULL PRICE BUTTON — under "Pay Reserve", guests can
-     pay the ENTIRE discounted total up front. Posts the same
-     form with payment_purpose_full=1; process-payment.php
-     reads the flag and charges the full amount instead of
-     the 50% reserve. Hive discount still applies once.
-   - KEPT: Hive Club discount, balance mode, owner "List Now"
-     flow, guards, map pin, same POST target/field names.
+   === MONTHLY RENTAL + LONG TERM (this version) ===
+   - Normal: reads ?months= (1-12), total = monthly x months.
+   - LONG TERM (?long_term=1): open-ended month-to-month.
+     Pay is ONE month at a time — duration forced to 1,
+     checkout_date empty. Reserve = 50% of first month;
+     Pay Full Price = whole first month.
+
+   === HIVE CLUB REMOVED ===
+   No membership checks, no member chip, no discount rows.
+   Every amount derives from the listing's base monthly price:
+     total = price x months, reserve = 50% of total.
+
+   === KEPT ===
+   - PAY FULL PRICE button + payment_purpose_full flag
+   - pay_full persists via ?pay_full=1 round-trip
+   - balance mode, owner "List Now" flow,
+     guards, map pin, same POST target/field names
 ========================================================= */
 
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php';
 
 /* -----------------------------------------------------
    AUTH GUARD
@@ -38,16 +43,6 @@ if (!isset($_SESSION['user_id'])) {
 );
  $ncStmt->execute(['u' => $_SESSION['user_id']]);
  $notification_count = (int) $ncStmt->fetchColumn();
-
-/* -----------------------------------------------------
-   HIVE CLUB — expire lapsed memberships, load this member
------------------------------------------------------ */
-hive_expiry_sweep($pdo);
- $hiveMember   = hive_member($pdo, $_SESSION['user_id']);
- $hiveActive   = hive_active($hiveMember);
- $hiveDiscount = hive_discount_pct($hiveMember);
- $hiveTier     = $hiveMember ? (string) $hiveMember['tier'] : null;
- $hiveDaysLeft = hive_days_until_expiry($hiveMember);
 
 if (!function_exists('h')) {
     function h($value) {
@@ -87,15 +82,34 @@ if (!function_exists('payment_valid_date')) {
  $checkin  = payment_valid_date($_GET['checkin_date'] ?? null) ?? '';
  $checkout = payment_valid_date($_GET['checkout_date'] ?? null) ?? '';
 
+/* MONTHLY RENTAL — duration in months (1-12); total = monthly x months */
+ $allowedDurations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+ $durationMonths = (int) ($_GET['months'] ?? 1);
+ if (!in_array($durationMonths, $allowedDurations, true)) { $durationMonths = 1; }
+
  $longTerm = isset($_GET['long_term']) && $_GET['long_term'] === '1';
 
+/* LONG TERM — month-to-month: pay is ONE month at a time,
+   no move-out date. Force duration to 1 month. */
 if ($longTerm) {
+    $durationMonths = 1;
     $checkout = '';
 }
+
+ $durationLabel = $longTerm
+    ? 'Long Term'
+    : ($durationMonths === 1 ? '1 Month' : $durationMonths . ' Months');
 
  $allowedGuestOptions = ['1', '2', '3', '4+'];
  $guestsInput = $_GET['guests'] ?? null;
  $guests = in_array($guestsInput, $allowedGuestOptions, true) ? $guestsInput : '1';
+
+/* -----------------------------------------------------
+   PAY FULL PRICE MODE — set when the guest comes back
+   from process-payment.php's "Change payment method"
+   link after choosing Pay Full Price (?pay_full=1).
+----------------------------------------------------- */
+ $payFullMode = isset($_GET['pay_full']) && $_GET['pay_full'] === '1';
 
 /* -----------------------------------------------------
    PAY-REMAINING-BALANCE MODE
@@ -215,16 +229,12 @@ if ($balanceBooking === null) {
  $isSuperhost = $host_rating_count >= 5 && $host_rating_avg >= 4.8;
 
 /* =========================================================
-   HIVE CLUB PRICING (Phase 4)
+   MONTHLY PRICING — Hive Club removed (base price only)
 ========================================================= */
  $monthlyRent = (float) $listing['price'];
 
-if ($balanceBooking !== null) {
-    $hiveDiscount = 0;
-}
-
- $discountAmount = round($monthlyRent * ($hiveDiscount / 100), 2);
- $discountedTotal = round($monthlyRent - $discountAmount, 2);
+ $discountedMonthly = $monthlyRent;
+ $discountedTotal   = round($monthlyRent * $durationMonths, 2);
 
  $reservationFee  = round($discountedTotal * 0.5, 2);
  $reserveBalance  = round($discountedTotal - $reservationFee, 2);
@@ -306,7 +316,6 @@ if ($balanceBooking !== null) {
         color: #14142B;
     }
 
-    /* ===== PAGE SHELL ===== */
     .bp-page { max-width: 1100px; margin: 0 auto; padding: 30px 20px 70px; }
 
     .bp-back-link {
@@ -322,7 +331,6 @@ if ($balanceBooking !== null) {
     }
     .bp-back-link:hover { color: #F5A623; }
 
-    /* ===== STEP TRACKER ===== */
     .bp-steps {
         display: flex;
         align-items: flex-start;
@@ -367,7 +375,6 @@ if ($balanceBooking !== null) {
     }
     .bp-step-line-done { background: #A8DFBC; }
 
-    /* ===== LAYOUT ===== */
     .bp-layout { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
     .bp-main { flex: 1.7; min-width: 300px; }
     .bp-sidebar {
@@ -384,7 +391,6 @@ if ($balanceBooking !== null) {
         .bp-sidebar { position: static; max-width: none; }
     }
 
-    /* ===== CARDS ===== */
     .bp-card {
         background: #fff;
         border: 1px solid #EEF1F6;
@@ -396,7 +402,6 @@ if ($balanceBooking !== null) {
     .bp-main h1 { margin: 0 0 5px; font-size: 22px; color: #14142B; letter-spacing: -0.3px; }
     .bp-subtext { margin: 0 0 20px; font-size: 13.5px; color: #8B93A6; }
 
-    /* ===== BANNERS ===== */
     .bp-secure-banner {
         display: flex;
         gap: 12px;
@@ -433,44 +438,6 @@ if ($balanceBooking !== null) {
     .bp-reserve-note strong { display: block; color: #8A5A10; font-size: 13.5px; }
     .bp-reserve-note p { margin: 2px 0 0; color: #A97B2F; font-size: 12.5px; line-height: 1.5; }
 
-    /* ===== HIVE CLUB MEMBER CHIP (sidebar) ===== */
-    .bp-hive-chip {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        background: linear-gradient(120deg, #FFF6E9 0%, #FFFDF6 100%);
-        border: 1px solid #F5C77E;
-        border-radius: 14px;
-        padding: 14px 16px;
-        margin-bottom: 16px;
-    }
-    .bp-hive-chip .bp-secure-icon { background: #FDE8C8; color: #C77800; font-size: 18px; }
-    .bp-hive-chip-body { flex: 1; min-width: 0; }
-    .bp-hive-chip-body strong { display: block; color: #8A5A10; font-size: 13.5px; }
-    .bp-hive-chip-body p { margin: 2px 0 0; color: #A97B2F; font-size: 12px; line-height: 1.5; }
-    .bp-hive-chip a {
-        flex-shrink: 0;
-        font-size: 11.5px;
-        font-weight: 800;
-        color: #C77800;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-    .bp-hive-chip a:hover { text-decoration: underline; }
-
-    /* ===== DISCOUNT ROW (summary) ===== */
-    .bp-summary-row-disc strong { color: #1FA971; }
-    .bp-summary-row-disc span::before {
-        content: "";
-        display: inline-block;
-        width: 7px; height: 7px;
-        border-radius: 50%;
-        background: #2FA84F;
-        margin-right: 6px;
-        vertical-align: middle;
-    }
-
-    /* ===== PAYMENT METHODS ===== */
     .bp-methods-label {
         font-size: 12px;
         font-weight: 700;
@@ -533,7 +500,6 @@ if ($balanceBooking !== null) {
         background: radial-gradient(#F5A623 0 42%, transparent 46%);
     }
 
-    /* ===== HOW IT WORKS ===== */
     .bp-howitworks {
         background: #F6F7FB;
         border-radius: 14px;
@@ -566,7 +532,6 @@ if ($balanceBooking !== null) {
     .bp-hiw-step p { margin: 0; font-size: 12px; color: #8B93A6; line-height: 1.45; }
     .bp-hiw-arrow { color: #C9CDD6; font-size: 16px; padding-top: 4px; }
 
-    /* ===== PAY BUTTONS ===== */
     .bp-btn-pay {
         display: block;
         width: 100%;
@@ -587,7 +552,6 @@ if ($balanceBooking !== null) {
     .bp-btn-pay:active { transform: translateY(0); }
     .bp-btn-pay:disabled { opacity: 0.7; cursor: default; transform: none; }
 
-    /* ===== PAY FULL BUTTON (NEW) ===== */
     .bp-btn-full {
         background: #ffffff;
         color: #14142B;
@@ -617,7 +581,6 @@ if ($balanceBooking !== null) {
     }
     .bp-back-inquiry:hover { color: #14142B; text-decoration: underline; }
 
-    /* ===== SIDEBAR: LISTING SUMMARY ===== */
     .bp-listing-photo {
         width: 100%;
         height: 170px;
@@ -687,7 +650,6 @@ if ($balanceBooking !== null) {
     }
     .bp-summary-row-total strong { font-size: 17px; color: #C77800; }
 
-    /* ===== HOST CARD ===== */
     .bp-host-card h3 { margin: 0 0 14px; font-size: 15px; color: #14142B; }
     .bp-host-row { display: flex; gap: 12px; margin-bottom: 12px; }
     .bp-host-avatar {
@@ -720,7 +682,6 @@ if ($balanceBooking !== null) {
         padding: 9px 12px;
     }
 
-    /* ===== LOCATION CARD ===== */
     .bp-location-card h3 { margin: 0 0 10px; font-size: 15px; color: #14142B; }
     .bp-location-address { margin: 0 0 12px; font-size: 13px; color: #5B6172; }
     .bp-map-embed {
@@ -759,6 +720,8 @@ if ($balanceBooking !== null) {
         transition: background .15s, border-color .15s;
     }
     .bp-btn-outline:hover { background: #F6F7FB; border-color: #E3E7EF; }
+
+    .rd-total-rent strong { color: #C77800; }
 </style>
 </head>
 
@@ -816,7 +779,7 @@ if ($balanceBooking !== null) {
                     </p>
                 <?php else: ?>
                     <h1>Payment Method</h1>
-                    <p class="bp-subtext">Choose your preferred payment method to reserve your dates.</p>
+                    <p class="bp-subtext">Choose your preferred payment method to reserve your rental period.</p>
                 <?php endif; ?>
 
                 <div class="bp-secure-banner">
@@ -842,13 +805,13 @@ if ($balanceBooking !== null) {
                     <div>
                         <strong>24-hour reservation</strong>
                         <p>
-                            This &#8369;<?php echo h(number_format($reservationFee, 2)); ?> payment (50% of the price)
-                            locks your dates for <b>24 hours</b> while the host reviews your application.
-                            If the host doesn't accept within 24 hours, the reserve is automatically declined
-                            and your payment is refunded to your RoomHive wallet. Pay the remaining
-                            &#8369;<?php echo h(number_format($reserveBalance, 2)); ?> after acceptance to
-                            fully enjoy your stay. Prefer to settle everything up front? Use
-                            <b>Pay Full Price</b> below.
+                            This &#8369;<?php echo h(number_format($reservationFee, 2)); ?> payment (50% of your
+                            <?php echo $longTerm ? 'first month' : h($durationLabel) . ' total'; ?>) locks your dates for <b>24 hours</b>
+                            while the host reviews your application. If the host doesn't accept within 24 hours,
+                            the reserve is automatically declined and your payment is refunded to your RoomHive
+                            wallet. Pay the remaining &#8369;<?php echo h(number_format($reserveBalance, 2)); ?>
+                            after acceptance<?php echo $longTerm ? ' — subsequent months are arranged with your host' : ''; ?>.
+                            Prefer to settle everything up front? Use <b>Pay Full Price</b> below.
                         </p>
                     </div>
                 </div>
@@ -861,6 +824,7 @@ if ($balanceBooking !== null) {
                     <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                     <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                     <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
+                    <input type="hidden" name="months" value="<?php echo (int) $durationMonths; ?>">
 
                     <?php if ($balanceBooking !== null): ?>
                         <input type="hidden" name="booking_id" value="<?php echo h($payBalanceBookingId); ?>">
@@ -868,8 +832,10 @@ if ($balanceBooking !== null) {
                     <?php else: ?>
                         <input type="hidden" name="payment_purpose" value="reservation">
                     <?php endif; ?>
-                    <!-- Full-payment toggle — flipped by the Pay Full Price button -->
-                    <input type="hidden" name="payment_purpose_full" id="payment_purpose_full" value="0">
+                    <!-- Full-payment toggle — flipped by the Pay Full Price button,
+                         or pre-set when returning via ?pay_full=1 -->
+                    <input type="hidden" name="payment_purpose_full" id="payment_purpose_full"
+                           value="<?php echo ($balanceBooking === null && $payFullMode) ? '1' : '0'; ?>">
 
                     <p class="bp-methods-label">Select a payment method</p>
 
@@ -910,7 +876,9 @@ if ($balanceBooking !== null) {
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">1</span>
                                 <strong>Reserve (50%) or Pay Full</strong>
-                                <p>Pay 50% to lock your dates, or pay the full price up front.</p>
+                                <p><?php echo $longTerm
+                                    ? 'Long Term: pay 50% of your first month to lock the space, or the full first month.'
+                                    : 'Pay 50% of your ' . (int) $durationMonths . '-month total to lock your dates, or pay everything up front.'; ?></p>
                             </div>
                             <span class="bp-hiw-arrow">&#8594;</span>
                             <div class="bp-hiw-step">
@@ -922,7 +890,9 @@ if ($balanceBooking !== null) {
                             <div class="bp-hiw-step">
                                 <span class="bp-hiw-num">3</span>
                                 <strong>Enjoy Your Stay</strong>
-                                <p>After acceptance you're all set — or just enjoy, if you paid in full.</p>
+                                <p><?php echo $longTerm
+                                    ? 'After acceptance, move in and settle each month with your host.'
+                                    : "After acceptance you're all set — or just move in, if you paid in full."; ?></p>
                             </div>
                         </div>
                     </div>
@@ -934,7 +904,8 @@ if ($balanceBooking !== null) {
                     </button>
 
                     <?php if ($balanceBooking === null): ?>
-                    <!-- FULL PAYMENT — pay the entire discounted total now -->
+                    <!-- FULL PAYMENT — pay the entire total now
+                         (Long Term: the whole first month) -->
                     <button type="submit" class="bp-btn-pay bp-btn-full" id="bp-btn-full">
                         Pay Full Price
                         &#8369; <?php echo h(number_format($discountedTotal, 2)); ?>
@@ -956,9 +927,9 @@ if ($balanceBooking !== null) {
                             &#8592; Back to Booking
                         </a>
                     <?php else: ?>
-                        <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?>"
+                        <a href="/webprogg/Listings/listing-detail.php?id=<?php echo h($listingId); ?><?php echo $longTerm ? '&long_term=1' : '&months=' . (int) $durationMonths; ?>"
                            class="bp-back-inquiry">
-                            &#8592; Back to Inquiry
+                            &#8592; Back to Listing
                         </a>
                     <?php endif; ?>
 
@@ -970,37 +941,9 @@ if ($balanceBooking !== null) {
 
         <!-- =====================================================
              SIDEBAR: LISTING / SUMMARY / HOST / LOCATION
+             (Hive Club member chip + upsell chip REMOVED)
         ====================================================== -->
         <aside class="bp-sidebar">
-
-            <?php if ($hiveActive && $hiveTier !== null): ?>
-            <!-- HIVE CLUB MEMBER CHIP -->
-            <div class="bp-hive-chip">
-                <span class="bp-secure-icon">&#127858;</span>
-                <div class="bp-hive-chip-body">
-                    <strong><?php echo h($hiveTier); ?> Member &middot; <?php echo (int) $hiveDiscount; ?>% off</strong>
-                    <p>
-                        <?php if ($hiveDaysLeft === null): ?>
-                            Membership never expires — discount applied below.
-                        <?php elseif ($hiveDaysLeft > 0): ?>
-                            Active for <?php echo (int) $hiveDaysLeft; ?> more day<?php echo $hiveDaysLeft === 1 ? '' : 's'; ?> — discount applied below.
-                        <?php else: ?>
-                            Renewing soon.
-                        <?php endif; ?>
-                    </p>
-                </div>
-            </div>
-            <?php else: ?>
-            <!-- UPSELL CHIP -->
-            <div class="bp-hive-chip">
-                <span class="bp-secure-icon">&#127858;</span>
-                <div class="bp-hive-chip-body">
-                    <strong>Save up to 15% with Hive Club</strong>
-                    <p>Members get 5&ndash;15% off every stay, plus points back on completion.</p>
-                </div>
-                <a href="/webprogg/hiveclub.php">Join &rarr;</a>
-            </div>
-            <?php endif; ?>
 
             <div class="bp-card">
 
@@ -1024,20 +967,24 @@ if ($balanceBooking !== null) {
                 <?php if ($checkin): ?>
                     <div class="bp-specs">
                         <div class="bp-spec-row">
-                            <span>Check-in</span>
+                            <span>Move-in</span>
                             <strong><?php echo h(date('M j, Y', strtotime($checkin))); ?></strong>
                         </div>
                         <?php if ($checkout): ?>
                             <div class="bp-spec-row">
-                                <span>Check-out</span>
+                                <span>Move-out</span>
                                 <strong><?php echo h(date('M j, Y', strtotime($checkout))); ?></strong>
                             </div>
                         <?php elseif ($longTerm): ?>
                             <div class="bp-spec-row">
-                                <span>Duration</span>
-                                <strong>Long Term</strong>
+                                <span>Move-out</span>
+                                <strong>Open-ended</strong>
                             </div>
                         <?php endif; ?>
+                        <div class="bp-spec-row">
+                            <span>Rental Duration</span>
+                            <strong><?php echo $longTerm ? 'Long Term' : h($durationLabel); ?></strong>
+                        </div>
                         <div class="bp-spec-row">
                             <span>Guests</span>
                             <strong><?php echo h($guests); ?></strong>
@@ -1101,17 +1048,14 @@ if ($balanceBooking !== null) {
                             <strong>&#8369; <?php echo h(number_format($monthlyRent, 2)); ?></strong>
                         </div>
 
-                        <?php if ($hiveDiscount > 0): ?>
-                        <!-- Hive Club discount line -->
-                        <div class="bp-summary-row bp-summary-row-disc">
-                            <span>Hive Club <?php echo h($hiveTier); ?> (<?php echo (int) $hiveDiscount; ?>% off)</span>
-                            <strong>&minus; &#8369; <?php echo h(number_format($discountAmount, 2)); ?></strong>
-                        </div>
                         <div class="bp-summary-row">
-                            <span>Member Price</span>
+                            <span>Rental Duration</span>
+                            <strong><?php echo $longTerm ? 'Long Term (month-to-month)' : h($durationLabel); ?></strong>
+                        </div>
+                        <div class="bp-summary-row rd-total-rent">
+                            <span><?php echo $longTerm ? 'First Month Rent' : 'Total Rent (' . (int) $durationMonths . ' month' . ($durationMonths === 1 ? '' : 's') . ')'; ?></span>
                             <strong>&#8369; <?php echo h(number_format($discountedTotal, 2)); ?></strong>
                         </div>
-                        <?php endif; ?>
 
                         <div class="bp-summary-row">
                             <span>Reserve Now (50%)</span>
@@ -1153,35 +1097,51 @@ if ($balanceBooking !== null) {
                                 <span class="bp-star">&#9733;</span> <?php echo h($host_rating_avg); ?>
                                 <span>(<?php echo h($host_rating_count); ?> reviews)</span>
                             </p>
-                        <?php else: ?>
-                            <p class="bp-host-rating"><span>No reviews yet</span></p>
                         <?php endif; ?>
                     </div>
                 </div>
-                <p class="bp-host-response">&#9203; Typically responds within a day</p>
+                <p class="bp-host-response">
+                    Typically responds within a day
+                </p>
             </div>
 
             <!-- LOCATION CARD -->
             <div class="bp-card bp-location-card">
                 <h3>Location</h3>
                 <p class="bp-location-address">
-                    <?php echo h($listing['exact_address'] !== '' ? $listing['exact_address'] . ', ' : ''); ?>
-                    <?php echo h($listing['location']); ?>
+                    <?php echo h($listing['exact_address'] . ', ' . $listing['location']); ?>
                 </p>
 
-                <?php if ($hasMapPin): ?>
-                    <div class="bp-map-embed">
+                <div class="bp-map-embed">
+                    <?php if ($hasMapPin): ?>
                         <iframe
-                            src="https://www.google.com/maps?q=<?php echo h($pinLatitude . ',' . $pinLongitude); ?>&output=embed"
+                            src="https://www.google.com/maps?q=<?php echo h($pinLatitude); ?>,<?php echo h($pinLongitude); ?>&output=embed"
                             loading="lazy"
                             referrerpolicy="no-referrer-when-downgrade"
-                            title="Map of the listing"
+                            title="Listing location map"
                         ></iframe>
-                    </div>
-                    <p class="bp-map-exact-note">&#128205; Exact pin dropped by the host</p>
+                    <?php else: ?>
+                        <iframe
+                            src="https://www.google.com/maps?q=<?php echo h(rawurlencode($mapsQuery)); ?>&output=embed"
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade"
+                            title="Approximate location map"
+                        ></iframe>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ($hasMapPin): ?>
+                    <p class="bp-map-exact-note">
+                        &#10003; Exact location shown on this map
+                    </p>
                 <?php endif; ?>
 
-                <a class="bp-btn-outline" href="<?php echo h($mapsUrl); ?>" target="_blank" rel="noopener">
+                <a
+                    class="bp-btn-outline"
+                    href="<?php echo h($mapsUrl); ?>"
+                    target="_blank"
+                    rel="noopener"
+                >
                     Open in Google Maps
                 </a>
             </div>
@@ -1192,21 +1152,38 @@ if ($balanceBooking !== null) {
 
 </main>
 
-<script>
-/* =========================================================
-   PAY FULL PRICE — flips the flag before the form posts.
-   The Pay Reserve button leaves the flag at 0 (50% reserve).
-========================================================== */
-(function () {
-    "use strict";
+<script src="/webprogg/assets/javaScript.js"></script>
 
+<script>
+(function () {
+    var form = document.getElementById('bp-payment-form');
+    if (!form) return;
+
+    /* Payment method highlight */
+    var methods = Array.prototype.slice.call(form.querySelectorAll('.bp-method'));
+    methods.forEach(function (m) {
+        m.addEventListener('click', function () {
+            methods.forEach(function (x) { x.classList.remove('bp-method-selected'); });
+            m.classList.add('bp-method-selected');
+            var input = m.querySelector('input[type="radio"]');
+            if (input) { input.checked = true; }
+        });
+    });
+
+    /* Pay Full Price flips the hidden flag before submitting */
     var fullBtn  = document.getElementById('bp-btn-full');
     var fullFlag = document.getElementById('payment_purpose_full');
+    if (fullBtn && fullFlag) {
+        fullBtn.addEventListener('click', function () {
+            fullFlag.value = '1';
+        });
+    }
 
-    if (!fullBtn || !fullFlag) { return; }
-
-    fullBtn.addEventListener('click', function () {
-        fullFlag.value = '1';
+    /* Prevent double submits */
+    form.addEventListener('submit', function () {
+        Array.prototype.forEach.call(form.querySelectorAll('button[type="submit"]'), function (b) {
+            b.disabled = true;
+        });
     });
 })();
 </script>

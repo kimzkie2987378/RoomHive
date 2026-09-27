@@ -12,13 +12,28 @@
      - Both     → Profile Settings + Messages (each side's
                   own inbox) + Logout
 
-   HOME + LOGO (CHANGED):
+   HOME + LOGO:
      - Guest            → /webprogg/index.php (public landing)
      - Logged-in (ANY)  → /webprogg/user/usershome.php
-   The old role-crossing logic (hosts → hostprofile.php) was
-   REMOVED. HOME now goes to userhome only, never to
-   hostprofile.php or userprofile.php. A page can still
-   override by setting $homeHref BEFORE including this file.
+   A page can override by setting $homeHref BEFORE including.
+
+   === NOTIFICATION BELL FIX (this version) ===
+   The bell <img> had NO size rule in this file, so once the
+   old sizing rule was lost from style.css it rendered at its
+   natural (huge) size, overflowing the navbar over the hero.
+   The bell is now explicitly sized + positioned here:
+     - img fixed at 24px
+     - anchor position:relative (badge anchor)
+     - badge styles live HERE so they exist even on pages
+       that don't include notification_dropdown.php
+     - bell excluded from the sliding-underline effect
+   The bell href is now ROLE-AWARE (hostnotifications.php for
+   hosts). notification_dropdown.php (when included) still
+   intercepts clicks and turns the bell into a dropdown toggle.
+
+   === HIVE CLUB REMOVED ===
+   Defensive filter: any $navigation entry keyed "HIVE CLUB"
+   or pointing at hiveclub.php is stripped before rendering.
 
    Before including, set:
      $isLoggedIn (bool), $navigation (array),
@@ -45,9 +60,22 @@ if (!$isHost && (($_SESSION['is_host'] ?? false) === true)) {
  $currentPage = $currentPage ?? '';
 
 /* =========================================================
-   HOME LINK (CHANGED — no more role crossing)
-   Logged-in users ALWAYS go to userhome. Guests get the
-   public landing page. Override per page via $homeHref.
+   HIVE CLUB REMOVED — defensive filter.
+   Strip any navigation entry keyed "HIVE CLUB" or pointing
+   at hiveclub.php, regardless of what the page passed in.
+========================================================= */
+foreach ($navigation as $navName => $navHref) {
+    if (
+        strcasecmp((string) $navName, 'HIVE CLUB') === 0
+        || stripos((string) $navHref, 'hiveclub.php') !== false
+    ) {
+        unset($navigation[$navName]);
+    }
+}
+
+/* =========================================================
+   HOME LINK — logged-in users ALWAYS go to userhome.
+   Guests get the public landing page.
 ========================================================= */
  $navHomeHref = '/webprogg/index.php';
 if ($isLoggedIn) {
@@ -67,7 +95,7 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
  $navAvatar          = $navAvatar          ?? '/webprogg/images/default-avatar.png';
  $notification_count = $notification_count ?? 0;
 
-/* ---- Role-aware dropdown links (dropdown unchanged) ---- */
+/* ---- Role-aware links ---- */
  $messagesHref = $isHost
     ? '/webprogg/host/hostmessages.php'
     : '/webprogg/user/usermessages.php';
@@ -81,6 +109,11 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
  $settingsHref = $isHost
     ? '/webprogg/host/hosteditprofile.php'
     : '/webprogg/user/editprofile.php';
+
+/* Role-aware notifications destination */
+ $bellHref = $isHost
+    ? '/webprogg/host/hostnotifications.php'
+    : '/webprogg/user/notifications.php';
 ?>
 
 <style>
@@ -240,8 +273,71 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
     }
 
     header.navbar .nav-links a.list-space::after,
+    header.navbar .nav-links a.nav-bell::after,
     header.navbar .account-dd .my-account::after {
         display: none;
+    }
+
+    /* =====================================================
+       NOTIFICATION BELL — GIANT BELL FIX (this version)
+       The bell img previously had no size rule here, so it
+       rendered at its natural size and overflowed the fixed
+       navbar over the hero. Now explicitly sized + anchored.
+    ====================================================== */
+
+    header.navbar .nav-bell {
+        position: relative;
+
+        display: inline-flex;
+        align-items: center;
+
+        cursor: pointer;
+    }
+
+    header.navbar .nav-bell img {
+        width: 24px;
+        height: 24px;
+
+        object-fit: contain;
+
+        display: block;
+
+        transition: transform 0.15s ease;
+    }
+
+    header.navbar .nav-bell:hover img {
+        transform: scale(1.1);
+    }
+
+    /* =====================================================
+       UNREAD COUNT BADGE on the bell
+       Defined HERE so the badge is styled even on pages
+       that don't include notification_dropdown.php (whose
+       JS also creates/updates this same badge live).
+    ====================================================== */
+    header.navbar .nav-bell-badge {
+        position: absolute;
+        top: -6px;
+        right: -8px;
+
+        min-width: 17px;
+        height: 17px;
+        padding: 0 4px;
+
+        background: #E14B4B;
+
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 17px;
+        text-align: center;
+
+        border: 2px solid #ffffff;
+        border-radius: 999px;
+
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+
+        z-index: 10;
     }
 </style>
 
@@ -275,9 +371,12 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
 
         <?php if ($isLoggedIn): ?>
 
-            <!-- NOTIFICATIONS -->
-            <a href="/webprogg/user/notifications.php" class="nav-bell">
-                <img src="/webprogg/images/bellicon.png" alt="Notifications">
+            <!-- NOTIFICATIONS — role-aware href.
+                 notification_dropdown.php (when included after
+                 this navbar) moves its panel in here and turns
+                 the bell into a toggle via JS. -->
+            <a href="<?php echo htmlspecialchars($bellHref); ?>" class="nav-bell" aria-label="Notifications">
+                <img src="/webprogg/images/bell.png" alt="">
                 <?php if ($notification_count > 0): ?>
                     <span class="nav-bell-badge"><?php echo htmlspecialchars($notification_count); ?></span>
                 <?php endif; ?>

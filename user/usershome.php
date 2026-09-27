@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
-/* NEW — navbar.php contract: this page is auth-gated, so
+/* navbar.php contract: this page is auth-gated, so
    anyone reaching this point is logged in. Without this,
    navbar.php defaults $isLoggedIn to false and renders the
    GUEST navbar (LIST YOUR SPACE, no dropdown). */
@@ -41,12 +41,13 @@ if (isset($_SESSION['user_id'])) {
 
  $currentPage = '/webprogg/user/usershome.php';
 
+/* HIVE CLUB REMOVED from the navigation array
+   (navbar.php also filters it defensively) */
  $navigation = [
     "HOME"          => "/webprogg/user/usershome.php",
     "LISTINGS"      => "/webprogg/Listings/listing.php",
     "HOW IT WORKS"  => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => "/webprogg/host/becomeahost.php",
-    "HIVE CLUB"     => "/webprogg/hiveclub.php",
     "CONTACTS"      => "/webprogg/misc/contacts.php",
 ];
 
@@ -136,9 +137,9 @@ if (isset($_SESSION['user_id'])) {
     ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
 ];
 
+/* HIVE CLUB REMOVED from the footer links */
  $footerInvolvedLinks = [
     ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'Hive Club', 'href' => '/webprogg/hiveclub.php'],
     ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
     ['label' => 'Terms Of Service', 'href' => '#'],
 ];
@@ -148,7 +149,7 @@ if (isset($_SESSION['user_id'])) {
  $currentYear = date('Y');
 
 /* =========================================================
-   NEW — SPONSORED AD LISTINGS (floating ad widget)
+   SPONSORED AD LISTINGS (floating ad widget)
    Same source as listing.php: approved listings with no
    active 'pending' hold, newest first. Up to 8 are pulled
    so the 2 visible ad cards can rotate to fresh listings
@@ -372,7 +373,13 @@ if (isset($_SESSION['user_id'])) {
     ========================== -->
 
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
+
+    <!-- NOTIFICATION BELL DROPDOWN
+         navbar.php's script styles the bell (24px) and its
+         badge; this include attaches the dropdown panel to
+         the bell and turns clicks into open/close toggles. -->
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
+
     <!-- =========================
          HERO SECTION
     ========================== -->
@@ -401,35 +408,18 @@ if (isset($_SESSION['user_id'])) {
     </section>
 
     <!-- =========================
-         HIVE CLUB SECTION
-    ========================== -->
-    <section class="hive-club">
-      <div class="club-content">
-        <!-- CROWN LOGO -->
-        <img src="/webprogg/images/Crown_Logo.png" alt="Hive Club Crown" class="crown-logo" />
-        <!-- CLUB INFORMATION -->
-        <div class="club-text">
-          <span class="membership">MEMBERSHIP</span>
-          <h3>Join The VIP Hive Club</h3>
-          <p>
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
-            eiusmod tempor incididunt ut labore et dolore magna aliqua.
-          </p>
-        </div>
-      </div>
-      <!-- JOIN BUTTON -->
-      <a href="/webprogg/hiveclub.php" class="join-button">JOIN NOW</a>
-    </section>
-
-    <!-- =========================
          TOP LISTINGS SECTION
+         Cards link with ?category= (not ?type=),
+         which is the parameter listing.php actually reads.
+         Clicking e.g. Studio Loft lands on listing.php
+         with the Studio Loft category pre-selected.
     ========================== -->
     <section class="listings">
       <span class="listings-eyebrow">EXPLORE ROOMHIVE</span>
       <h2 class="listings-title">Check Out Our Top Listing!</h2>
       <div class="listings-grid">
         <?php foreach ($listings as $listing): ?>
-          <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($listing['type']); ?>" class="listing-card">
+          <a href="/webprogg/Listings/listing.php?category=<?php echo urlencode($listing['type']); ?>" class="listing-card">
             <img src="<?php echo htmlspecialchars($listing['image']); ?>" alt="<?php echo htmlspecialchars($listing['name']); ?>" />
             <div class="listing-info">
               <span class="listing-name"><?php echo htmlspecialchars($listing['name']); ?></span>
@@ -557,26 +547,48 @@ if (isset($_SESSION['user_id'])) {
     </section>
 
     <!-- =========================
-         JOIN HIVE CLUB / BECOME A HOST SECTION
+         LIST NOW / BECOME A HOST SECTION
+         Old dual-panel band restored — the Hive Club
+         panel is now a "List Now" panel (navy, gold
+         button), mirroring the original layout.
     ========================== -->
     <section class="dual-cta">
-      <div class="dual-cta-panel hive-panel">
-        <img src="/webprogg/images/Crown_Logo.png" alt="Hive Club Crown" class="dual-cta-icon" />
-        <h3>Join The Hive Club</h3>
+      <div class="dual-cta-panel list-panel">
+        <img
+          src="/webprogg/images/UploadPhotosIcon-BecomeAHost.png"
+          alt="List Your Space"
+          class="dual-cta-icon"
+        />
+        <h3>List Now</h3>
         <p>
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
-          eiusmod tempor incididunt ut labore et dolore magna aliqua.
+          Got a room, apartment or house sitting empty?
+          Put it up in minutes and start receiving booking
+          enquiries from verified renters today.
         </p>
-        <a href="/webprogg/hiveclub.php" class="dual-cta-button hive-button">JOIN NOW</a>
+        <a
+          href="/webprogg/host/becomeahost.php"
+          class="dual-cta-button list-button"
+        >
+          LIST NOW
+        </a>
       </div>
       <div class="dual-cta-panel host-panel">
-        <img src="/webprogg/images/HouseIcon.png" alt="Become a Host" class="dual-cta-icon" />
+        <img
+          src="/webprogg/images/HouseIcon.png"
+          alt="Become a Host"
+          class="dual-cta-icon"
+        />
         <h3>Become A Host</h3>
         <p>
           Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
           eiusmod tempor incididunt ut labore et dolore magna aliqua.
         </p>
-        <a href="/webprogg/host/becomeahost.php" class="dual-cta-button host-button">LIST YOUR SPACE</a>
+        <a
+          href="/webprogg/host/becomeahost.php"
+          class="dual-cta-button host-button"
+        >
+          LIST YOUR SPACE
+        </a>
       </div>
     </section>
 

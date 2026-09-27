@@ -10,26 +10,33 @@
    3. .listings-results — 3 columns → 4 columns per row,
       with new breakpoints (1180→3, 900→2, 720→1).
    4. List-view and empty-state rules unchanged.
+   5. FIX #18 — card location pin (.rh-loc-ico) properly
+      sized with object-fit: contain + flex-shrink: 0 so it
+      no longer squashes on the 4-column grid.
+   6. FIX #20 — MUTED THEME: :root palette toned down
+      (warm greige canvas, off-white cards, calmer creams)
+      so the page is not too bright. Brand gold + canopy
+      kept, just deeper.
    ========================================================= */
 
 :root {
-  /* ---- color ---- */
+  /* ---- color (FIX #20 — muted, softer on the eyes) ---- */
   --rh-ink: #1c2b24;
-  --rh-ink-soft: #62705f;
-  --rh-canvas: #faf6ee;
-  --rh-cloud: #ffffff;
-  --rh-line: #e8e1cf;
-  --rh-line-soft: #f0ead9;
+  --rh-ink-soft: #57655c;
+  --rh-canvas: #eae3d5; /* was #faf6ee — muted warm greige */
+  --rh-cloud: #f9f6ee; /* was #ffffff — soft off-white */
+  --rh-line: #d9cfb8;
+  --rh-line-soft: #e4dbc6;
 
-  --rh-gold: #dd930f;
-  --rh-gold-deep: #b8760a;
-  --rh-gold-wash: #fbf1dc;
+  --rh-gold: #d68e0e; /* slightly deeper gold */
+  --rh-gold-deep: #a86d08;
+  --rh-gold-wash: #f1e3c4; /* was #fbf1dc — calmer cream */
 
   --rh-canopy: #1f4a3d;
   --rh-canopy-deep: #163a30;
-  --rh-canopy-wash: #e8f2ee;
+  --rh-canopy-wash: #dfeae5;
 
-  --rh-coral: #dd5361;
+  --rh-coral: #d14b59;
 
   /* ---- elevation ---- */
   --rh-shadow-soft: 0 6px 20px rgba(28, 43, 36, 0.07);
@@ -784,7 +791,7 @@
   pointer-events: none;
   background: radial-gradient(
     220px circle at var(--mx, 50%) var(--my, 0%),
-    rgba(221, 147, 15, 0.14),
+    rgba(214, 142, 14, 0.14),
     transparent 70%
   );
   transition: opacity 0.25s ease;
@@ -865,10 +872,10 @@
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(249, 246, 238, 0.94);
   font-size: 1.1rem;
   line-height: 1;
-  color: #a3a3a3;
+  color: #8f948b;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -944,6 +951,14 @@
   color: var(--rh-ink-soft);
 }
 
+/* FIX #19 — soft "No reviews yet" */
+.rh-rating-none {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--rh-ink-soft);
+}
+
 .listing-box-location {
   display: flex;
   align-items: center;
@@ -952,10 +967,14 @@
   color: var(--rh-ink-soft);
 }
 
-.listing-box-location img {
-  width: 14px;
-  height: 14px;
-  opacity: 0.6;
+/* FIX #18 — card location pin: proper sizing, never squashed */
+.listing-box-location img,
+.rh-loc-ico {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  opacity: 0.75;
+  flex-shrink: 0;
 }
 
 .rh-bedrooms {

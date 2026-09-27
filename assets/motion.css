@@ -1,15 +1,25 @@
 /* ============================================================
    ROOMHIVE — MOTION & INTERACTION LAYER
    Loads AFTER style.css so these rules can override.
+
+   NAVBAR FIX: this file no longer positions the navbar.
+   style.css owns .navbar (position: fixed, 90px tall, out of
+   flow). Setting position: sticky here previously overrode
+   that — putting the navbar back into the flow — so the
+   hero's 90px margin-top opened a 90px white band under it.
    ============================================================ */
 
 :root {
-  --rh-brand: #f5b301; /* change to your exact brand gold */
+  --rh-brand: #eda423; /* aligned with style.css gold (was #f5b301) */
   --rh-ink: #1f2430;
   --rh-shadow-sm: 0 8px 20px rgba(31, 36, 48, 0.1);
   --rh-shadow-md: 0 16px 36px rgba(31, 36, 48, 0.14);
   --rh-shadow-lg: 0 24px 48px rgba(31, 36, 48, 0.18);
   --rh-ease: cubic-bezier(0.22, 1, 0.36, 1); /* smooth "expo out" */
+
+  /* MUST match the navbar height in style.css (90px).
+     Was 72px — that mismatch also mis-sized the hero. */
+  --rh-nav-h: 90px;
 }
 
 html {
@@ -32,13 +42,10 @@ html {
 }
 
 /* ---------- 2. Navbar: shadow + hide on scroll down ----------
-   NOTE: if your existing style.css already positions the navbar
-   (fixed/absolute over the hero), DELETE the position/top/z-index
-   lines below and keep only the transition + state classes. */
+   FIX: position/top/z-index REMOVED. style.css already makes
+   .navbar fixed at 90px. Only the transition + state classes
+   live here, per the original design note. */
 .navbar {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
   transition:
     transform 0.35s ease,
     box-shadow 0.35s ease;
@@ -100,7 +107,7 @@ html {
 .dual-cta-button:hover,
 .about-button:hover {
   transform: translateY(-3px);
-  box-shadow: 0 14px 28px rgba(245, 179, 1, 0.35);
+  box-shadow: 0 14px 28px rgba(237, 164, 35, 0.35);
 }
 
 .btn-secondary:hover,
@@ -126,7 +133,7 @@ html {
 .about-button:focus-visible,
 .dual-cta-button:focus-visible,
 .list-space:focus-visible {
-  outline: 3px solid rgba(245, 179, 1, 0.55);
+  outline: 3px solid rgba(237, 164, 35, 0.55);
   outline-offset: 3px;
 }
 
@@ -442,20 +449,22 @@ html {
     transform: none;
   }
 }
+
 /* ============================================================
    HERO — FILL THE ENTIRE FIRST SCREEN & LIFT THE CONTENT
+   FIX: --rh-nav-h is now 90px (matches style.css), and the
+   hero's margin-top uses the same variable so it sits FLUSH
+   under the fixed navbar — no white band.
    ============================================================ */
-
-:root {
-  /* ← Match this to your navbar's real rendered height */
-  --rh-nav-h: 72px;
-}
 
 .hero {
   /* Release any fixed height from style.css */
   height: auto;
 
-  /* Full first screen = viewport minus the sticky navbar */
+  /* Flush under the fixed 90px navbar */
+  margin-top: var(--rh-nav-h);
+
+  /* Full first screen = viewport minus the navbar */
   min-height: calc(100vh - var(--rh-nav-h));
   min-height: calc(100svh - var(--rh-nav-h)); /* mobile URL-bar safe */
 

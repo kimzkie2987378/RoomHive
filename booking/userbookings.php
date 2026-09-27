@@ -9,7 +9,7 @@
      - advance paid -> amount paid + "Advance Paid" + "left" pill
      - nothing paid -> total + "Booking Total"
 
-   NEW — REFUND-AWARE (2% cancellation-fee system):
+   REFUND-AWARE (2% cancellation-fee system):
      - cancelled/declined bookings with refunded_amount > 0
        now show the actual refund in green ("Refunded to
        Wallet"), instead of a misleading "Advance Paid".
@@ -19,6 +19,13 @@
      - 'rejected' added to the whitelist, tab counts, and a
        "Declined" tab — host-declined bookings previously only
        appeared under "All".
+     - Dark mode: tab pill + Declined pill covered.
+
+   === HEADER REMOVED (this version) ===
+     The plain "My Bookings" page header is gone. The card's
+     own "My Bookings (n)" header carries the title now, and
+     .up-dashboard clears the fixed navbar itself (navbar is
+     ~90px tall).
 ========================================================= */
 
 session_start();
@@ -114,7 +121,7 @@ if ($statusFilter !== 'all') {
         'paid_fmt'      => number_format($paid, 2),
         'left_fmt'      => number_format(max(0.0, $left), 2),
         'payment_state' => $paymentState,
-        /* NEW — refund-aware display for cancelled/declined rows */
+        /* refund-aware display for cancelled/declined rows */
         'refunded_fmt'  => number_format($refunded, 2),
         'show_refund'   => in_array($row['status'], ['cancelled', 'rejected'], true) && $refunded > 0.005,
     ];
@@ -161,61 +168,14 @@ foreach ($countsStmt->fetchAll() as $row) {
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 
-<!-- =====================================================
-     PLAIN PAGE HEADER (this page only)
-===================================================== -->
 <style>
-    .ub-page-head {
-        /* Clear the 90px fixed navbar + breathing room */
-        margin: 130px auto 0;
-
-        max-width: 1400px;
-
-        /* Matches .up-dashboard's side gutters so the
-           heading lines up with the cards below */
-        width: calc(100% - 120px);
-
-        padding: 0 24px 6px;
-    }
-
-    .ub-page-head .ub-eyebrow {
-        display: block;
-
-        margin-bottom: 8px;
-
-        color: #b07708;
-
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-    }
-
-    .ub-page-head h1 {
-        margin: 0 0 10px;
-
-        color: #1c2a38;
-
-        font-size: 32px;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        line-height: 1.15;
-    }
-
-    .ub-page-head .ub-lead {
-        margin: 0;
-
-        max-width: 520px;
-
-        color: #5d6875;
-
-        font-size: 14.5px;
-        line-height: 1.65;
-    }
-
-    /* Dashboard sits closer now that the tall hero is gone */
+    /* =====================================================
+       PAGE HEADER REMOVED — navbar clearance for this page.
+       The old header carried margin: 130px auto 0 to sit
+       under the fixed navbar; .up-dashboard clears it now.
+    ====================================================== */
     .up-dashboard {
-        margin-top: 26px;
+        margin-top: 110px;
     }
 
     /* =====================================================
@@ -235,7 +195,7 @@ foreach ($countsStmt->fetchAll() as $row) {
     }
 
     /* =====================================================
-       NEW — REFUND PILL + STATUS COLORS
+       REFUND PILL + STATUS COLORS
        Green refund note for cancelled/declined rows, and the
        red Declined status pill (so it renders even if
        myaccount.css doesn't define .up-status-rejected).
@@ -260,30 +220,11 @@ foreach ($countsStmt->fetchAll() as $row) {
         color: #a1332e;
     }
 
-    @media (max-width: 1200px) {
-        .ub-page-head {
-            width: calc(100% - 80px);
-        }
-    }
-
-    @media (max-width: 900px) {
-        .ub-page-head {
-            width: calc(100% - 50px);
-
-            margin-top: 115px;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .ub-page-head {
-            width: calc(100% - 30px);
-
-            margin-top: 110px;
-        }
-
-        .ub-page-head h1 {
-            font-size: 26px;
-        }
+    /* Dark mode: active tab pill + Declined pill */
+    body[data-theme="dark"] .ub-tab.active,
+    html[data-theme-preview="1"] .ub-tab.active {
+        background: #1a222b;
+        color: #eda423;
     }
 </style>
 
@@ -333,24 +274,7 @@ foreach ($countsStmt->fetchAll() as $row) {
 </header>
 <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
-<!-- =====================================================
-     PAGE HEADER — PLAIN
-===================================================== -->
-<header class="ub-page-head">
-
-    <span class="ub-eyebrow">
-        Every Stay
-    </span>
-
-    <h1>
-        My Bookings
-    </h1>
-
-    <p class="ub-lead">
-        Track every inquiry and stay you've booked through RoomHive.
-    </p>
-
-</header>
+<!-- PAGE HEADER — REMOVED -->
 
 <!-- DASHBOARD -->
 <main class="up-dashboard">
@@ -412,7 +336,7 @@ foreach ($countsStmt->fetchAll() as $row) {
                 </span>
 
                 <?php if ($booking['show_refund']): ?>
-                    <!-- NEW — cancelled/declined with a refund (98% after the 2% fee) -->
+                    <!-- cancelled/declined with a refund (98% after the 2% fee) -->
                     <strong class="ub-refund-amount">&#8369; <?php echo h($booking['refunded_fmt']); ?></strong>
                     <span>Refunded to Wallet</span>
                     <span class="ub-refund-note">&#10003; Credited</span>
@@ -465,9 +389,9 @@ foreach ($countsStmt->fetchAll() as $row) {
 
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
 

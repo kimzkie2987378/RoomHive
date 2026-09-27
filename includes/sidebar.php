@@ -7,7 +7,20 @@
    USAGE: set $activeSidebar before including:
        $activeSidebar = 'profile';
        require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/sidebar.php';
+
+   === BUGFIX (this version) ===
+   h() is now DEFINED here (guarded with function_exists(),
+   implementation identical to the host sidebar's h()). The
+   previous version called h() without defining it — on user
+   pages that never load the host sidebar, the include fataled
+   with "Call to undefined function h()".
 ========================================================= */
+
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+}
 
  $sidebarLinks = [
     'overview'      => ['/webprogg/user/userprofile.php',             'overviewicon-userprofile.png',            'Overview'],
@@ -16,7 +29,7 @@
     'payments'      => ['/webprogg/user/userpayments.php',            'paymentsicon-userprofile.png',            'Payments'],
     'reviews'       => ['/webprogg/user/userreviews.php',             'averageratinsicon-userprofile.png',       'Reviews'],
     'messages'      => ['/webprogg/user/usermessages.php',            'messagesicon-userprofile.png',            'Messages'],
-    'notifcenter'   => ['/webprogg/user/notifications.php',           'bellicon.png',                            'Notifications'],
+    'notifcenter'   => ['/webprogg/user/notifications.php',           'bell.png',                                'Notifications'],
     'profile'       => ['/webprogg/user/editprofile.php',             'profile&accounticon-userprofile.png',     'Profile &amp; Account'],
     'security'      => ['/webprogg/user/security.php',                'lockicon-userprofile.png',                'Settings'],
     'notifications' => ['/webprogg/user/usernotificationsettings.php','notificationsettings-userprofile.png',    'Notification Settings'],

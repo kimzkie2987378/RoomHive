@@ -1,6 +1,6 @@
 <?php
 /* =========================================================
-   ROOMHIVE — HOST PROFILE (Overview) — DELUXE
+   ROOMHIVE — HOST PROFILE (Overview)
    hostprofile.php
 
    Uses the shared host shell (host_init + host_navbar +
@@ -10,8 +10,38 @@
    Money = host_payout_amount (falls back to amount_paid);
    confirmed/completed status is treated as paid.
 
-   NEW (real data): time-based greeting, days-as-host,
-   6-month monthly earnings (for the trend chart + sparkline).
+   === HERO REMOVED ===
+   The HERO banner (greeting, shimmer name, floating hexes,
+   parallax image, floating earnings card) is deleted. The
+   .hp-dashboard clears the fixed navbar itself.
+
+   === GROW BANNER REMOVED ===
+   The "Grow Your Hosting Business" section is deleted.
+
+   === OCCUPANCY LOCK + TENANT DETAILS ===
+   1. A listing whose stay window covers TODAY (confirmed or
+      completed booking; checkout NULL = ongoing monthly stay)
+      shows an "Occupied" status badge.
+   2. Occupied rows show the CURRENT TENANT's details (avatar,
+      name, email, phone, check-in -> check-out).
+   3. Occupied listings cannot be deleted: the Delete Listing
+      option is replaced by a locked menu entry, AND
+      delete-listing.php must have the server-side guard —
+      the client-side hiding alone is not security.
+
+   === LIVE PERFORMANCE OVERVIEW — NO ICONS (this version) ===
+   Stat-card IMG ICONS are deleted. Each card now carries a
+   DIFFERENT native chart type (no libraries, maximum
+   compatibility — pure CSS + SVG only):
+     - Bookings          -> vertical CSS bar sparkline (30d)
+     - Occupancy Rate    -> SVG donut ring (kept)
+     - Earnings          -> CSS heatmap strip (30d intensity)
+     - Booking Status Mix-> horizontal stacked bar + legend
+                           (new; replaces the plain number)
+   The Daily Earnings SVG area/line chart and the 6-month
+   Earnings Trend bar chart remain as-is. All animated via
+   IntersectionObserver, with reduced-motion + no-JS fallbacks
+   and dark-mode variants.
 ========================================================= */
 
 require_once __DIR__ . '/host_init.php';
@@ -52,11 +82,61 @@ if (!$dbUser['is_host']) {
 
  $listings_total = count($listings);
 
-/* Views — no page-view tracking table exists yet */
- $total_views = 0;
+/* -----------------------------------------------------
+   CURRENT OCCUPANTS
+   Who is staying in each listing RIGHT NOW: a confirmed/
+   completed booking whose stay window covers today. A
+   booking with no checkout date (monthly, open-ended)
+   counts as ongoing once checked in. Powers:
+     - the "Occupied" status badge
+     - the current-tenant details strip
+     - the delete lock for occupied listings
+----------------------------------------------------- */
+ $occupantsStmt = $pdo->prepare(
+    "SELECT b.listing_id, b.id AS booking_id,
+            b.checkin_date, b.checkout_date,
+            u.id AS tenant_id, u.name AS tenant_name,
+            u.email AS tenant_email, u.phone AS tenant_phone,
+            u.avatar_path AS tenant_avatar
+     FROM bookings b
+     JOIN listings l ON l.id = b.listing_id
+     JOIN users u ON u.id = b.user_id
+     WHERE l.user_id = :id
+       AND b.status IN ('confirmed', 'completed')
+       AND b.checkin_date IS NOT NULL
+       AND b.checkin_date <= CURDATE()
+       AND (b.checkout_date IS NULL OR b.checkout_date = '' OR b.checkout_date >= CURDATE())
+     ORDER BY b.checkin_date DESC"
+);
+ $occupantsStmt->execute(['id' => $_SESSION['user_id']]);
+
+ $currentOccupants = [];
+foreach ($occupantsStmt->fetchAll() as $row) {
+    $lid = (int) $row['listing_id'];
+
+    if (isset($currentOccupants[$lid])) {
+        continue; /* keep the most recent stay per listing */
+    }
+
+    $currentOccupants[$lid] = [
+        'booking_id' => (int) $row['booking_id'],
+        'name'       => $row['tenant_name'],
+        'email'      => $row['tenant_email'],
+        'phone'      => (string) ($row['tenant_phone'] ?? ''),
+        'avatar'     => !empty($row['tenant_avatar'])
+                            ? $row['tenant_avatar']
+                            : '/webprogg/images/default-avatar.png',
+        'checkin'    => !empty($row['checkin_date'])
+                            ? date('M j, Y', strtotime($row['checkin_date']))
+                            : '&mdash;',
+        'checkout'   => !empty($row['checkout_date'])
+                            ? date('M j, Y', strtotime($row['checkout_date']))
+                            : 'Ongoing',
+    ];
+}
 
 /* -----------------------------------------------------
-   BOOKING-BASED METRICS
+   BOOKING-BASED METRICS (all-time — feeds listing rows)
 ----------------------------------------------------- */
  $hostBookingsStmt = $pdo->prepare(
     "SELECT b.listing_id, b.amount_paid, b.host_payout_amount,
@@ -133,10 +213,6 @@ foreach ($listingStats as $stats) {
     ? (int) round(min(100, ($total_occupied_nights / ($occupancyWindowDays * $listings_total)) * 100))
     : 0;
 
- $earningsNote = $total_bookings > 0
-    ? 'From ' . $total_bookings . ' confirmed booking' . ($total_bookings === 1 ? '' : 's')
-    : 'No earnings data yet';
-
 function hp_status_class($status) {
     switch ($status) {
         case 'approved': return 'hp-status-active';
@@ -158,7 +234,7 @@ function hp_status_label($status) {
 }
 
 /* =========================================================
-   NEW — GREETING + TENURE
+   GREETING + TENURE (kept — informational)
 ========================================================= */
  $hour = (int) date('G');
 
@@ -177,8 +253,8 @@ if ($hour < 12) {
 ));
 
 /* =========================================================
-   NEW — MONTHLY EARNINGS, LAST 6 MONTHS (real query)
-   Powers the trend chart + the sparkline in the float card.
+   MONTHLY EARNINGS, LAST 6 MONTHS (real query)
+   Powers the Earnings Trend chart.
 ========================================================= */
  $monthlyStmt = $pdo->prepare(
     "SELECT DATE_FORMAT(b.booked_at, '%Y-%m') AS ym,
@@ -220,6 +296,114 @@ foreach ($earnMonths as $m) {
     $maxMonthTotal = max($maxMonthTotal, $m['total']);
 }
 
+/* =========================================================
+   DAILY ACTIVITY, LAST 30 DAYS (real query)
+   Powers the Bookings sparkline + Earnings heatmap + the
+   Daily Earnings area/line chart.
+========================================================= */
+ $dailyMap = [];
+try {
+    $dailyStmt = $pdo->prepare(
+        "SELECT DATE(b.booked_at) AS d,
+                COUNT(*) AS bookings,
+                SUM(CASE
+                        WHEN b.status IN ('confirmed', 'completed')
+                        THEN COALESCE(b.host_payout_amount, b.amount_paid, 0)
+                        ELSE 0
+                    END) AS earnings
+         FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE l.user_id = :id
+           AND b.booked_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+         GROUP BY DATE(b.booked_at)"
+    );
+    $dailyStmt->execute(['id' => $_SESSION['user_id']]);
+
+    foreach ($dailyStmt->fetchAll() as $row) {
+        $dailyMap[$row['d']] = [
+            'bookings' => (int) $row['bookings'],
+            'earnings' => (float) $row['earnings'],
+        ];
+    }
+} catch (Exception $e) {
+    error_log('hostprofile: daily activity query failed: ' . $e->getMessage());
+    /* $dailyMap stays empty — the charts render as flat/zero */
+}
+
+ $dailySeries   = [];
+ $bookings_30d  = 0;
+ $earnings_30d  = 0.0;
+
+for ($i = 29; $i >= 0; $i--) {
+    $ts  = strtotime("-{$i} days");
+    $key = date('Y-m-d', $ts);
+
+    $bk = $dailyMap[$key]['bookings'] ?? 0;
+    $er = $dailyMap[$key]['earnings'] ?? 0.0;
+
+    $bookings_30d += $bk;
+    $earnings_30d += $er;
+
+    $dailySeries[] = [
+        'label'    => date('M j', $ts),
+        'bookings' => $bk,
+        'earnings' => $er,
+    ];
+}
+
+ $n30 = count($dailySeries); /* always 30 */
+
+ $dailyBookMax    = 0;
+ $dailyEarnMaxRaw = 0.0;
+foreach ($dailySeries as $p) {
+    $dailyBookMax    = max($dailyBookMax, $p['bookings']);
+    $dailyEarnMaxRaw = max($dailyEarnMaxRaw, $p['earnings']);
+}
+
+ $chartEarnMax = max($dailyEarnMaxRaw, 0.01);
+
+/* Pre-build the SVG polyline points + area path */
+ $pvPoints = [];
+foreach ($dailySeries as $i => $p) {
+    $x = 8 + ($i / max(1, $n30 - 1)) * 584;
+    $y = 18 + (1 - ($p['earnings'] / $chartEarnMax)) * 132;
+    $pvPoints[] = round($x, 1) . ',' . round($y, 1);
+}
+ $pvPointsStr = implode(' ', $pvPoints);
+ $pvAreaPath  = 'M8,150 L' . implode(' L', $pvPoints) . ' L592,150 Z';
+
+/* =========================================================
+   NEW — BOOKING STATUS MIX (for the stacked bar card)
+   One grouped count over ALL bookings on the host's
+   listings, bucketed into 4 segments.
+========================================================= */
+ $statusMix = [];
+try {
+    $mixStmt = $pdo->prepare(
+        "SELECT b.status, COUNT(*) AS c
+         FROM bookings b
+         JOIN listings l ON l.id = b.listing_id
+         WHERE l.user_id = :id
+         GROUP BY b.status"
+    );
+    $mixStmt->execute(['id' => $_SESSION['user_id']]);
+    foreach ($mixStmt->fetchAll() as $row) {
+        $statusMix[$row['status']] = (int) $row['c'];
+    }
+} catch (Exception $e) {
+    $statusMix = [];
+}
+
+ $mixTotal = array_sum($statusMix);
+
+ $mixSegments = [
+    ['label' => 'Pending',    'count' => $statusMix['pending'] ?? 0,                       'color' => '#eda423'],
+    ['label' => 'Confirmed',  'count' => $statusMix['confirmed'] ?? 0,                     'color' => '#1fa971'],
+    ['label' => 'Completed',  'count' => $statusMix['completed'] ?? 0,                     'color' => '#33517E'],
+    ['label' => 'Cancelled / Rejected',
+        'count' => ($statusMix['cancelled'] ?? 0) + ($statusMix['rejected'] ?? 0),          'color' => '#e0524d'],
+];
+
  $activePage = 'overview';
 ?>
 <!DOCTYPE html>
@@ -236,111 +420,399 @@ foreach ($earnMonths as $m) {
 <link rel="stylesheet" href="/webprogg/assets/hostprofile.css?v=7">
 
 <script>document.documentElement.classList.add("js");</script>
+
+<style>
+    /* =====================================================
+       HERO REMOVED — navbar clearance for this page only.
+    ====================================================== */
+    .hp-dashboard {
+        margin-top: 110px;
+    }
+
+    /* =====================================================
+       OCCUPIED STATUS + TENANT STRIP
+    ====================================================== */
+    .hp-status-occupied {
+        background: #E9F0FA;
+        color: #33517E;
+        border: 1px solid rgba(51, 81, 126, 0.28);
+    }
+
+    .hp-tenant-strip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        margin-top: 8px;
+        padding: 8px 10px;
+
+        background: #F7F9FC;
+        border: 1px dashed rgba(28, 42, 56, 0.18);
+        border-radius: 10px;
+    }
+
+    .hp-tenant-strip img {
+        width: 34px;
+        height: 34px;
+        flex-shrink: 0;
+
+        border-radius: 8px;
+        object-fit: cover;
+    }
+
+    .hp-tenant-strip > div {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+
+        min-width: 0;
+    }
+
+    .hp-tenant-name {
+        font-size: 12.5px;
+        font-weight: 800;
+        color: #1c2a38;
+
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .hp-tenant-meta {
+        font-size: 11px;
+        color: #5d6875;
+
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .hp-menu-locked {
+        cursor: default !important;
+        opacity: 0.65;
+    }
+
+    /* =====================================================
+       LIVE PERFORMANCE CHARTS — icon-free, native only
+    ====================================================== */
+
+    .hp-stat-sub {
+        display: block;
+        margin-top: 2px;
+        font-size: 10.5px;
+        color: #8B93A6;
+    }
+
+    /* 1) BOOKINGS — vertical bar sparkline (CSS) */
+    .hp-mini-spark {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+
+        height: 38px;
+        margin-top: 12px;
+    }
+
+    .hp-mini-spark span {
+        flex: 1;
+        min-width: 3px;
+
+        background: linear-gradient(180deg, #f6c04e, #eda423);
+        border-radius: 2px 2px 0 0;
+
+        transition: height 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .js .hp-mini-spark:not(.on) span {
+        height: 5% !important;
+    }
+
+    .hp-mini-spark.on span {
+        height: var(--h, 5%);
+    }
+
+    /* 2) EARNINGS — heatmap strip (CSS intensity cells) */
+    .hp-heat {
+        display: flex;
+        gap: 2px;
+
+        height: 38px;
+        margin-top: 12px;
+    }
+
+    .hp-heat span {
+        flex: 1;
+        min-width: 3px;
+
+        background: rgba(237, 164, 35, var(--a, 0.08));
+        border-radius: 3px;
+
+        opacity: 1;
+        transition: opacity 0.5s ease;
+    }
+
+    .js .hp-heat:not(.on) span {
+        opacity: 0;
+    }
+
+    .hp-heat.on span {
+        opacity: 1;
+    }
+
+    /* 3) STATUS MIX — horizontal stacked bar (CSS) */
+    .hp-mixbar {
+        display: flex;
+
+        height: 14px;
+        margin-top: 12px;
+
+        background: #F0F1F6;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .hp-mixbar span {
+        width: 0%;
+        transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .hp-mixbar.on span {
+        width: var(--w, 0%);
+    }
+
+    .hp-mixbar-empty {
+        display: block;
+        margin-top: 12px;
+        padding: 4px 10px;
+
+        border: 1px dashed rgba(28, 42, 56, 0.2);
+        border-radius: 999px;
+
+        font-size: 10.5px;
+        color: #8B93A6;
+        text-align: center;
+    }
+
+    .hp-mix-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+
+        margin-top: 9px;
+    }
+
+    .hp-mix-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+
+        font-size: 10.5px;
+        color: #5d6875;
+    }
+
+    .hp-mix-dot {
+        width: 9px;
+        height: 9px;
+        flex-shrink: 0;
+
+        border-radius: 50%;
+    }
+
+    /* 4) DAILY EARNINGS — SVG area/line chart */
+    .pv-chart {
+        margin-top: 20px;
+    }
+
+    .pv-chart svg {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .pv-line {
+        fill: none;
+        stroke: #eda423;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .js .pv-anim-line {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        transition: stroke-dashoffset 1.6s ease 0.15s;
+    }
+
+    .pv-chart.on .pv-anim-line {
+        stroke-dashoffset: 0;
+    }
+
+    .pv-area {
+        fill: rgba(237, 164, 35, 0.16);
+        opacity: 1;
+        transition: opacity 0.9s ease 0.8s;
+    }
+
+    .js .pv-chart:not(.on) .pv-area {
+        opacity: 0;
+    }
+
+    .pv-chart.on .pv-area {
+        opacity: 1;
+    }
+
+    .pv-dot {
+        fill: #ffffff;
+        stroke: #eda423;
+        stroke-width: 2;
+        cursor: pointer;
+        transition: r 0.12s ease;
+    }
+
+    .pv-dot:hover {
+        r: 4.5;
+    }
+
+    .pv-grid {
+        stroke: rgba(28, 42, 56, 0.08);
+        stroke-width: 1;
+    }
+
+    .pv-txt {
+        font-size: 10px;
+        fill: #8B93A6;
+        font-family: "Poppins", sans-serif;
+    }
+
+    .pv-xlabels {
+        display: flex;
+        justify-content: space-between;
+
+        margin-top: 6px;
+
+        font-size: 10px;
+        color: #8B93A6;
+    }
+
+    .pv-empty-note {
+        margin: 8px 0 0;
+
+        font-size: 11.5px;
+        font-style: italic;
+        color: #8B93A6;
+    }
+
+    /* Dark mode variants */
+    body[data-theme="dark"] .hp-status-occupied,
+    html[data-theme-preview="1"] .hp-status-occupied {
+        background: rgba(51, 81, 126, 0.28);
+        color: #9fc0ef;
+    }
+
+    body[data-theme="dark"] .hp-tenant-strip,
+    html[data-theme-preview="1"] .hp-tenant-strip {
+        background: #1a222b;
+        border-color: rgba(232, 236, 241, 0.14);
+    }
+
+    body[data-theme="dark"] .hp-tenant-name,
+    html[data-theme-preview="1"] .hp-tenant-name {
+        color: #e8ecf1;
+    }
+
+    body[data-theme="dark"] .hp-tenant-meta,
+    html[data-theme-preview="1"] .hp-tenant-meta {
+        color: #8d99a5;
+    }
+
+    body[data-theme="dark"] .hp-stat-sub,
+    html[data-theme-preview="1"] .hp-stat-sub {
+        color: #8d99a5;
+    }
+
+    body[data-theme="dark"] .hp-mixbar,
+    html[data-theme-preview="1"] .hp-mixbar {
+        background: #0d1218;
+    }
+
+    body[data-theme="dark"] .hp-mix-item,
+    html[data-theme-preview="1"] .hp-mix-item {
+        color: #8d99a5;
+    }
+
+    body[data-theme="dark"] .hp-mixbar-empty,
+    html[data-theme-preview="1"] .hp-mixbar-empty {
+        border-color: rgba(232, 236, 241, 0.18);
+        color: #8d99a5;
+    }
+
+    body[data-theme="dark"] .pv-grid,
+    html[data-theme-preview="1"] .pv-grid {
+        stroke: rgba(232, 236, 241, 0.10);
+    }
+
+    body[data-theme="dark"] .pv-txt,
+    html[data-theme-preview="1"] .pv-txt {
+        fill: #8d99a5;
+    }
+
+    body[data-theme="dark"] .pv-dot,
+    html[data-theme-preview="1"] .pv-dot {
+        fill: #1a222b;
+    }
+
+    body[data-theme="dark"] .pv-area,
+    html[data-theme-preview="1"] .pv-area {
+        fill: rgba(237, 164, 35, 0.22);
+    }
+
+    body[data-theme="dark"] .pv-xlabels,
+    html[data-theme-preview="1"] .pv-xlabels {
+        color: #8d99a5;
+    }
+
+    body[data-theme="dark"] .pv-empty-note,
+    html[data-theme-preview="1"] .pv-empty-note {
+        color: #8d99a5;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .hp-mini-spark span,
+        .hp-heat span,
+        .hp-mixbar span {
+            transition: none;
+        }
+
+        .js .hp-mini-spark:not(.on) span {
+            height: var(--h, 5%) !important;
+        }
+
+        .js .hp-heat:not(.on) span {
+            opacity: 1;
+        }
+
+        .js .hp-mixbar:not(.on) span {
+            width: var(--w, 0%);
+        }
+
+        .js .pv-anim-line {
+            transition: none;
+            stroke-dashoffset: 0 !important;
+        }
+
+        .js .pv-chart:not(.on) .pv-area {
+            opacity: 1;
+        }
+    }
+</style>
 </head>
 <body>
 
     <?php include __DIR__ . '/host_navbar.php'; ?>
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
-<!-- =========================================================
-     HERO — greeting, shimmer name, floating hexes,
-     parallax image, animated earnings card + sparkline
-========================================================= -->
-<section class="hp-hero">
-
-    <div aria-hidden="true">
-        <span class="hp-blob hp-blob-1"></span>
-        <span class="hp-blob hp-blob-2"></span>
-        <span class="hp-hex-float hp-hex-1"></span>
-        <span class="hp-hex-float hp-hex-2"></span>
-        <span class="hp-hex-float hp-hex-3"></span>
-    </div>
-
-    <div class="hp-hero-text">
-
-        <span class="hp-hero-badge hp-anim" style="--d: .05s;">
-
-            <span class="hp-pulse-dot"></span>
-
-            Host Dashboard &middot; Day <?php echo (int) $daysAsHost; ?>
-
-        </span>
-
-
-        <h1 class="hp-anim" style="--d: .15s;">
-
-            <?php echo h($greeting); ?>,
-
-            <span class="hp-shimmer"><?php echo h($firstName); ?></span>!
-
-        </h1>
-
-
-        <span class="hp-hero-underline hp-anim" style="--d: .22s;"></span>
-
-
-        <p class="hp-anim" style="--d: .28s;">
-
-            You're managing
-            <strong><?php echo (int) $listings_total; ?>
-                listing<?php echo $listings_total === 1 ? '' : 's'; ?></strong>
-            — track bookings, occupancy, and payouts below.
-
-        </p>
-
-    </div>
-
-
-    <div class="hp-hero-image hp-anim" style="--d: .3s;">
-
-        <img
-            src="/webprogg/images/hostprofile-hero.jpg"
-            alt=""
-            onerror="this.style.display='none';"
-        >
-
-    </div>
-
-
-    <div class="hp-earnings-float" id="hpEarningsFloat">
-
-        <span class="hp-muted">Total Earnings</span>
-
-        <strong>
-            &#8369;
-            <span
-                data-count="<?php echo (float) $total_earnings; ?>"
-                data-decimals="2"
-            ><?php echo h(number_format($total_earnings, 2)); ?></span>
-        </strong>
-
-        <span class="hp-earnings-note"><?php echo h($earningsNote); ?></span>
-
-        <!-- NEW: 6-month sparkline (real monthly data) -->
-        <div class="hp-spark" aria-hidden="true">
-
-            <?php foreach ($earnMonths as $m):
-
-                $pct = $maxMonthTotal > 0
-                    ? (int) round(($m['total'] / $maxMonthTotal) * 100)
-                    : 0;
-
-                $pct = max(6, $pct); /* keep a visible nub */
-            ?>
-
-                <span
-                    class="hp-spark-bar"
-                    style="--h: <?php echo (int) $pct; ?>%;"
-                    title="<?php echo h($m['label']); ?>"
-                ></span>
-
-            <?php endforeach; ?>
-
-        </div>
-
-    </div>
-
-</section>
+<!-- HERO — REMOVED. Total earnings show in Performance
+     Overview; monthly figures in the Earnings Trend card. -->
 
 <!-- =========================================================
      MAIN DASHBOARD LAYOUT
@@ -398,37 +870,46 @@ foreach ($earnMonths as $m) {
       </div>
     </section>
 
-    <!-- PERFORMANCE OVERVIEW (occupancy = animated donut) -->
+    <!-- =====================================================
+         PERFORMANCE OVERVIEW — LIVE, ICON-FREE
+         Bars (bookings) | Donut (occupancy) | Heatmap
+         (earnings) | Stacked bar (status mix) + the daily
+         earnings area/line chart below.
+    ====================================================== -->
     <section class="hp-card hp-spotlight hp-reveal" style="--i: 1;">
       <div class="hp-card-header">
         <h3>Performance Overview</h3>
-        <span class="hp-muted">Last 30 days</span>
+        <span class="hp-muted">Last 30 days &middot; live</span>
       </div>
 
       <div class="hp-stats">
 
+        <!-- BOOKINGS — vertical bar sparkline -->
         <div class="hp-stat-card hp-reveal" style="--i: 0;">
-          <img src="/webprogg/images/viewsicon-hostprofile.png" alt="">
-          <div>
-            <span class="hp-stat-label">Views</span>
+          <div style="min-width:0; width:100%;">
+            <span class="hp-stat-label">Bookings &mdash; 30 days</span>
             <strong
-                data-count="<?php echo (int) $total_views; ?>"
-                data-decimals="0"><?php echo h($total_views); ?></strong>
+                data-count="<?php echo (int) $bookings_30d; ?>"
+                data-decimals="0"><?php echo h($bookings_30d); ?></strong>
+            <span class="hp-stat-sub"><?php echo h($total_bookings); ?> all-time &middot; one bar per day</span>
+
+            <div class="hp-mini-spark" data-spark aria-hidden="true">
+                <?php foreach ($dailySeries as $p):
+                    $h = $dailyBookMax > 0
+                        ? max(6, (int) round(($p['bookings'] / $dailyBookMax) * 100))
+                        : 6;
+                ?>
+                <span
+                    style="--h: <?php echo $h; ?>%;"
+                    title="<?php echo h($p['label']); ?>: <?php echo (int) $p['bookings']; ?> booking<?php echo $p['bookings'] === 1 ? '' : 's'; ?>"
+                ></span>
+                <?php endforeach; ?>
+            </div>
           </div>
         </div>
 
+        <!-- OCCUPANCY — SVG donut ring -->
         <div class="hp-stat-card hp-reveal" style="--i: 1;">
-          <img src="/webprogg/images/bookingsicon-userprofile.png" alt="">
-          <div>
-            <span class="hp-stat-label">Bookings</span>
-            <strong
-                data-count="<?php echo (int) $total_bookings; ?>"
-                data-decimals="0"><?php echo h($total_bookings); ?></strong>
-          </div>
-        </div>
-
-        <!-- NEW: occupancy as an animated donut ring -->
-        <div class="hp-stat-card hp-reveal" style="--i: 2;">
           <div class="hp-donut" data-pct="<?php echo (int) $occupancy_rate; ?>">
             <svg viewBox="0 0 48 48" aria-hidden="true">
                 <circle class="hp-donut-bg" cx="24" cy="24" r="20"></circle>
@@ -439,26 +920,141 @@ foreach ($earnMonths as $m) {
           <div>
             <span class="hp-stat-label">Occupancy Rate</span>
             <strong>30-day window</strong>
+            <span class="hp-stat-sub"><?php echo h($total_occupied_nights); ?> occupied nights</span>
           </div>
         </div>
 
-        <div class="hp-stat-card hp-reveal" style="--i: 3;">
-          <img src="/webprogg/images/totalspenticon-userprofile.png" alt="">
-          <div>
-            <span class="hp-stat-label">Earnings</span>
+        <!-- EARNINGS — heatmap strip -->
+        <div class="hp-stat-card hp-reveal" style="--i: 2;">
+          <div style="min-width:0; width:100%;">
+            <span class="hp-stat-label">Earnings &mdash; 30 days</span>
             <strong>
-                &#8369;
-                <span
-                    data-count="<?php echo (float) $total_earnings; ?>"
-                    data-decimals="2"><?php echo h(number_format($total_earnings, 2)); ?></span>
+                &#8369;<span
+                    data-count="<?php echo (float) $earnings_30d; ?>"
+                    data-decimals="2"><?php echo h(number_format($earnings_30d, 2)); ?></span>
             </strong>
+            <span class="hp-stat-sub">&#8369; <?php echo h(number_format($total_earnings, 2)); ?> all-time &middot; darker = more</span>
+
+            <div class="hp-heat" data-spark aria-hidden="true">
+                <?php foreach ($dailySeries as $p):
+                    $alpha = $dailyEarnMaxRaw > 0
+                        ? max(0.08, round($p['earnings'] / $dailyEarnMaxRaw, 2))
+                        : 0.08;
+                ?>
+                <span
+                    style="--a: <?php echo $alpha; ?>;"
+                    title="<?php echo h($p['label']); ?>: &#8369;<?php echo h(number_format($p['earnings'], 2)); ?>"
+                ></span>
+                <?php endforeach; ?>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOOKING STATUS MIX — horizontal stacked bar -->
+        <div class="hp-stat-card hp-reveal" style="--i: 3;">
+          <div style="min-width:0; width:100%;">
+            <span class="hp-stat-label">Booking Status Mix</span>
+            <strong
+                data-count="<?php echo (int) $mixTotal; ?>"
+                data-decimals="0"><?php echo h($mixTotal); ?></strong>
+            <span class="hp-stat-sub">all bookings on your listings</span>
+
+            <?php if ($mixTotal > 0): ?>
+                <div class="hp-mixbar" data-spark aria-hidden="true">
+                    <?php foreach ($mixSegments as $seg):
+                        if ($seg['count'] <= 0) { continue; }
+                        $w = round(($seg['count'] / $mixTotal) * 100, 1);
+                    ?>
+                    <span
+                        style="--w: <?php echo $w; ?>%; background: <?php echo $seg['color']; ?>;"
+                        title="<?php echo h($seg['label']); ?>: <?php echo (int) $seg['count']; ?> (<?php echo $w; ?>%)"
+                    ></span>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="hp-mix-legend">
+                    <?php foreach ($mixSegments as $seg): ?>
+                    <span class="hp-mix-item">
+                        <span class="hp-mix-dot" style="background: <?php echo $seg['color']; ?>;"></span>
+                        <?php echo h($seg['label']); ?>: <?php echo (int) $seg['count']; ?>
+                    </span>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <span class="hp-mixbar-empty">No bookings yet</span>
+            <?php endif; ?>
           </div>
         </div>
 
       </div>
+
+      <!-- ===============================================
+           DAILY EARNINGS — SVG area/line chart
+      ================================================ -->
+      <div class="pv-chart" id="pvDailyChart">
+
+        <div class="hp-card-header" style="margin-bottom: 4px;">
+            <span class="hp-stat-label" style="font-size: 12.5px; font-weight: 800; color: #1c2a38;">
+                Daily Earnings &mdash; 30 days
+            </span>
+            <span class="hp-muted">hover a point for details</span>
+        </div>
+
+        <svg viewBox="0 0 600 160" role="img" aria-label="Daily earnings for the last 30 days">
+
+            <!-- Gridlines: max / mid / zero -->
+            <line class="pv-grid" x1="8" y1="18"  x2="592" y2="18"></line>
+            <line class="pv-grid" x1="8" y1="84"  x2="592" y2="84"></line>
+            <line class="pv-grid" x1="8" y1="150" x2="592" y2="150"></line>
+
+            <text class="pv-txt" x="2" y="13">&#8369;<?php echo h(number_format($chartEarnMax, 0)); ?></text>
+            <text class="pv-txt" x="2" y="147">0</text>
+
+            <!-- Area fill under the line -->
+            <path class="pv-area" d="<?php echo h($pvAreaPath); ?>"></path>
+
+            <!-- The line (animates via pathLength trick) -->
+            <polyline
+                class="pv-line pv-anim-line"
+                pathLength="1"
+                points="<?php echo h($pvPointsStr); ?>"
+            ></polyline>
+
+            <!-- Hover points (native tooltips) -->
+            <?php foreach ($dailySeries as $i => $p):
+                $x = 8 + ($i / max(1, $n30 - 1)) * 584;
+                $y = 18 + (1 - ($p['earnings'] / $chartEarnMax)) * 132;
+            ?>
+            <circle
+                class="pv-dot"
+                cx="<?php echo round($x, 1); ?>"
+                cy="<?php echo round($y, 1); ?>"
+                r="3"
+            >
+                <title>&#8369; <?php echo h(number_format($p['earnings'], 2)); ?> &mdash; <?php echo h($p['label']); ?></title>
+            </circle>
+            <?php endforeach; ?>
+
+        </svg>
+
+        <!-- X-axis day labels -->
+        <div class="pv-xlabels">
+            <?php foreach ([0, 6, 12, 18, 24, 29] as $xi): ?>
+                <span><?php echo h($dailySeries[$xi]['label'] ?? ''); ?></span>
+            <?php endforeach; ?>
+        </div>
+
+        <?php if ($dailyEarnMaxRaw <= 0): ?>
+            <p class="pv-empty-note">
+                No confirmed earnings in the last 30 days yet —
+                new confirmed bookings will plot here automatically.
+            </p>
+        <?php endif; ?>
+
+      </div>
     </section>
 
-    <!-- NEW — EARNINGS TREND (real 6-month chart) -->
+    <!-- EARNINGS TREND (real 6-month bar chart) -->
     <section class="hp-card hp-spotlight hp-reveal" style="--i: 2;">
       <div class="hp-card-header">
         <h3>Earnings Trend</h3>
@@ -537,7 +1133,11 @@ foreach ($earnMonths as $m) {
             <span>Status</span>
           </div>
 
-          <?php foreach ($listings as $listing): ?>
+          <?php foreach ($listings as $listing):
+
+              $isOccupied = isset($currentOccupants[$listing['id']]);
+              $occupant   = $isOccupied ? $currentOccupants[$listing['id']] : null;
+          ?>
             <div class="hp-listing-row">
 
               <div class="hp-listing-info">
@@ -545,6 +1145,26 @@ foreach ($earnMonths as $m) {
                 <div>
                   <h4><?php echo h($listing['title']); ?></h4>
                   <p><?php echo h($listing['location']); ?></p>
+
+                  <?php if ($isOccupied && $occupant !== null): ?>
+                    <!-- current tenant details -->
+                    <div class="hp-tenant-strip" title="Current occupant of this space">
+                      <img src="<?php echo h($occupant['avatar']); ?>" alt="">
+                      <div>
+                        <span class="hp-tenant-name">
+                            &#128100; <?php echo h($occupant['name']); ?>
+                        </span>
+                        <span class="hp-tenant-meta">
+                            &#9993; <?php echo h($occupant['email']); ?>
+                        </span>
+                        <span class="hp-tenant-meta">
+                            Stay: <?php echo $occupant['checkin']; ?> &rarr; <?php echo $occupant['checkout']; ?><?php if ($occupant['phone'] !== ''): ?>
+                                &middot; &#9742; <?php echo h($occupant['phone']); ?>
+                            <?php endif; ?>
+                        </span>
+                      </div>
+                    </div>
+                  <?php endif; ?>
                 </div>
               </div>
 
@@ -559,9 +1179,18 @@ foreach ($earnMonths as $m) {
               <span class="hp-listing-metric">&#8369; <?php echo h(number_format($stats['earnings'], 2)); ?></span>
 
               <div class="hp-listing-actions">
-                <span class="hp-status <?php echo hp_status_class($listing['status']); ?>">
-                  <?php echo h(hp_status_label($listing['status'])); ?>
-                </span>
+                <?php if ($isOccupied): ?>
+                  <span
+                    class="hp-status hp-status-occupied"
+                    title="Currently occupied by <?php echo h($occupant['name']); ?> (<?php echo $occupant['checkin']; ?> &rarr; <?php echo $occupant['checkout']; ?>)"
+                  >
+                    Occupied
+                  </span>
+                <?php else: ?>
+                  <span class="hp-status <?php echo hp_status_class($listing['status']); ?>">
+                    <?php echo h(hp_status_label($listing['status'])); ?>
+                  </span>
+                <?php endif; ?>
 
                 <?php if (!empty($listing['pending_booking_id'])): ?>
                   <span class="hp-status hp-status-pending" title="<?php echo h($listing['pending_tenant_name']); ?> is awaiting your decision">
@@ -582,9 +1211,17 @@ foreach ($earnMonths as $m) {
                         Reject Tenant
                       </button>
                     <?php endif; ?>
-                    <button type="button" class="hp-menu-item hp-menu-delete" data-listing-id="<?php echo h($listing['id']); ?>" data-listing-title="<?php echo h($listing['title']); ?>">
-                      Delete Listing
-                    </button>
+
+                    <?php if ($isOccupied): ?>
+                      <span class="hp-menu-item hp-menu-locked" aria-disabled="true"
+                            title="This space is currently occupied and cannot be deleted">
+                        &#128274; Occupied &mdash; can't delete
+                      </span>
+                    <?php else: ?>
+                      <button type="button" class="hp-menu-item hp-menu-delete" data-listing-id="<?php echo h($listing['id']); ?>" data-listing-title="<?php echo h($listing['title']); ?>">
+                        Delete Listing
+                      </button>
+                    <?php endif; ?>
                   </div>
                 </div>
               </div>
@@ -597,40 +1234,7 @@ foreach ($earnMonths as $m) {
       <?php endif; ?>
     </section>
 
-    <!-- GROW YOUR HOSTING BUSINESS -->
-    <section class="hp-grow-banner hp-reveal">
-
-      <div class="hp-grow-text">
-        <img src="/webprogg/images/grow-hosting-illustration.png" alt="" class="hp-grow-illustration" onerror="this.style.display='none';">
-        <div>
-          <h3>Grow Your Hosting Business</h3>
-          <p>Get more bookings and increase your earnings with these host tools.</p>
-        </div>
-      </div>
-
-      <div class="hp-grow-links">
-
-        <a href="/webprogg/host/helpcenter.php" class="hp-grow-card">
-          <span class="hp-grow-icon">&#128640;</span>
-          <strong>Boost Your Listing</strong>
-          <span>Get more visibility</span>
-        </a>
-
-        <a href="/webprogg/host/helpcenter.php" class="hp-grow-card">
-          <span class="hp-grow-icon">&#128161;</span>
-          <strong>Host Tips</strong>
-          <span>Learn and improve</span>
-        </a>
-
-        <a href="/webprogg/misc/contacts.php" class="hp-grow-card">
-          <span class="hp-grow-icon">&#128101;</span>
-          <strong>Invite &amp; Earn</strong>
-          <span>Earn more rewards</span>
-        </a>
-
-      </div>
-
-    </section>
+    <!-- GROW YOUR HOSTING BUSINESS — REMOVED -->
 
   </div>
 </main>
@@ -638,14 +1242,16 @@ foreach ($earnMonths as $m) {
 <?php include __DIR__ . '/host_footer.php'; ?>
 
 <!-- =========================================================
-     DELUXE SCRIPT — theme, reveal, count-ups, donut, bars,
-     spotlight, tilt, parallax. Self-contained.
+     SCRIPT — reveal, count-ups, donut, trend bars, spotlight,
+     sparklines, heatmap, stacked bar, daily chart. Native JS
+     only. Self-contained.
 ========================================================= -->
 <script>
 (function () {
     "use strict";
 
     var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     /* ---- Scroll reveal ---- */
     var revealEls = Array.prototype.slice.call(document.querySelectorAll(".hp-reveal"));
     if (reduced || !("IntersectionObserver" in window)) {
@@ -663,7 +1269,7 @@ foreach ($earnMonths as $m) {
         revealEls.forEach(function (el) { io.observe(el); });
     }
 
-    /* ---- Count-ups (earnings float + stat cards) ---- */
+    /* ---- Count-ups (stat cards) ---- */
     var counters = document.querySelectorAll("[data-count]");
     if (counters.length && !reduced && "IntersectionObserver" in window) {
         var cIO = new IntersectionObserver(function (entries) {
@@ -748,6 +1354,55 @@ foreach ($earnMonths as $m) {
         }
     }
 
+    /* =====================================================
+       MINI CHARTS — bars / heatmap / stacked bar
+       Start hidden (CSS), animate in when scrolled into
+       view. Stacked-bar segments stagger their widths.
+    ====================================================== */
+    document.querySelectorAll(".hp-mini-spark, .hp-heat, .hp-mixbar").forEach(function (viz) {
+
+        if (reduced || !("IntersectionObserver" in window)) {
+            viz.classList.add("on");
+            return;
+        }
+
+        var vIO = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                vIO.unobserve(entry.target);
+
+                /* stagger the segments */
+                entry.target.querySelectorAll("span").forEach(function (seg, i) {
+                    seg.style.transitionDelay = (i * 16) + "ms";
+                });
+
+                entry.target.classList.add("on");
+            });
+        }, { threshold: 0.4 });
+
+        vIO.observe(viz);
+    });
+
+    /* =====================================================
+       DAILY EARNINGS CHART (draw-in + area fade)
+    ====================================================== */
+    var pvChart = document.getElementById("pvDailyChart");
+
+    if (pvChart) {
+        if (reduced || !("IntersectionObserver" in window)) {
+            pvChart.classList.add("on");
+        } else {
+            var pIO = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    pIO.unobserve(entry.target);
+                    entry.target.classList.add("on");
+                });
+            }, { threshold: 0.35 });
+            pIO.observe(pvChart);
+        }
+    }
+
     /* ---- Cursor spotlight on cards ---- */
     if (!reduced && window.matchMedia("(hover: hover)").matches) {
         document.querySelectorAll(".hp-spotlight").forEach(function (card) {
@@ -758,46 +1413,12 @@ foreach ($earnMonths as $m) {
             });
         });
     }
-
-    /* ---- 3D tilt on the earnings float ---- */
-    var fl = document.getElementById("hpEarningsFloat");
-
-    if (fl && !reduced && window.matchMedia("(hover: hover)").matches) {
-        fl.addEventListener("animationend", function () {
-            fl.classList.add("no-anim");
-        }, { once: true });
-
-        fl.addEventListener("pointermove", function (e) {
-            var r = fl.getBoundingClientRect();
-            var px = (e.clientX - r.left) / r.width - 0.5;
-            var py = (e.clientY - r.top) / r.height - 0.5;
-
-            fl.style.transform =
-                "perspective(700px) rotateX(" + (-py * 8).toFixed(2) + "deg)" +
-                " rotateY(" + (px * 8).toFixed(2) + "deg) translateY(-2px)";
-        });
-
-        fl.addEventListener("pointerleave", function () {
-            fl.style.transform = "";
-        });
-    }
-
-    /* ---- Gentle parallax on the hero image ---- */
-    var heroImg = document.querySelector(".hp-hero-image");
-
-    if (heroImg && !reduced && window.innerWidth > 900) {
-        window.addEventListener("scroll", function () {
-            var y = window.scrollY;
-            if (y < 700) {
-                heroImg.style.transform = "translateY(" + (y * 0.06).toFixed(1) + "px)";
-            }
-        }, { passive: true });
-    }
 })();
 </script>
 
 <!-- =========================================================
-     LISTING 3-DOT MENU + DELETE (unchanged)
+     LISTING 3-DOT MENU + DELETE (occupied rows don't render
+     a delete button, so they can't reach this)
 ========================================================= -->
 <script>
 (function () {

@@ -1,129 +1,118 @@
 <?php
 /* =========================================================
-   ROOMHIVE — SHARED HOST NAVBAR (partial include)
-   host_navbar.php
+   ROOMHIVE — SHARED NAVIGATION HEADER
+   /webprogg/includes/navbar.php
 
-   ANIMATED VERSION — matches includes/usernav.php:
-     - Navbar drops in from the top on page load
-     - Gold underline grows on link hover
-     - Dropdown menu items cascade in with a stagger
-     - Bell swings on hover, badge pulses when unread
-     - Avatar lifts + gets a gold ring on hover
-     - Navbar gains a soft shadow once the page scrolls
+   Same design as host_navbar.php: 42px avatar, 12px bold
+   MY PROFILE label, white rounded dropdown with honey hover.
 
-   All motion is disabled automatically for users with
-   "prefers-reduced-motion" enabled.
+   Dropdown links are ROLE-AWARE:
+     - Host     → Host Dashboard (hostprofile.php)
+     - Non-host → User Profile (userprofile.php)
+     - Both     → Profile Settings + Messages (each side's
+                  own inbox) + Logout
 
-   The page MUST set these BEFORE requiring this file:
-     $navAvatar          — resolved avatar URL
-     $notification_count — integer (0 is fine)
+   HOME + LOGO (CHANGED):
+     - Guest            → /webprogg/index.php (public landing)
+     - Logged-in (ANY)  → /webprogg/user/usershome.php
+   The old role-crossing logic (hosts → hostprofile.php) was
+   REMOVED. HOME now goes to userhome only, never to
+   hostprofile.php or userprofile.php. A page can still
+   override by setting $homeHref BEFORE including this file.
+
+   === HIVE CLUB REMOVED (this version) ===
+   Defensive filter: any $navigation entry keyed "HIVE CLUB"
+   or pointing at hiveclub.php is stripped before rendering,
+   so pages that still pass it never show the link.
+
+   Before including, set:
+     $isLoggedIn (bool), $navigation (array),
+     $currentPage (string)
+   Optional (safe defaults):
+     $navAvatar, $notification_count, $isHost,
+     $logoHref, $homeHref, $guestCtaHref, $guestCtaLabel
 ========================================================= */
 
-if (!function_exists('h')) {
-    function h($v) { return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'); }
+/* Fallback: derive login state from the session if the page
+   forgot to set it (fixes the "guest navbar on auth-gated
+   pages" bug). */
+ $isLoggedIn = $isLoggedIn ?? (($_SESSION['logged_in'] ?? false) === true);
+
+/* Derive host flag from the session as a fallback too, so
+   role-aware dropdown links work even on pages that never
+   set $isHost. */
+ $isHost = $isHost ?? false;
+if (!$isHost && (($_SESSION['is_host'] ?? false) === true)) {
+    $isHost = true;
 }
 
-if (!isset($navAvatar) || !is_string($navAvatar) || $navAvatar === '') {
-    $navAvatar = isset($host['avatar']) ? $host['avatar'] : '/webprogg/images/default-avatar.png';
+ $navigation  = $navigation  ?? [];
+ $currentPage = $currentPage ?? '';
+
+/* =========================================================
+   HIVE CLUB REMOVED — defensive filter.
+   Strip any navigation entry keyed "HIVE CLUB" or pointing
+   at hiveclub.php, regardless of what the page passed in.
+========================================================= */
+foreach ($navigation as $navName => $navHref) {
+    if (
+        strcasecmp((string) $navName, 'HIVE CLUB') === 0
+        || stripos((string) $navHref, 'hiveclub.php') !== false
+    ) {
+        unset($navigation[$navName]);
+    }
 }
-if (!isset($notification_count) || !is_numeric($notification_count)) {
-    $notification_count = 0;
+
+/* =========================================================
+   HOME LINK (CHANGED — no more role crossing)
+   Logged-in users ALWAYS go to userhome. Guests get the
+   public landing page. Override per page via $homeHref.
+========================================================= */
+ $navHomeHref = '/webprogg/index.php';
+if ($isLoggedIn) {
+    $navHomeHref = '/webprogg/user/usershome.php';
 }
+/* Optional per-page override (wins over the default) */
+if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
+    $navHomeHref = $homeHref;
+}
+
+/* Logo follows HOME unless the page explicitly set one */
+ $logoHref = $logoHref ?? $navHomeHref;
+
+ $guestCtaHref  = $guestCtaHref  ?? '/webprogg/auth/loginform.php';
+ $guestCtaLabel = $guestCtaLabel ?? 'LIST YOUR SPACE';
+
+ $navAvatar          = $navAvatar          ?? '/webprogg/images/default-avatar.png';
+ $notification_count = $notification_count ?? 0;
+
+/* ---- Role-aware dropdown links (dropdown unchanged) ---- */
+ $messagesHref = $isHost
+    ? '/webprogg/host/hostmessages.php'
+    : '/webprogg/user/usermessages.php';
+
+ $profileHref  = $isHost
+    ? '/webprogg/host/hostprofile.php'
+    : '/webprogg/user/userprofile.php';
+
+ $profileLabel = $isHost ? 'Host Dashboard' : 'User Profile';
+
+ $settingsHref = $isHost
+    ? '/webprogg/host/hosteditprofile.php'
+    : '/webprogg/user/editprofile.php';
 ?>
 
 <style>
     /* =====================================================
-       ANIMATIONS — same set as includes/usernav.php,
-       scoped to .host-dd. Theme gold: #b07708 / hover
-       wash: #fdf1dc
+       SHARED NAVBAR — matches host_navbar.php's design.
+       Scoped under header.navbar.
     ====================================================== */
 
-    /* -----------------------------------------------
-       1. NAVBAR DROP-IN (page load)
-    ------------------------------------------------ */
-    @keyframes navbarDropIn {
-        from { opacity: 0; transform: translateY(-100%); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-
-    .navbar {
-        animation: navbarDropIn 0.5s cubic-bezier(0.22, 0.68, 0.43, 1) both;
-
-        /* Soft shadow fades in once the page scrolls (see .nav-scrolled) */
-        transition: box-shadow 0.3s ease;
-    }
-
-    .navbar.nav-scrolled {
-        box-shadow: 0 8px 24px rgba(28, 42, 56, 0.10);
-    }
-
-    /* -----------------------------------------------
-       2. LINK HOVER — gold underline grows from center
-    ------------------------------------------------ */
-    .navbar .nav-links > a:not(.nav-bell) {
+    header.navbar .account-dd {
         position: relative;
     }
 
-    .navbar .nav-links > a:not(.nav-bell)::after {
-        content: "";
-
-        position: absolute;
-        left: 50%;
-        bottom: -5px;
-
-        transform: translateX(-50%);
-
-        width: 0;
-        height: 2px;
-
-        background: #b07708;
-        border-radius: 2px;
-
-        transition: width 0.25s ease;
-    }
-
-    .navbar .nav-links > a:not(.nav-bell):hover::after {
-        width: calc(100% - 4px);
-    }
-
-    /* -----------------------------------------------
-       3. BELL — swings on hover, badge pulses when unread
-    ------------------------------------------------ */
-    .navbar .nav-bell img {
-        transform-origin: top center;
-    }
-
-    @keyframes bellSwing {
-        0%   { transform: rotate(0deg); }
-        15%  { transform: rotate(14deg); }
-        30%  { transform: rotate(-11deg); }
-        45%  { transform: rotate(8deg); }
-        60%  { transform: rotate(-5deg); }
-        75%  { transform: rotate(2deg); }
-        100% { transform: rotate(0deg); }
-    }
-
-    .navbar .nav-bell:hover img {
-        animation: bellSwing 0.7s ease;
-    }
-
-    @keyframes badgePulse {
-        0%, 100% { transform: scale(1); }
-        50%      { transform: scale(1.18); }
-    }
-
-    .navbar .nav-bell-badge {
-        animation: badgePulse 2s ease-in-out infinite;
-    }
-
-    /* -----------------------------------------------
-       4. DROPDOWN — items cascade in with a stagger
-    ------------------------------------------------ */
-    .host-dd {
-        position: relative;
-    }
-
-    .host-dd .my-account {
+    header.navbar .account-dd .my-account {
         display: flex;
         align-items: center;
 
@@ -138,13 +127,7 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         color: inherit;
     }
 
-    .host-dd .account-circle {
-        display: inline-flex;
-
-        transition: transform 0.2s ease;
-    }
-
-    .host-dd .account-circle img {
+    header.navbar .account-dd .account-circle img {
         width: 42px;
         height: 42px;
 
@@ -157,20 +140,9 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         object-fit: contain;
 
         display: block;
-
-        transition: box-shadow 0.2s ease;
     }
 
-    /* Avatar lifts + gets a gold ring on hover */
-    .host-dd .my-account:hover .account-circle {
-        transform: translateY(-1px);
-    }
-
-    .host-dd .my-account:hover .account-circle img {
-        box-shadow: 0 0 0 3px rgba(176, 119, 8, 0.30);
-    }
-
-    .host-dd .my-account span:not(.account-circle) {
+    header.navbar .account-dd .my-account span:not(.account-circle) {
         font-size: 12px;
         font-weight: 700;
         white-space: nowrap;
@@ -178,17 +150,17 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         color: #1c2a38;
     }
 
-    .host-dd .dropdown-caret {
+    header.navbar .account-dd .dropdown-caret {
         font-size: 0.75em;
 
-        transition: transform 0.25s ease;
+        transition: transform 0.15s ease;
     }
 
-    .host-dd.open .dropdown-caret {
+    header.navbar .account-dd.open .dropdown-caret {
         transform: rotate(180deg);
     }
 
-    .host-dd-menu {
+    header.navbar .account-dd-menu {
         display: none;
 
         position: absolute;
@@ -210,28 +182,20 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         flex-direction: column;
 
         z-index: 1100;
-
-        transform-origin: top right;
     }
 
-    @keyframes hostDDIn {
-        from { opacity: 0; transform: translateY(-6px) scale(0.98); }
-        to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    .host-dd.open .host-dd-menu {
+    header.navbar .account-dd.open .account-dd-menu {
         display: flex;
 
-        animation: hostDDIn 0.2s ease;
+        animation: sharedDDIn 0.2s ease;
     }
 
-    @keyframes hostDDItem {
-        from { opacity: 0; transform: translateX(10px); }
-        to   { opacity: 1; transform: translateX(0); }
+    @keyframes sharedDDIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* Items start hidden, then cascade in only while open */
-    .host-dd .host-dd-menu a {
+    header.navbar .account-dd-menu a {
         display: block;
 
         padding: 10px 12px;
@@ -246,139 +210,171 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         text-decoration: none;
         white-space: nowrap;
 
-        opacity: 0;
-
-        transition: background 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+        transition: 0.15s ease;
     }
 
-    .host-dd.open .host-dd-menu a {
-        animation: hostDDItem 0.28s ease forwards;
-    }
-
-    /* Stagger: each item trails the previous by 40ms */
-    .host-dd.open .host-dd-menu a:nth-child(1) { animation-delay: 0.04s; }
-    .host-dd.open .host-dd-menu a:nth-child(2) { animation-delay: 0.08s; }
-    .host-dd.open .host-dd-menu a:nth-child(3) { animation-delay: 0.12s; }
-    .host-dd.open .host-dd-menu a:nth-child(4) { animation-delay: 0.16s; }
-    .host-dd.open .host-dd-menu a:nth-child(5) { animation-delay: 0.20s; }
-    .host-dd.open .host-dd-menu a:nth-child(6) { animation-delay: 0.24s; }
-
-    /* Hover: gold wash + slight indent nudge */
-    .host-dd-menu a:hover {
+    header.navbar .account-dd-menu a:hover {
         background: #fdf1dc;
         color: #b07708;
-        padding-left: 16px;
     }
 
-    /* -----------------------------------------------
-       5. REDUCED MOTION — turn everything off
-    ------------------------------------------------ */
-    @media (prefers-reduced-motion: reduce) {
-        .navbar,
-        .navbar .nav-bell-badge,
-        .navbar .nav-bell:hover img,
-        .host-dd-menu,
-        .host-dd .host-dd-menu a {
-            animation: none !important;
-        }
+    /* Never clip the open menu */
+    header.navbar,
+    header.navbar .nav-links {
+        overflow: visible;
+    }
 
-        .host-dd .host-dd-menu a {
-            opacity: 1 !important;
-        }
+    /* =====================================================
+       NAV LINK — sliding underline
+    ====================================================== */
 
-        .navbar .nav-links > a:not(.nav-bell)::after,
-        .host-dd .account-circle,
-        .host-dd .account-circle img,
-        .host-dd .dropdown-caret,
-        .host-dd-menu a {
-            transition: none !important;
-        }
+    header.navbar .nav-links a {
+        position: relative;
+        padding-bottom: 6px;
+        color: #1c1c1c;
+        transition: color 0.2s ease;
+    }
+
+    header.navbar .nav-links a::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        height: 2px;
+        width: 100%;
+        background: #dd930f;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    header.navbar .nav-links a:hover,
+    header.navbar .nav-links a.active {
+        color: #dd930f;
+    }
+
+    header.navbar .nav-links a:hover::after,
+    header.navbar .nav-links a.active::after {
+        transform: scaleX(1);
+    }
+
+    header.navbar .nav-links a.list-space::after,
+    header.navbar .account-dd .my-account::after {
+        display: none;
     }
 </style>
 
 <header class="navbar">
 
-    <!-- LOGO -->
-    <a href="/webprogg/user/usershome.php" class="logo">
+    <!-- LOGO — same target as HOME (userhome for logged-in) -->
+    <a href="<?php echo htmlspecialchars($logoHref); ?>" class="logo">
         <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo">
     </a>
 
+    <!-- NAVIGATION -->
     <nav class="nav-links">
 
-        <a href="/webprogg/user/usershome.php">HOME</a>
-        <a href="/webprogg/Listings/listing.php">LISTINGS</a>
-        <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
-        <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
-        <a href="/webprogg/misc/contacts.php">CONTACTS</a>
-
-        <!-- NOTIFICATIONS BELL -->
-        <a href="/webprogg/host/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
-            <?php if ($notification_count > 0): ?>
-                <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
-            <?php endif; ?>
-        </a>
-
-        <!-- MY ACCOUNT DROPDOWN — self-contained, animated -->
-        <div class="host-dd">
-
-            <button
-                type="button"
-                class="my-account host-dd-toggle"
-                aria-haspopup="true"
-                aria-expanded="false"
+        <?php foreach ($navigation as $name => $link): ?>
+            <?php
+                /* HOME is always forced to the fixed target
+                   (userhome for logged-in users), regardless of
+                   what the page's $navigation array hardcoded. */
+                $effectiveLink = $link;
+                if (strcasecmp((string) $name, 'HOME') === 0) {
+                    $effectiveLink = $navHomeHref;
+                }
+            ?>
+            <a
+                href="<?php echo htmlspecialchars($effectiveLink); ?>"
+                class="<?php echo ($effectiveLink === $currentPage) ? 'active' : ''; ?>"
             >
-                <span class="account-circle">
-                    <img src="<?php echo h($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
-                </span>
-                <span>MY PROFILE</span>
-                <span class="dropdown-caret">&#9662;</span>
-            </button>
+                <?php echo htmlspecialchars($name); ?>
+            </a>
+        <?php endforeach; ?>
 
-            <div class="host-dd-menu">
+        <?php if ($isLoggedIn): ?>
 
-                <a href="/webprogg/host/hostprofile.php">
-                    Host Dashboard
-                </a>
+            <!-- NOTIFICATIONS -->
+            <a href="/webprogg/user/notifications.php" class="nav-bell">
+                <img src="/webprogg/images/bell.png" alt="Notifications">
+                <?php if ($notification_count > 0): ?>
+                    <span class="nav-bell-badge"><?php echo htmlspecialchars($notification_count); ?></span>
+                <?php endif; ?>
+            </a>
 
-                <a href="/webprogg/host/hosteditprofile.php">
-                    Profile Settings
-                </a>
+            <!-- MY ACCOUNT — role-aware dropdown -->
+            <div class="account-dd">
 
-                <a href="/webprogg/host/hostmessages.php">
-                    Messages
-                </a>
+                <button
+                    type="button"
+                    class="my-account account-dd-toggle"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                >
+                    <span class="account-circle">
+                        <img src="<?php echo htmlspecialchars($navAvatar); ?>" alt="My Account" id="navAccountAvatarImg">
+                    </span>
+                    <span>MY PROFILE</span>
+                    <span class="dropdown-caret">&#9662;</span>
+                </button>
 
-                <a href="/webprogg/auth/logout.php">
-                    Logout
-                </a>
+                <div class="account-dd-menu">
+
+                    <?php if ($isHost): ?>
+                        <a href="/webprogg/host/hostprofile.php">
+                            Host Dashboard
+                        </a>
+                    <?php else: ?>
+                        <a href="/webprogg/user/userprofile.php">
+                            User Profile
+                        </a>
+                    <?php endif; ?>
+
+                    <a href="<?php echo htmlspecialchars($settingsHref); ?>">
+                        Profile Settings
+                    </a>
+
+                    <a href="<?php echo htmlspecialchars($messagesHref); ?>">
+                        Messages
+                    </a>
+
+                    <a href="/webprogg/auth/logout.php">
+                        Logout
+                    </a>
+
+                </div>
 
             </div>
 
-        </div>
+        <?php else: ?>
+
+            <!-- GUEST CTA -->
+            <a href="<?php echo htmlspecialchars($guestCtaHref); ?>" class="list-space">
+                <?php echo htmlspecialchars($guestCtaLabel); ?>
+            </a>
+
+        <?php endif; ?>
 
     </nav>
 
 </header>
 
-<!-- Host dropdown script + scroll shadow — self-contained, guarded -->
+<!-- Shared dropdown script — self-contained, guarded -->
 <script>
 (function () {
     "use strict";
 
-    if (window.__hostNavDD) { return; }
-    window.__hostNavDD = true;
+    if (window.__sharedNavDD) { return; }
+    window.__sharedNavDD = true;
 
-    /* ---- Dropdown open/close (unchanged behavior) ---- */
     document.addEventListener("click", function (event) {
 
         var toggle = event.target.closest
-            ? event.target.closest(".host-dd-toggle")
+            ? event.target.closest(".account-dd-toggle")
             : null;
 
         if (toggle) {
-            var dd = toggle.closest(".host-dd");
+            var dd = toggle.closest(".account-dd");
 
             if (dd) {
                 var isOpen = dd.classList.toggle("open");
@@ -388,33 +384,21 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
             return;
         }
 
-        document.querySelectorAll(".host-dd.open").forEach(function (dd) {
+        document.querySelectorAll(".account-dd.open").forEach(function (dd) {
             dd.classList.remove("open");
-            var btn = dd.querySelector(".host-dd-toggle");
+            var btn = dd.querySelector(".account-dd-toggle");
             if (btn) { btn.setAttribute("aria-expanded", "false"); }
         });
     });
 
     document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
-            document.querySelectorAll(".host-dd.open").forEach(function (dd) {
+            document.querySelectorAll(".account-dd.open").forEach(function (dd) {
                 dd.classList.remove("open");
-                var btn = dd.querySelector(".host-dd-toggle");
+                var btn = dd.querySelector(".account-dd-toggle");
                 if (btn) { btn.setAttribute("aria-expanded", "false"); }
             });
         }
     });
-
-    /* ---- NEW: scroll shadow — navbar lifts off the page ---- */
-    var nav = document.querySelector(".navbar");
-
-    if (nav) {
-        var onScroll = function () {
-            nav.classList.toggle("nav-scrolled", window.scrollY > 8);
-        };
-
-        window.addEventListener("scroll", onScroll, { passive: true });
-        onScroll();
-    }
 })();
 </script>

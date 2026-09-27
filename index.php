@@ -10,16 +10,35 @@ session_start();
 );
 
 /*
- * Whether an admin is currently logged in, so the footer's Admin
- * link can go straight to the dashboard instead of the login form.
+ * Whether an admin is currently logged in — the shared footer's
+ * Admin link goes straight to the dashboard instead of the
+ * login form.
  */
  $isAdminLoggedIn = (
     isset($_SESSION["admin_logged_in"]) &&
     $_SESSION["admin_logged_in"] === true
 );
 
+/*
+ * SHARED FOOTER SETTINGS (used by includes/footer.php)
+ * The homepage is the only page that shows the small Admin link.
+ */
+ $footerShowAdminLink = true;
+ $currentPage = "/webprogg/index.php";
+
 // =========================
 // PAGE DATA - index.php
+//
+// === DUAL CTA ===
+// The old Hive Club panel is now a "List Now" panel
+// (navy background, gold button) — the band keeps its
+// original two-panel navy/gold layout.
+//
+// === SHARED FOOTER (this version) ===
+// The hard-coded footer, $footerCompanyLinks and
+// $footerInvolvedLinks are gone — replaced by
+// includes/footer.php, the single source of truth
+// for footer links. HIVE CLUB REMOVED site-wide.
 // =========================
 
  $navLinks = [
@@ -30,10 +49,9 @@ session_start();
     [
         'label' => 'BECOME A HOST',
         'href' => $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php',
-        'class' => $isLoggedIn ? '' : 'js-open-login'
+        'class' => ''
     ],
 
-    ['label' => 'HIVE CLUB', 'href' => '/webprogg/hiveclub.php', 'class' => ''],
     ['label' => 'CONTACTS', 'href' => '/webprogg/misc/contacts.php', 'class' => ''],
 ];
 
@@ -110,29 +128,6 @@ session_start();
     '/webprogg/images/SecondImageRight.jpg',
 ];
 
- $footerCompanyLinks = [
-    ['label' => 'Home', 'href' => '/webprogg/index.php'],
-    ['label' => 'Listings', 'href' => '/webprogg/Listings/listing.php'],
-    ['label' => 'How It Works', 'href' => '/webprogg/host/howitworks.php'],
-    ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
-];
-
- $footerInvolvedLinks = [
-    ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'Hive Club', 'href' => '/webprogg/hiveclub.php'],
-    ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'Terms Of Service', 'href' => '#'],
-];
-
- $phoneNumber = '+639275693574';
- $emailAddress = 'RoomHive@gmail.com';
- $currentYear = date('Y');
-
-/*
- * The login card pops up on load for guests only.
- * Logged-in users and admins never see it.
- */
- $showLoginPopup = !$isLoggedIn && !$isAdminLoggedIn;
 ?>
 
 <!doctype html>
@@ -144,143 +139,23 @@ session_start();
 
     <title>RoomHive</title>
 
-    <!-- Google Font -->
     <link
         href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
 
-    <!-- CSS -->
-    <link rel="stylesheet" href="/webprogg/assets/style.css">
-    <link rel="stylesheet" href="/webprogg/assets/motion.css">
-    <link rel="stylesheet" href="/webprogg/assets/loginform.css">
+    <!-- ?v=2: cache-buster so browsers pick up the hero-gap fixes -->
+    <link rel="stylesheet" href="/webprogg/assets/style.css?v=2">
+    <link rel="stylesheet" href="/webprogg/assets/motion.css?v=2">
 
     <script>document.documentElement.classList.add("js-animations");</script>
 
-    <style>
-        .footer-bottom {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .footer-admin-link {
-            font-size: 12px;
-            color: #8B93A6;
-            text-decoration: none;
-            opacity: 0.8;
-        }
-        .footer-admin-link:hover { opacity: 1; text-decoration: underline; }
+    <!-- INLINE FOOTER STYLES REMOVED — they now live inside
+         includes/footer.php and travel with the include. -->
 
-        /* =========================================================
-           LOGIN MODAL — SELF-CONTAINED STYLES
-           Copied from loginform.css so the popup works even if the
-           browser is serving a stale cached copy of that file.
-        ========================================================= */
-
-        @keyframes login-card-float {
-            0%, 100% {
-                transform: translateY(0px);
-                box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-            }
-            50% {
-                transform: translateY(-8px);
-                box-shadow: 0 18px 35px rgba(0, 0, 0, 0.12);
-            }
-        }
-
-        .login-modal-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 1000;
-
-            display: flex;
-            justify-content: center;
-            align-items: center;
-
-            padding: 30px;
-
-            visibility: hidden;
-            pointer-events: none;
-        }
-
-        .login-modal-overlay.open {
-            visibility: visible;
-            pointer-events: auto;
-        }
-
-        .login-modal-backdrop {
-            position: absolute;
-            inset: 0;
-
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-
-            opacity: 0;
-            transition: opacity 0.35s ease;
-        }
-
-        .login-modal-overlay.open .login-modal-backdrop {
-            opacity: 1;
-        }
-
-        .login-modal-overlay .login-card {
-            position: relative;
-            z-index: 1;
-
-            opacity: 0;
-            transform: translateY(24px) scale(0.96);
-
-            transition:
-                opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-                transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
-        .login-modal-overlay.open .login-card {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-
-            animation: login-card-float 4.5s ease-in-out 0.35s infinite;
-        }
-
-        .login-modal-close {
-            position: absolute;
-            top: 10px;
-            right: 14px;
-
-            background: none;
-            border: none;
-
-            font-size: 22px;
-            line-height: 1;
-            color: #8b93a6;
-
-            cursor: pointer;
-        }
-
-        .login-modal-close:hover {
-            color: #1c2a38;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .login-modal-overlay .login-card,
-            .login-modal-backdrop {
-                transition: none;
-            }
-            .login-modal-overlay.open .login-card {
-                animation: none;
-            }
-        }
-    </style>
 </head>
 
 <body>
-
-<!-- =========================
-     NAVIGATION BAR
-========================== -->
 
 <nav class="navbar">
 
@@ -303,7 +178,7 @@ session_start();
 
         <a
             href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-            class="list-space<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
+            class="list-space"
         >
             LIST YOUR SPACE
         </a>
@@ -312,10 +187,6 @@ session_start();
 
 </nav>
 
-
-<!-- =========================
-     HERO SECTION
-========================== -->
 
 <section class="hero">
 
@@ -345,7 +216,7 @@ session_start();
 
             <a
                 href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-                class="btn-primary<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
+                class="btn-primary"
             >
                 LIST YOUR SPACE
             </a>
@@ -363,50 +234,6 @@ session_start();
 
 </section>
 
-
-<!-- =========================
-     HIVE CLUB SECTION
-========================== -->
-
-<section class="hive-club">
-
-    <div class="club-content">
-
-        <img
-            src="/webprogg/images/Crown_Logo.png"
-            alt="Hive Club Crown"
-            class="crown-logo"
-        >
-
-        <div class="club-text">
-
-            <span class="membership">
-                MEMBERSHIP
-            </span>
-
-            <h3>
-                Join The VIP Hive Club
-            </h3>
-
-            <p>
-                Lorem ipsum dolor sit amet, consectetur adipiscing elit,
-                sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-            </p>
-
-        </div>
-
-    </div>
-
-    <a href="/webprogg/hiveclub.php" class="join-button">
-        JOIN NOW
-    </a>
-
-</section>
-
-
-<!-- =========================
-     TOP LISTINGS SECTION
-========================== -->
 
 <section class="listings">
 
@@ -453,10 +280,6 @@ session_start();
 </section>
 
 
-<!-- =========================
-     ABOUT US SECTION
-========================== -->
-
 <section class="about">
 
     <div class="about-text">
@@ -498,10 +321,6 @@ session_start();
 
 </section>
 
-
-<!-- =========================
-     REASON WHY SECTION
-========================== -->
 
 <section class="reasons">
 
@@ -559,10 +378,6 @@ session_start();
 
 </section>
 
-
-<!-- =========================
-     TESTIMONIALS SECTION
-========================== -->
 
 <section class="testimonials">
 
@@ -658,10 +473,6 @@ session_start();
 </section>
 
 
-<!-- =========================
-     FINAL CTA
-========================== -->
-
 <section class="final-cta">
 
     <div class="cta-image-strip">
@@ -699,34 +510,31 @@ session_start();
 </section>
 
 
-<!-- =========================
-     DUAL CTA
-========================== -->
-
 <section class="dual-cta">
 
-    <div class="dual-cta-panel hive-panel">
+    <div class="dual-cta-panel list-panel">
 
         <img
-            src="/webprogg/images/Crown_Logo.png"
-            alt="Hive Club Crown"
+            src="/webprogg/images/UploadPhotosIcon-BecomeAHost.png"
+            alt="List Your Space"
             class="dual-cta-icon"
         >
 
         <h3>
-            Join The Hive Club
+            List Now
         </h3>
 
         <p>
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit,
-            sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+            Got a room, apartment or house sitting empty?
+            Put it up in minutes and start receiving booking
+            enquiries from verified renters today.
         </p>
 
         <a
-            href="/webprogg/hiveclub.php"
-            class="dual-cta-button hive-button"
+            href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
+            class="dual-cta-button list-button"
         >
-            JOIN NOW
+            LIST NOW
         </a>
 
     </div>
@@ -751,7 +559,7 @@ session_start();
 
         <a
             href="<?php echo $isLoggedIn ? '/webprogg/host/becomeahost.php' : '/webprogg/auth/loginform.php'; ?>"
-            class="dual-cta-button host-button<?php echo $isLoggedIn ? '' : ' js-open-login'; ?>"
+            class="dual-cta-button host-button"
         >
             LIST YOUR SPACE
         </a>
@@ -761,442 +569,14 @@ session_start();
 </section>
 
 
-<!-- =========================
-     FOOTER
-========================== -->
-
-<footer class="site-footer">
-
-    <div class="footer-top">
-
-        <div class="footer-brand">
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-                class="footer-logo"
-            >
-
-            <div class="footer-contact-line">
-
-                <img
-                    src="/webprogg/images/PhoneIcon.jpg"
-                    alt="Phone"
-                >
-
-                <span>
-                    <?php echo htmlspecialchars($phoneNumber); ?>
-                </span>
-
-            </div>
-
-            <div class="footer-contact-line">
-
-                <img
-                    src="/webprogg/images/EmailIcon.jpg"
-                    alt="Email"
-                >
-
-                <span>
-                    <?php echo htmlspecialchars($emailAddress); ?>
-                </span>
-
-            </div>
-
-        </div>
-
-
-        <div class="footer-links">
-
-            <span class="footer-heading">
-                COMPANY
-            </span>
-
-            <?php foreach ($footerCompanyLinks as $link): ?>
-
-                <a
-                    href="<?php echo htmlspecialchars($link['href']); ?>"
-                >
-                    <?php echo htmlspecialchars($link['label']); ?>
-                </a>
-
-            <?php endforeach; ?>
-
-        </div>
-
-
-        <div class="footer-links">
-
-            <span class="footer-heading">
-                GET INVOLVED
-            </span>
-
-            <?php foreach ($footerInvolvedLinks as $link): ?>
-
-                <a
-                    href="<?php echo htmlspecialchars($link['href']); ?>"
-                >
-                    <?php echo htmlspecialchars($link['label']); ?>
-                </a>
-
-            <?php endforeach; ?>
-
-        </div>
-
-
-        <div class="footer-contact">
-
-            <span class="footer-heading">
-                GET THE APP
-            </span>
-
-            <div class="footer-app-badges">
-
-                <img
-                    src="/webprogg/images/AppStore.jpg"
-                    alt="Download on the App Store"
-                >
-
-                <img
-                    src="/webprogg/images/GooglePlay.jpg"
-                    alt="Get it on Google Play"
-                >
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <div class="footer-bottom">
-
-        <p>
-            &copy;
-            <?php echo htmlspecialchars($currentYear); ?>
-            RoomHive. All rights reserved.
-        </p>
-
-        <a
-            href="<?php echo $isAdminLoggedIn ? '/webprogg/admin/admin.php' : '/webprogg/auth/adminlogin.php'; ?>"
-            class="footer-admin-link"
-        >
-            Admin
-        </a>
-
-    </div>
-
-</footer>
-
-
 <!-- =========================================================
-     LOGIN MODAL — pops up over index.php for logged-out visitors
+     SHARED FOOTER — single source of truth (includes/footer.php)
 ========================================================= -->
-<div
-    class="login-modal-overlay"
-    id="loginModalOverlay"
-    aria-hidden="true"
->
 
-    <div class="login-modal-backdrop" data-close-login></div>
-
-    <div class="login-card">
-
-        <button type="button" class="login-modal-close" data-close-login aria-label="Close">
-            &times;
-        </button>
-
-        <!-- RoomHive Logo -->
-        <div class="login-logo">
-
-            <img
-                src="/webprogg/images/RoomHiveLogos.png"
-                alt="RoomHive Logo"
-            >
-
-        </div>
-
-        <!-- Login Title -->
-        <div class="login-header">
-
-            <h1>Welcome Back!</h1>
-
-        </div>
-
-        <!-- Error Message (filled in by JS on a failed attempt) -->
-        <div class="login-error" id="loginModalError" hidden></div>
-
-        <!-- Login Form -->
-        <form id="loginModalForm" novalidate>
-
-            <input type="hidden" name="redirect" value="">
-
-            <!-- Email -->
-            <div class="login-input-group">
-
-                <label for="modal-email">
-
-                    <img
-                        src="/webprogg/images/EmailIcon.jpg"
-                        alt="Email"
-                    >
-
-                    <span>Email Address</span>
-
-                </label>
-
-                <input
-                    type="email"
-                    id="modal-email"
-                    name="email"
-                    autocomplete="email"
-                    required
-                >
-
-            </div>
-
-            <!-- Password -->
-            <div class="login-input-group">
-
-                <label for="modal-password">
-
-                    <img
-                        src="/webprogg/images/LockIcon.png"
-                        alt="Password"
-                    >
-
-                    <span>Password</span>
-
-                </label>
-
-                <input
-                    type="password"
-                    id="modal-password"
-                    name="password"
-                    autocomplete="current-password"
-                    required
-                >
-
-            </div>
-
-            <!-- Forgot Password -->
-            <div class="forgot-password">
-
-                <a href="/webprogg/auth/forgotpassword.php">
-                    Forgot Password?
-                </a>
-
-            </div>
-
-            <!-- Login Button -->
-            <button
-                type="submit"
-                class="login-button"
-            >
-                Log in
-            </button>
-
-        </form>
-
-        <!-- Google -->
-        <button
-            type="button"
-            class="social-login google-login"
-            onclick="window.location.href='google-login.php'"
-        >
-
-            <img
-                src="/webprogg/images/Googlecons.png"
-                alt="Google"
-            >
-
-            <span>Continue with Google</span>
-
-        </button>
-
-        <!-- Apple -->
-        <button
-            type="button"
-            class="social-login apple-login"
-            onclick="window.location.href='apple-login.php'"
-        >
-
-            <img
-                src="/webprogg/images/AppleIcons.png"
-                alt="Apple"
-            >
-
-            <span>Continue with Apple</span>
-
-        </button>
-
-        <!-- Create Account -->
-        <div class="create-account">
-
-            <span>Not registered yet?</span>
-
-            <a href="/webprogg/auth/createaccount.php">
-                Create Account Here
-            </a>
-
-        </div>
-
-    </div>
-
-</div>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
 
 <script src="/webprogg/assets/javaScript.js"></script>
-
-<!-- =========================================================
-     LOGIN POPUP SCRIPT — SELF-CONTAINED
-     Lives directly in index.php on purpose: it cannot be
-     broken by a cached or erroring javaScript.js.
-========================================================= -->
-<script>
-(function () {
-    "use strict";
-
-    /* PHP decides: guests get true, logged-in users/admins get false */
-    var AUTO_OPEN = <?php echo $showLoginPopup ? 'true' : 'false'; ?>;
-
-    var overlay  = document.getElementById("loginModalOverlay");
-    var form     = document.getElementById("loginModalForm");
-    var errorBox = document.getElementById("loginModalError");
-
-    if (!overlay || !form) {
-        return;
-    }
-
-    function openModal(redirectTarget) {
-        var redirectInput = overlay.querySelector('input[name="redirect"]');
-
-        if (redirectInput) {
-            redirectInput.value = redirectTarget || "";
-        }
-
-        overlay.classList.add("open");
-        overlay.setAttribute("aria-hidden", "false");
-        document.body.style.overflow = "hidden";
-
-        var emailField = document.getElementById("modal-email");
-
-        if (emailField) {
-            window.setTimeout(function () {
-                emailField.focus();
-            }, 400);
-        }
-    }
-
-    function closeModal() {
-        overlay.classList.remove("open");
-        overlay.setAttribute("aria-hidden", "true");
-        document.body.style.overflow = "";
-
-        if (errorBox) {
-            errorBox.hidden = true;
-            errorBox.textContent = "";
-        }
-    }
-
-    /* ---- POP UP AUTOMATICALLY ~0.5s after the page loads ---- */
-    if (AUTO_OPEN) {
-        window.setTimeout(function () {
-            openModal("");
-        }, 500);
-    }
-
-    /* ---- Open via BECOME A HOST / LIST YOUR SPACE links,
-            close via backdrop or the × button ---- */
-    document.addEventListener("click", function (event) {
-        if (!event.target || !event.target.closest) {
-            return;
-        }
-
-        var trigger = event.target.closest(".js-open-login");
-
-        if (trigger) {
-            event.preventDefault();
-
-            var redirect = "";
-
-            try {
-                var url = new URL(trigger.href, window.location.origin);
-                redirect = url.searchParams.get("redirect") || "";
-            } catch (err) {
-                redirect = "";
-            }
-
-            openModal(redirect);
-
-            return;
-        }
-
-        if (event.target.closest("[data-close-login]")) {
-            closeModal();
-        }
-    });
-
-    /* ---- Esc closes it ---- */
-    document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape" && overlay.classList.contains("open")) {
-            closeModal();
-        }
-    });
-
-    /* ---- Submit via fetch so errors show inside the popup ---- */
-    form.addEventListener("submit", function (event) {
-        event.preventDefault();
-
-        if (errorBox) {
-            errorBox.hidden = true;
-        }
-
-        var submitBtn = form.querySelector(".login-button");
-        var originalLabel = submitBtn ? submitBtn.textContent : "";
-
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = "Logging in...";
-        }
-
-        fetch("/webprogg/auth/loginform.php", {
-            method: "POST",
-            headers: { "X-Requested-With": "XMLHttpRequest" },
-            body: new FormData(form),
-            credentials: "same-origin",
-        })
-            .then(function (response) {
-                return response.json();
-            })
-            .then(function (data) {
-                if (data && data.success) {
-                    window.location.href = data.redirect;
-                    return;
-                }
-
-                if (errorBox) {
-                    errorBox.textContent =
-                        (data && data.error) || "Something went wrong.";
-                    errorBox.hidden = false;
-                }
-            })
-            .catch(function () {
-                if (errorBox) {
-                    errorBox.textContent =
-                        "Couldn't reach the server. Please try again.";
-                    errorBox.hidden = false;
-                }
-            })
-            .finally(function () {
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = originalLabel || "Log in";
-                }
-            });
-    });
-})();
-</script>
 
 </body>
 

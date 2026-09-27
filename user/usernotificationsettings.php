@@ -32,6 +32,22 @@
            push_promotions TINYINT(1) NOT NULL DEFAULT 0,
            updated_at TIMESTAMP NULL DEFAULT NULL
        );
+
+   === FIXES (this version) ===
+     - REAL unread bell count (was hardcoded 0 — badge never
+       showed, inconsistent with every other My Account page).
+     - HEADER REMOVED: this page used .ub-page-head but those
+       styles only existed inline on userbookings.php, so the
+       header rendered unstyled UNDER the fixed navbar. Now
+       removed like the other pages; the title lives in the
+       card header, and .up-dashboard clears the navbar.
+     - Footer listing slugs fixed (studio-loft /
+       shared-bedroom / entire-house, with hyphens).
+     - SIDEBAR ACTIVE STATE FIX: sidebar.php keys its .active
+       glow off $activeSidebar, and this page's key isn't in
+       its list — so no sidebar link lit up. A small fallback
+       script marks whichever sidebar link points at THIS
+       page, picking up the existing glow styling.
 ========================================================= */
 
 session_start();
@@ -64,7 +80,13 @@ if ((int) $dbUser['is_host'] === 1) {
 
  $navAvatar = sync_user_session($dbUser);
 
- $notification_count = 0;
+/* REAL UNREAD BELL COUNT (was hardcoded 0 — badge never showed) */
+ $ncStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0"
+ );
+ $ncStmt->execute(['u' => $_SESSION['user_id']]);
+ $notification_count = (int) $ncStmt->fetchColumn();
+
  $activeSidebar = 'notificationsettings';
 
 /* =========================================================
@@ -191,15 +213,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="/webprogg/assets/style.css">
 <link rel="stylesheet" href="/webprogg/assets/myaccount.css">
 <script>document.documentElement.classList.add("js");</script>
+
+<style>
+    /* =====================================================
+       PAGE HEADER REMOVED — navbar clearance for this page.
+       The old .ub-page-head had no styles here (they only
+       existed inline on userbookings.php), so it rendered
+       unstyled under the fixed navbar. The dashboard clears
+       the navbar itself now.
+    ====================================================== */
+    .up-dashboard {
+        margin-top: 110px;
+    }
+</style>
 </head>
 <body>
 <?php require $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/usernav.php'; ?>
-<!-- PAGE HEADER — PLAIN -->
-<header class="ub-page-head">
-    <span class="ub-eyebrow">Notification Settings</span>
-    <h1>Choose what you're notified about</h1>
-    <p class="ub-lead">Pick which events reach you by email, in-app notification, or both. Changes save instantly.</p>
-</header>
+
+<!-- PAGE HEADER — REMOVED (title moved into the card header) -->
 
 <main class="up-dashboard">
 
@@ -223,9 +254,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         method="POST"
         action="/webprogg/user/usernotificationsettings.php"
         class="up-card up-reveal"
-        style="max-width: 640px;"
+        style="max-width: 640px; margin: 0 auto;"
     >
         <?php echo csrf_field(); ?>
+
+        <!-- Card header carries the page title now -->
+        <div class="up-card-header">
+            <h3>Notification Settings</h3>
+        </div>
 
         <!-- =========================
              BOOKINGS GROUP
@@ -353,9 +389,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div class="footer-links">
             <span class="footer-heading">LISTINGS</span>
-            <a href="/webprogg/Listings/listing.php?category=studioloft">Studios</a>
-            <a href="/webprogg/Listings/listing.php?category=sharedbedroom">Shared Rooms</a>
-            <a href="/webprogg/Listings/listing.php?category=entirehouse">Entire House</a>
+            <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
+            <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
+            <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
             <a href="/webprogg/Listings/listing.php">Featured Stays</a>
         </div>
         <div class="footer-links">
@@ -400,6 +436,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
         revealEls.forEach(function (el) { io.observe(el); });
     }
+})();
+</script>
+
+<!-- =========================================================
+     SIDEBAR ACTIVE STATE (this page only)
+     sidebar.php keys its .active highlight off $activeSidebar;
+     this page's key isn't in its list, so no link lit up.
+     Fallback: mark whichever sidebar link points at THIS page.
+     The .active class picks up the existing glow styling from
+     myaccount.css (gold gradient + inset bar), dark-mode aware.
+========================================================= -->
+<script>
+(function () {
+    "use strict";
+
+    var here = window.location.pathname;
+
+    document.querySelectorAll(".up-side-link").forEach(function (link) {
+        try {
+            var linkPath = new URL(link.href, window.location.origin).pathname;
+
+            if (linkPath === here) {
+                link.classList.add("active");
+            }
+        } catch (e) {
+            /* ignore malformed hrefs */
+        }
+    });
 })();
 </script>
 

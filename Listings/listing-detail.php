@@ -2,16 +2,42 @@
 /* =========================================================
    listing-detail.php
 
-   === NUDGE (NEW) ===
-   When an UNVERIFIED RENTER clicks "Send Inquiry", a
-   suggestion modal appears: "Get Verified Now" (→
-   editprofile#verify-card) or "Continue without verifying"
-   (proceeds normally). Suggestion only — never a block.
-   Hosts never see it. Verified users never see it.
+   === MONTHLY RENTAL + LONG TERM ===
+   - NORMAL MODE: tenant picks a MOVE-IN date + RENTAL
+     DURATION (1-12 months); move-out is auto-calculated:
+       move-out = move-in + N months - 1 day
+     Total rent = monthly price x months.
+   - LONG TERM MODE (checkbox): open-ended month-to-month
+     stay. No move-out, no duration picker. Pay is ONE
+     month at a time. checkout_date is stored NULL, and
+     while a long-term booking is active the space is
+     UNAVAILABLE to everyone else.
+
+   === HIVE CLUB REMOVED ===
+   The membership discount system was deleted from this
+   page. All pricing now uses the listing's base price:
+     total = price x months, reserve = 50% of total.
+   (If hiveclub.php is deleted from /config, make sure no
+   other page still includes it or calls hive_* functions.)
+
+   === ENQUIRY -> PAYMENT FLOW ===
+   SEND ENQUIRY submits (GET) to
+     /webprogg/booking/listingpayment.php
+   — the payment-method picker (Flow A per process-payment.php's
+   docblock: listing-detail -> listingpayment -> process-payment
+   -> receipt) — carrying listing_id, checkin_date,
+   checkout_date, guests, months, and long_term when checked.
+   Guests whitelist mapped: capacities above 4 send "4+".
+   The verification gate popup still intercepts unverified
+   renters BEFORE the form ever submits.
+
+   === SPACE DETAILS ===
+   Lives in the RIGHT SIDEBAR as the last card
+   (.rd-details-card) and flex-grows to occupy the leftover
+   space under the booking card (see listing-detail.css).
 ========================================================= */
 session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php'; /* HIVE CLUB */
 
 /* =========================
    LOGIN STATUS
@@ -27,12 +53,13 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/hiveclub.php'; /* HIV
  $userName = $_SESSION['user_name'] ?? 'Guest';
 
 /* =========================
-   FLAGS FROM book.php REDIRECTS
+   FLAGS FROM REDIRECTS
 ========================== */
  $showUnavailableNotice     = isset($_GET['unavailable']);
  $showOwnBookingNotice      = isset($_GET['ownbooking']);
  $showAlreadyListedNotice   = isset($_GET['alreadylisted']);
  $showIncompleteDatesNotice = isset($_GET['incompletedates']);
+ $showNeedVerifyNotice      = isset($_GET['needverify']);
 
 /* =========================
    AMENITY ICON MAP
@@ -176,7 +203,7 @@ if (empty($galleryImages)) {
  $isBookable = (bool) $availabilityStmt->fetchColumn();
 
 /* =========================================================
-   GET UNAVAILABLE DATES
+   BOOKED DATE RANGES (for occupancy + calendar blocking)
 ========================================================= */
 
  $unavailableDatesStmt = $pdo->prepare(
@@ -205,7 +232,7 @@ if (empty($galleryImages)) {
 foreach ($unavailableRanges as $range) {
     $co = $range['checkout_date'] ?? null;
 
-    if (empty($co) && !empty($range['checkin_date']) && $range['checkin_date'] <= $today) {
+    if (empty($co) && !empty($range['checkin_date'])) {
         $isLongTermOccupied = true;
         break;
     }
@@ -237,8 +264,7 @@ foreach ($unavailableRanges as $range) {
 
 /* =========================================================
    NUDGE — verify suggestion flag.
-   Logged-in RENTERS only (never hosts). True when the
-   viewer is not yet verified (ID + complete profile).
+   Logged-in RENTERS only (never hosts).
 ========================================================= */
  $viewerIsHost    = !empty($_SESSION['is_host']);
  $showVerifyNudge = false;
@@ -270,28 +296,61 @@ if ($isLoggedIn && !$isOwnListing) {
 }
 
 /* =========================================================
-   HIVE CLUB — member price preview (Phase 4 consistency)
+   BASE PRICE — Hive Club removed.
+   Every calculation uses the listing's plain monthly price.
 ========================================================= */
- $hiveDiscountPct = 0;
- $hiveTierLabel   = null;
- $hiveDiscountAmt = 0.0;
+ $basePrice = (float) $listingRow['price'];
 
-if ($isLoggedIn && !$isOwnListing) {
-    hive_expiry_sweep($pdo);
-    $hiveMember      = hive_member($pdo, $_SESSION['user_id']);
-    $hiveDiscountPct = hive_discount_pct($hiveMember);
+/* =========================================================
+   MONTHLY RENTAL SYSTEM — duration-driven + LONG TERM
+========================================================= */
+ $allowedDurations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+ $durationMonths = isset($_GET['months']) && in_array((int) $_GET['months'], $allowedDurations, true)
+    ? (int) $_GET['months']
+    : 1;
 
-    if ($hiveDiscountPct > 0) {
-        $hiveTierLabel   = (string) $hiveMember['tier'];
-        $hiveDiscountAmt = round(((float) $listingRow['price']) * ($hiveDiscountPct / 100), 2);
-    }
+ $isLongTermSelected = isset($_GET['long_term']) && $_GET['long_term'] === '1';
+
+if ($isLongTermSelected) {
+    $durationMonths = 1;
 }
 
- $memberPrice    = round(((float) $listingRow['price']) - $hiveDiscountAmt, 2);
- $reserveFee     = round($memberPrice * 0.5, 2);
- $reserveBalance = round($memberPrice - $reserveFee, 2);
+ $listingTotal   = round($basePrice * $durationMonths, 2);
+ $reserveFee     = round($listingTotal * 0.5, 2);
+ $reserveBalance = round($listingTotal - $reserveFee, 2);
 
-/* Assemble into the shape the template below expects */
+ $durationLabel = $isLongTermSelected
+    ? 'Long Term'
+    : ($durationMonths === 1 ? '1 Month' : $durationMonths . ' Months');
+
+/* =========================================================
+   ENQUIRY -> PAYMENT FLOW (CONNECTED)
+   SEND ENQUIRY submits (GET) to listingpayment.php — the
+   payment-method picker — which then POSTs to
+   process-payment.php. This matches process-payment.php's
+   documented Flow A and its own $changeMethodUrl pattern.
+
+   GUESTS MAPPING: process-payment.php whitelists
+   guests as '1' | '2' | '3' | '4+'. Host capacities of
+   5 / 6 / 8 / 10 / 10+ map to '4+'; 1-4 pass through.
+========================================================= */
+ $paymentStartUrl = '/webprogg/booking/listingpayment.php';
+
+ $rawCapacity = (string) $listingRow['capacity'];
+if (in_array($rawCapacity, ['1', '2', '3', '4+'], true)) {
+    $guestsValue = $rawCapacity;
+} elseif (ctype_digit($rawCapacity) && (int) $rawCapacity >= 4) {
+    $guestsValue = '4+';
+} else {
+    $guestsValue = '1';
+}
+
+/* Google Maps deep-link */
+ $mapsQuery = ($listingRow['latitude'] !== null && $listingRow['longitude'] !== null)
+    ? $listingRow['latitude'] . ',' . $listingRow['longitude']
+    : trim($listingRow['exact_address'] . ', ' . $listingRow['location']);
+ $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($mapsQuery);
+
  $listing = [
     'id'             => (int) $listingRow['id'],
     'title'          => $listingRow['title'],
@@ -299,8 +358,9 @@ if ($isLoggedIn && !$isOwnListing) {
     'location_label' => $listingRow['location'],
     'location_full'  => $listingRow['exact_address'] . ', ' . $listingRow['location'],
     'category_label' => $listingRow['category'],
-    'price'          => (float) $listingRow['price'],
-    'member_price'    => $memberPrice,
+    'price'          => $basePrice,
+    'duration_months' => $durationMonths,
+    'total_rent'      => $listingTotal,
     'reserve_fee'     => $reserveFee,
     'reserve_balance' => $reserveBalance,
     'amenities'      => json_decode($listingRow['amenities'] ?? '[]', true) ?? [],
@@ -311,7 +371,6 @@ if ($isLoggedIn && !$isOwnListing) {
     'floor'          => $listingRow['floor'],
     'parking'        => $listingRow['parking'],
 
-    /* MAP PIN */
     'latitude'       => isset($listingRow['latitude']) && $listingRow['latitude'] !== null
                             ? (float) $listingRow['latitude'] : null,
     'longitude'      => isset($listingRow['longitude']) && $listingRow['longitude'] !== null
@@ -392,7 +451,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .js .rd-reveal {
             opacity: 0;
-
             animation: rdRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0s) forwards;
         }
 
@@ -400,19 +458,14 @@ if ($isLoggedIn && !$isOwnListing) {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-
             color: var(--rd-ink-soft);
-
             font-weight: 600;
-
             text-decoration: none;
-
             transition: color 0.15s ease, transform 0.15s ease;
         }
 
         .rd-back-link:hover {
             color: var(--rd-honey-dark);
-
             transform: translateX(-3px);
         }
 
@@ -426,15 +479,12 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-action-btn:hover {
             border-color: var(--rd-honey) !important;
-
             color: #b07708 !important;
-
             transform: translateY(-1px);
         }
 
         .rd-action-btn.active .rd-heart-icon {
             color: #e0524d;
-
             animation: rdHeartPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
@@ -448,48 +498,34 @@ if ($isLoggedIn && !$isOwnListing) {
             display: flex;
             align-items: center;
             gap: 10px;
-
             padding: 14px 18px !important;
-
             background: #fff4e8 !important;
-
             border: 1px solid rgba(237, 164, 35, 0.5) !important;
             border-radius: 14px !important;
-
             color: #8a5a10 !important;
-
             font-weight: 500;
-
             animation: rdRise 0.4s ease both;
         }
 
         .rd-notice-success {
             background: #e8f8f1 !important;
-
             border-color: #b9e3c5 !important;
-
             color: #1e7a3d !important;
         }
 
         .rd-listed-note {
             text-align: center;
-
             margin-top: 10px;
-
             font-size: 12.5px;
             font-weight: 600;
-
             color: var(--rd-moss) !important;
         }
 
         .rd-date-hint {
             text-align: center;
-
             margin: 8px 0 0;
-
             font-size: 12px;
             font-weight: 600;
-
             color: #b07708 !important;
         }
 
@@ -503,12 +539,9 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-application-status {
             padding: 7px 15px !important;
-
             border-radius: 999px !important;
-
             font-size: 12.5px !important;
             font-weight: 700 !important;
-
             animation: rdRise 0.4s ease 0.15s both;
         }
 
@@ -560,15 +593,13 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-title {
             color: var(--rd-ink) !important;
-
             font-weight: 800 !important;
             letter-spacing: -0.5px;
         }
 
         .rd-rating {
             color: #b07708 !important;
-
-            font-weight: 600 !important;
+            font-weight: 600;
         }
 
         .rd-amenity {
@@ -581,11 +612,8 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-amenity:hover {
             transform: translateY(-3px);
-
             border-color: rgba(237, 164, 35, 0.45) !important;
-
             background: #fff8ec !important;
-
             box-shadow: var(--rd-gold-shadow);
         }
 
@@ -593,42 +621,43 @@ if ($isLoggedIn && !$isOwnListing) {
         .rd-host h2,
         .rd-location-card h3 {
             position: relative;
-
             display: inline-block;
-
             color: var(--rd-ink) !important;
-
             font-weight: 800 !important;
         }
 
         .rd-about h2::after,
         .rd-host h2::after {
             content: "";
-
             position: absolute;
-
             width: 36px;
             height: 3px;
-
             left: 0;
             bottom: -7px;
-
             background: linear-gradient(90deg, #f6b93b, var(--rd-honey));
-
             border-radius: 2px;
+        }
+
+        .rd-about-text {
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .rd-about-text.expanded {
+            display: block;
+            -webkit-line-clamp: unset;
+            -webkit-box-orient: unset;
+            overflow: visible;
         }
 
         .rd-show-more {
             background: none;
-
             border: none;
-
             color: var(--rd-honey-dark) !important;
-
             font-weight: 700;
-
             cursor: pointer;
-
             transition: color 0.15s ease;
         }
 
@@ -645,15 +674,12 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-host-card:hover {
             border-color: rgba(237, 164, 35, 0.4) !important;
-
             box-shadow: var(--rd-gold-shadow) !important;
-
             transform: translateY(-3px);
         }
 
         .rd-host-avatar {
             border: 3px solid #ffffff;
-
             box-shadow:
                 0 0 0 2.5px var(--rd-honey),
                 0 8px 18px rgba(237, 164, 35, 0.3);
@@ -661,21 +687,14 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-host-profile-btn {
             display: inline-block;
-
             padding: 10px 18px;
-
             background: #ffffff;
-
             border: 1.5px solid var(--rd-honey);
             border-radius: 10px;
-
             color: #b07708 !important;
-
             font-size: 12.5px;
             font-weight: 700;
-
             text-decoration: none;
-
             transition:
                 background 0.2s ease,
                 color 0.2s ease,
@@ -685,11 +704,8 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-host-profile-btn:hover {
             background: linear-gradient(135deg, #f6b93b, var(--rd-honey));
-
             color: var(--rd-ink) !important;
-
             transform: translateY(-2px);
-
             box-shadow: 0 8px 18px rgba(237, 164, 35, 0.35);
         }
 
@@ -701,31 +717,7 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-honey-dark) !important;
         }
 
-        /* ===== HIVE CLUB member price + 50% reserve breakdown ===== */
-        .rd-hive-chip {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 0 0 12px;
-            padding: 10px 12px;
-            background: linear-gradient(120deg, #FFF6E9, #FFFDF6);
-            border: 1px solid #F5C77E;
-            border-radius: 12px;
-        }
-        .rd-hive-chip .rd-hive-pct {
-            flex-shrink: 0;
-            background: linear-gradient(135deg, #f6b93b, #eda423);
-            color: #fff;
-            border-radius: 999px;
-            padding: 4px 10px;
-            font-size: 11px;
-            font-weight: 800;
-        }
-        .rd-hive-chip span.rd-hive-txt {
-            font-size: 12px;
-            font-weight: 700;
-            color: #8A5A10;
-        }
+        /* ===== 50% reserve breakdown ===== */
         .rd-reserve-rows {
             border-top: 1px dashed var(--rd-line);
             margin-top: 14px;
@@ -751,15 +743,10 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-btn-primary {
             background: linear-gradient(135deg, #f6b93b, var(--rd-honey)) !important;
-
             border: none !important;
-
             color: var(--rd-ink) !important;
-
             font-weight: 700 !important;
-
             box-shadow: 0 8px 20px rgba(237, 164, 35, 0.35) !important;
-
             transition:
                 transform 0.2s ease,
                 box-shadow 0.2s ease !important;
@@ -767,7 +754,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-btn-primary:hover:not(:disabled) {
             transform: translateY(-2px);
-
             box-shadow: 0 12px 26px rgba(237, 164, 35, 0.45) !important;
         }
 
@@ -777,7 +763,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-btn-primary:disabled {
             opacity: 0.6;
-
             cursor: not-allowed;
         }
 
@@ -791,11 +776,8 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-btn-outline:hover {
             border-color: var(--rd-honey) !important;
-
             color: #b07708 !important;
-
             transform: translateY(-2px);
-
             box-shadow: 0 8px 18px rgba(28, 42, 56, 0.08) !important;
         }
 
@@ -803,37 +785,83 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-ink-soft) !important;
         }
 
+        /* ===== LONG TERM checkbox ===== */
+        .rd-long-term {
+            margin-top: 4px;
+        }
         .rd-long-term-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--rd-ink-soft);
             cursor: pointer;
-
             transition: color 0.15s ease;
         }
+        .rd-long-term-label:hover { color: #b07708; }
+        .rd-long-term-label input { accent-color: var(--rd-honey); cursor: pointer; }
 
-        .rd-long-term-label:hover {
-            color: #b07708;
-        }
-
-        .rd-long-term-label input {
-            accent-color: var(--rd-honey);
-
+        /* ===== MONTHLY RENTAL — move-in + duration ===== */
+        .rd-movein-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1.5px solid var(--rd-line);
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--rd-ink);
+            background: #fff;
             cursor: pointer;
         }
-
-        .rd-date-summary-field strong {
-            color: var(--rd-ink) !important;
+        .rd-movein-input:focus {
+            outline: none;
+            border-color: var(--rd-honey);
+            box-shadow: 0 0 0 3px rgba(237, 164, 35, 0.15);
         }
+        .rd-movein-input.rd-input-error {
+            border-color: #d64545 !important;
+            box-shadow: 0 0 0 3px rgba(214, 69, 69, 0.15) !important;
+        }
+
+        .rd-duration-picker {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1.5px solid var(--rd-line);
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-top: 6px;
+        }
+        .rd-dur-btn {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            border: 1.5px solid var(--rd-honey);
+            background: #fff;
+            color: #b07708;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background .15s ease, transform .15s ease;
+        }
+        .rd-dur-btn:hover:not(:disabled) { background: #fff8ec; transform: scale(1.06); }
+        .rd-dur-btn:disabled { opacity: .35; cursor: not-allowed; }
+        .rd-dur-value { flex: 1; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+        .rd-dur-value strong { font-size: 15px; color: var(--rd-ink); }
+        .rd-dur-value span { font-size: 11px; color: var(--rd-ink-soft); }
 
         .rd-detail-row {
             transition:
                 background 0.15s ease,
                 transform 0.15s ease;
-
             border-radius: 10px;
         }
 
         .rd-detail-row:hover {
             background: #fff8ec;
-
             transform: translateX(3px);
         }
 
@@ -843,7 +871,6 @@ if ($isLoggedIn && !$isOwnListing) {
 
         .rd-map-pin {
             display: inline-block;
-
             animation: rdPinBounce 2.2s ease-in-out infinite;
         }
 
@@ -855,47 +882,71 @@ if ($isLoggedIn && !$isOwnListing) {
         .rd-map-embed {
             position: relative;
             z-index: 1;
-
             height: 220px;
-
             border-radius: 12px;
             overflow: hidden;
             border: 1px solid var(--rd-line);
-
             margin-bottom: 14px;
-
             box-shadow: 0 8px 20px -12px rgba(28, 42, 56, 0.3);
-        }
-
-        .rd-pin-icon {
-            background: transparent;
-            border: none;
-        }
-
-        .rd-pin {
-            font-size: 30px;
-            line-height: 1;
-            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
         }
 
         .rd-map-exact-note {
             display: flex;
             align-items: center;
             gap: 6px;
-
             margin: 0 0 14px;
-
             font-size: 12px;
             font-weight: 600;
-
             color: var(--rd-moss);
         }
 
+        /* ===== WHERE YOU'LL BE (left column) ===== */
+        .rd-where-address {
+            font-size: 0.9rem;
+            color: var(--rd-ink-soft);
+            margin: 0 0 12px;
+        }
+
+        /* ===== VERIFY GATE POPUP ===== */
+        .rd-verify-popup {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            background: rgba(28, 42, 56, 0.55);
+            padding: 20px;
+        }
+        .rd-verify-popup.open { display: flex; }
+        .rd-verify-popup-card {
+            background: #fff;
+            border-radius: 18px;
+            max-width: 380px;
+            width: 100%;
+            padding: 26px 24px;
+            text-align: center;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+            animation: rdRise 0.3s ease both;
+        }
+        .rd-verify-popup-card h4 {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--rd-ink);
+            margin: 0 0 8px;
+        }
+        .rd-verify-popup-card p {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--rd-ink-soft);
+            margin: 0 0 18px;
+        }
+        .rd-verify-popup-actions { display: flex; gap: 10px; }
+        .rd-verify-popup-actions .rd-btn { width: auto; flex: 1; margin-bottom: 0; }
+
         .flatpickr-calendar {
             box-shadow: 0 14px 34px rgba(28, 42, 56, 0.16) !important;
-
             border-radius: 14px !important;
-
             font-family: "Poppins", sans-serif !important;
         }
 
@@ -903,9 +954,7 @@ if ($isLoggedIn && !$isOwnListing) {
         .flatpickr-day.startRange,
         .flatpickr-day.endRange {
             background: var(--rd-honey) !important;
-
             border-color: var(--rd-honey) !important;
-
             color: #ffffff !important;
         }
 
@@ -915,29 +964,25 @@ if ($isLoggedIn && !$isOwnListing) {
             background: var(--rd-honey-dark) !important;
         }
 
-        .flatpickr-day.inRange {
-            background: rgba(237, 164, 35, 0.14) !important;
-
-            border-color: transparent !important;
-
-            box-shadow: -5px 0 0 rgba(237, 164, 35, 0.14),
-                        5px 0 0 rgba(237, 164, 35, 0.14) !important;
-        }
-
         .flatpickr-day.today {
             border-color: var(--rd-honey) !important;
         }
 
         .flatpickr-day.today:hover {
             background: rgba(237, 164, 35, 0.14) !important;
-
             color: var(--rd-ink) !important;
         }
 
         .flatpickr-day:hover {
             background: rgba(237, 164, 35, 0.14) !important;
-
             border-color: transparent !important;
+        }
+
+        .flatpickr-day.flatpickr-disabled,
+        .flatpickr-day.prevMonthDay.flatpickr-disabled,
+        .flatpickr-day.nextMonthDay.flatpickr-disabled {
+            text-decoration: line-through;
+            opacity: .35;
         }
 
         .flatpickr-months .flatpickr-month,
@@ -945,12 +990,39 @@ if ($isLoggedIn && !$isOwnListing) {
             color: var(--rd-ink) !important;
         }
 
+        /* ===== VERIFY NUDGE (inline hint above the form) ===== */
+        .rd-verify-nudge {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+
+            margin: 0 0 14px;
+            padding: 11px 13px;
+
+            background: #fff4e8;
+            border: 1px dashed rgba(237, 164, 35, 0.55);
+            border-radius: 12px;
+
+            font-size: 12px;
+            line-height: 1.55;
+            color: #8a5a10;
+        }
+
+        .rd-verify-nudge a {
+            color: #b07708;
+            font-weight: 800;
+            text-decoration: none;
+        }
+
+        .rd-verify-nudge a:hover {
+            text-decoration: underline;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .js .rd-reveal,
             .rd-notice,
             .rd-application-status {
                 animation: none !important;
-
                 opacity: 1 !important;
             }
 
@@ -1038,6 +1110,10 @@ if ($isLoggedIn && !$isOwnListing) {
 
 <?php endif; ?>
 
+<!-- NOTE: if your original file included the site navbar here
+     (fixed ~90px navbar from style.css), keep that include
+     at this exact spot. -->
+
 <!-- =========================
      LISTING DETAIL PAGE
 ========================== -->
@@ -1066,7 +1142,12 @@ if ($isLoggedIn && !$isOwnListing) {
 
     </div>
 
-    <?php if ($showUnavailableNotice): ?>
+    <?php if ($showNeedVerifyNotice): ?>
+        <div class="rd-notice">
+            &#128274; Your enquiry wasn't sent — verify your identity in
+            <a href="/webprogg/user/editprofile.php#verify-card" style="font-weight:800; color:#8a5a10; text-decoration:none;">Edit Profile</a> first.
+        </div>
+    <?php elseif ($showUnavailableNotice): ?>
         <div class="rd-notice">
             &#9888;&#65039; Sorry, this space was just booked by someone else. Browse other available spaces below.
         </div>
@@ -1080,8 +1161,7 @@ if ($isLoggedIn && !$isOwnListing) {
         </div>
     <?php elseif ($showIncompleteDatesNotice): ?>
         <div class="rd-notice">
-            &#9888;&#65039; Please complete your dates before continuing
-            (&mdash; for Long Term, just choose your move-in date).
+            &#9888;&#65039; Please choose your move-in date before continuing.
         </div>
     <?php endif; ?>
 
@@ -1147,7 +1227,7 @@ if ($isLoggedIn && !$isOwnListing) {
                         </div>
 
                         <button type="button" class="rd-thumbs-arrow rd-thumbs-next" id="rd-thumbs-next" aria-label="Scroll thumbnails right">
-                            &#10095;
+                            &#10094;
                         </button>
 
                     </div>
@@ -1296,6 +1376,44 @@ if ($isLoggedIn && !$isOwnListing) {
 
             </section>
 
+            <!-- WHERE YOU'LL BE -->
+
+            <section class="rd-about rd-reveal" style="--d: .38s;">
+
+                <h2>Where you'll be</h2>
+
+                <p class="rd-where-address">
+                    <?= htmlspecialchars($listing['location_full'], ENT_QUOTES, 'UTF-8') ?>
+                </p>
+
+                <?php if ($listing['latitude'] !== null && $listing['longitude'] !== null): ?>
+
+                    <div class="rd-map-embed" id="rd-map"></div>
+
+                    <p class="rd-map-exact-note">
+                        &#10003; Exact location shown on this map
+                    </p>
+
+                <?php else: ?>
+
+                    <div class="rd-map-placeholder">
+                        <img src="/webprogg/images/MapPlaceholder.png" alt="Map placeholder">
+                        <span class="rd-map-pin">&#128205;</span>
+                    </div>
+
+                <?php endif; ?>
+
+                <a
+                    class="rd-btn rd-btn-outline rd-map-btn"
+                    href="<?= htmlspecialchars($mapsUrl, ENT_QUOTES, 'UTF-8') ?>"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    Open in Google Maps
+                </a>
+
+            </section>
+
         </div>
 
         <!-- =========================
@@ -1314,42 +1432,44 @@ if ($isLoggedIn && !$isOwnListing) {
                     <span class="rd-per">/ month</span>
                 </div>
 
-                <!-- HIVE CLUB member price chip (members only) -->
-                <?php if ($hiveDiscountPct > 0): ?>
-                <div class="rd-hive-chip">
-                    <span class="rd-hive-pct"><?= (int) $hiveDiscountPct ?>% OFF</span>
-                    <span class="rd-hive-txt">Hive Club <?= htmlspecialchars($hiveTierLabel) ?> member price applied</span>
-                </div>
-                <?php endif; ?>
-
-                <!-- 50% RESERVE BREAKDOWN -->
+                <!-- RESERVE BREAKDOWN (monthly price x duration) -->
                 <div class="rd-reserve-rows">
                     <div class="rd-reserve-row">
                         <span>Monthly price</span>
-                        <strong<?php echo $hiveDiscountPct > 0 ? ' style="text-decoration:line-through; color:#8B93A6;"' : ''; ?>>&#8369; <?= number_format((float) $listing['price'], 2) ?></strong>
+                        <strong>&#8369; <?= number_format((float) $listing['price'], 2) ?></strong>
                     </div>
-                    <?php if ($hiveDiscountPct > 0): ?>
+                    <div class="rd-reserve-row">
+                        <span>Rental duration</span>
+                        <strong id="rd-sum-duration"><?= htmlspecialchars($durationLabel, ENT_QUOTES, 'UTF-8') ?></strong>
+                    </div>
                     <div class="rd-reserve-row rd-reserve-now">
-                        <span>Member price (<?= (int) $hiveDiscountPct ?>% off)</span>
-                        <strong>&#8369; <?= number_format($memberPrice, 2) ?></strong>
+                        <span id="rd-sum-total-label"><?= $isLongTermSelected ? 'First month rent' : 'Total rent (' . (int) $durationMonths . ' month' . ($durationMonths === 1 ? '' : 's') . ')' ?></span>
+                        <strong id="rd-sum-total">&#8369; <?= number_format($listingTotal, 2) ?></strong>
                     </div>
-                    <?php endif; ?>
                     <div class="rd-reserve-row rd-reserve-now">
                         <span>Reserve now (50%)</span>
-                        <strong>&#8369; <?= number_format($reserveFee, 2) ?></strong>
+                        <strong id="rd-sum-reserve">&#8369; <?= number_format($reserveFee, 2) ?></strong>
                     </div>
                     <div class="rd-reserve-row">
                         <span>Balance after accept</span>
-                        <strong>&#8369; <?= number_format($reserveBalance, 2) ?></strong>
+                        <strong id="rd-sum-balance">&#8369; <?= number_format($reserveBalance, 2) ?></strong>
                     </div>
                 </div>
 
                 <div class="rd-dates">
 
-                    <label>Select dates</label>
+                    <label>Move-in date</label>
 
-                    <!-- LONG TERM -->
-                    <div class="rd-long-term">
+                    <input
+                        type="text"
+                        id="rd-movein"
+                        class="rd-movein-input"
+                        placeholder="Select your move-in date"
+                        readonly
+                    >
+
+                    <!-- LONG TERM — open-ended month-to-month stay -->
+                    <div class="rd-long-term" style="margin:10px 0 0;">
                         <label class="rd-long-term-label">
                             <input
                                 type="checkbox"
@@ -1358,590 +1478,505 @@ if ($isLoggedIn && !$isOwnListing) {
                                 value="1"
                                 form="rd-inquiry-form"
                             >
-                            <span>Long Term</span>
+                            <span>Long Term (month-to-month)</span>
                         </label>
+                    </div>
+
+                    <label style="margin-top:12px;" id="rd-duration-label">Rental duration</label>
+
+                    <div class="rd-duration-picker" id="rd-duration-picker">
+                        <button type="button" class="rd-dur-btn" id="rd-dur-dec" aria-label="Shorter stay">&minus;</button>
+                        <div class="rd-dur-value">
+                            <strong id="rd-duration-display"><?= htmlspecialchars($durationLabel, ENT_QUOTES, 'UTF-8') ?></strong>
+                            <span id="rd-dur-help">Move-out is set automatically</span>
+                        </div>
+                        <button type="button" class="rd-dur-btn" id="rd-dur-inc" aria-label="Longer stay">+</button>
                     </div>
 
                     <div class="rd-date-summary" id="rd-date-summary">
 
                         <div class="rd-date-summary-field">
-                            <span>Check-in</span>
-                            <strong id="rd-checkin-display">Select date</strong>
+                            <span>Move-in</span>
+                            <strong id="rd-movein-display">Select date</strong>
                         </div>
 
-                        <span class="rd-date-sep" id="rd-date-sep">&ndash;</span>
+                        <span class="rd-date-sep">&rarr;</span>
 
-                        <div class="rd-date-summary-field" id="rd-checkout-summary-field">
-                            <span>Check-out</span>
-                            <strong id="rd-checkout-display">Select date</strong>
+                        <div class="rd-date-summary-field" id="rd-moveout-field">
+                            <span>Move-out</span>
+                            <strong id="rd-moveout-display">&mdash;</strong>
                         </div>
 
                     </div>
 
-                    <div id="rd-calendar"></div>
+                    <p class="rd-date-hint" id="rd-date-hint">Select a move-in date to continue</p>
 
-                    <input type="hidden" id="rd-checkin" name="checkin_date" form="rd-inquiry-form">
-                    <input type="hidden" id="rd-checkout" name="checkout_date" form="rd-inquiry-form">
-
-                </div>
-
-                <!-- GUESTS (fixed to the host-set capacity) -->
-
-                <div class="rd-guests">
-
-                    <label>Guests</label>
-
-                    <div class="rd-guests-display" id="rd-guests-display">
-                        <?= htmlspecialchars($listing['capacity_label'], ENT_QUOTES, 'UTF-8') ?>
+                    <div class="rd-guests">
+                        <label>Guests</label>
+                        <div class="rd-guests-display">
+                            <?= htmlspecialchars($listing['capacity_label'], ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                        <span class="rd-guests-note">Max capacity per booking</span>
                     </div>
 
-                    <span class="rd-guests-note">
-                        Max capacity person
-                    </span>
-
-                    <input
-                        type="hidden"
-                        id="rd-guests-value"
-                        name="guests"
-                        value="<?= htmlspecialchars($listing['capacity'], ENT_QUOTES, 'UTF-8') ?>"
-                        form="rd-inquiry-form"
+                    <!-- ENQUIRY FORM -> listingpayment.php (Flow A) -->
+                    <form
+                        id="rd-inquiry-form"
+                        action="<?= htmlspecialchars($paymentStartUrl, ENT_QUOTES, 'UTF-8') ?>"
+                        method="get"
                     >
 
-                </div>
-
-                <?php if (!$isLoggedIn): ?>
-
-                    <a href="/webprogg/auth/loginform.php" class="rd-btn rd-btn-primary" style="text-decoration:none; text-align:center;">
-                        Log In to Send Inquiry
-                    </a>
-
-                <?php elseif ($isOwnListing && $isAlreadyListed): ?>
-
-                    <button type="button" class="rd-btn rd-btn-primary" disabled>
-                        &#10003; Already Listed
-                    </button>
-
-                    <p class="rd-listed-note">
-                        This space is live &mdash; renters can now send inquiries.
-                    </p>
-
-                <?php elseif ($isOwnListing): ?>
-
-                    <!-- Space uploaded but not yet published — host can pay & list -->
-                    <form action="/webprogg/booking/listingpayment.php" method="GET">
                         <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
-                        <button type="submit" class="rd-btn rd-btn-primary">
-                            List Now
-                        </button>
-                    </form>
+                        <input type="hidden" name="checkin_date" id="rd-checkin" value="">
+                        <input type="hidden" name="checkout_date" id="rd-checkout" value="">
+                        <input type="hidden" name="guests" value="<?= htmlspecialchars($guestsValue, ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="months" id="rd-months" value="<?= (int) $durationMonths ?>">
 
-                <?php elseif (!$isBookable): ?>
+                        <?php if ($showVerifyNudge): ?>
+                        <div class="rd-verify-nudge">
+                            <span>&#128274;</span>
+                            <span>
+                                Quick heads-up: verify your identity in
+                                <a href="/webprogg/user/editprofile.php#verify-card">Edit Profile</a>
+                                before sending an enquiry.
+                            </span>
+                        </div>
+                        <?php endif; ?>
 
-                    <button type="button" class="rd-btn rd-btn-primary" disabled>
-                        <?= $isLongTermOccupied
-                                ? '&#128336; Occupied &mdash; Long Term Stay'
-                                : 'Already Booked' ?>
-                    </button>
-
-                    <?php if ($isLongTermOccupied): ?>
-                        <p class="rd-listed-note">
-                            This space is under a long-term stay.
-                            It will be available again once the stay is finished.
-                        </p>
-                    <?php endif; ?>
-
-                <?php else: ?>
-
-                    <!-- Inquiry form — button DISABLED until dates are complete -->
-                    <form id="rd-inquiry-form" action="/webprogg/booking/listingpayment.php" method="GET">
-                        <input type="hidden" name="listing_id" value="<?= (int) $listing['id'] ?>">
                         <button
                             type="submit"
                             class="rd-btn rd-btn-primary"
-                            id="rd-inquiry-submit"
-                            disabled
+                            id="rd-submit-btn"
+                            <?= (!$isBookable || $isOwnListing) ? 'disabled' : '' ?>
                         >
-                            Send Inquiry
+                            <?php if ($isOwnListing): ?>
+                                THIS IS YOUR LISTING
+                            <?php elseif (!$isBookable): ?>
+                                CURRENTLY UNAVAILABLE
+                            <?php else: ?>
+                                SEND ENQUIRY
+                            <?php endif; ?>
                         </button>
 
-                        <p class="rd-date-hint" id="rd-date-hint">
-                            Select check-in and check-out to continue
-                        </p>
                     </form>
 
-                <?php endif; ?>
-
-                <!-- MESSAGE HOST — wired to start-conversation.php -->
-                <?php if (!$isLoggedIn): ?>
-                    <a href="/webprogg/auth/loginform.php" class="rd-btn rd-btn-outline" style="text-decoration:none; text-align:center; display:block;">
-                        Message Host
-                    </a>
-                <?php elseif ($isOwnListing): ?>
-                    <button type="button" class="rd-btn rd-btn-outline" disabled>
-                        This is your listing
-                    </button>
-                <?php else: ?>
-                    <a href="/webprogg/user/start-conversation.php?host_id=<?= (int) $listing['host']['id'] ?>&listing_id=<?= (int) $listing['id'] ?>"
-                       class="rd-btn rd-btn-outline" style="text-decoration:none; text-align:center; display:block;">
-                        Message Host
-                    </a>
-                <?php endif; ?>
-
-                <?php if (!($isOwnListing && $isAlreadyListed)): ?>
-                <p class="rd-charge-note">
-                    &#128274; You won't be charged here &mdash; the next step is a 50% reserve to lock your dates
-                </p>
-                <?php endif; ?>
-
-            </div>
-
-            <!-- PROPERTY DETAILS CARD -->
-
-            <div class="rd-card rd-details-card rd-reveal" style="--d: .28s;">
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/houselogo.png" alt="">
-                    <span>Property Type</span>
-                    <strong><?= htmlspecialchars($listing['category_label'], ENT_QUOTES, 'UTF-8') ?></strong>
-                </div>
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/bedicon.png" alt="">
-                    <span>Bedrooms</span>
-                    <strong><?= htmlspecialchars($listing['bedrooms_label'], ENT_QUOTES, 'UTF-8') ?></strong>
-                </div>
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/showericon.png" alt="">
-                    <span>Bathrooms</span>
-                    <strong><?= (int) $listing['bathrooms'] ?></strong>
-                </div>
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/sizeicon.png" alt="">
-                    <span>Size</span>
-                    <strong><?= (int) $listing['size_sqm'] ?> m&sup2;</strong>
-                </div>
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/flooricon.png" alt="">
-                    <span>Floor</span>
-                    <strong><?= htmlspecialchars($listing['floor'], ENT_QUOTES, 'UTF-8') ?></strong>
-                </div>
-
-                <div class="rd-detail-row">
-                    <img src="/webprogg/images/caricon.png" alt="">
-                    <span>Parking Lot</span>
-                    <strong><?= htmlspecialchars($listing['parking'], ENT_QUOTES, 'UTF-8') ?></strong>
-                </div>
-
-            </div>
-
-            <!-- LOCATION CARD -->
-
-            <div class="rd-card rd-location-card rd-reveal" style="--d: .34s;">
-
-                <h3>Location</h3>
-
-                <p><?= htmlspecialchars($listing['location_full'], ENT_QUOTES, 'UTF-8') ?></p>
-
-                <?php if (!is_null($listing['latitude']) && !is_null($listing['longitude'])): ?>
-
-                    <div
-                        class="rd-map-embed"
-                        id="rdMapEmbed"
-                        data-lat="<?= htmlspecialchars($listing['latitude'], ENT_QUOTES, 'UTF-8') ?>"
-                        data-lng="<?= htmlspecialchars($listing['longitude'], ENT_QUOTES, 'UTF-8') ?>"
-                    ></div>
-
-                    <p class="rd-map-exact-note">
-                        &#128205; Exact pin dropped by the host
+                    <p class="rd-charge-note">
+                        You won't be charged yet &mdash; the host reviews your enquiry first.
                     </p>
 
-                <?php else: ?>
-
-                    <div class="rd-map-placeholder">
-                        <img src="/webprogg/images/MapPlaceholder.png" alt="Map preview">
-                        <span class="rd-map-pin">&#128205;</span>
-                    </div>
-
-                <?php endif; ?>
+                </div>
 
             </div>
 
-        </aside>
+            <!-- ============================================
+                 SPACE DETAILS — last card in the sidebar.
+                 .rd-details-card flex-grows to occupy all
+                 leftover space under the booking card
+                 (see listing-detail.css).
+            ============================================== -->
+            <section class="rd-card rd-details-card rd-reveal" style="--d: .3s;">
+
+                <h3>Space details</h3>
+
+                <div class="rd-detail-row">
+                    <span>Bedroom</span>
+                    <strong><?= (int) $listing['bedrooms'] ?> Included</strong>
+                </div>
+
+                <div class="rd-detail-row">
+                    <span>Bathroom</span>
+                    <strong><?= (int) $listing['bathrooms'] ?> Included</strong>
+                </div>
+
+                <div class="rd-detail-row">
+                    <span>Floor area</span>
+                    <strong><?= htmlspecialchars((string) $listing['size_sqm'], ENT_QUOTES, 'UTF-8') ?> sqm</strong>
+                </div>
+
+                <div class="rd-detail-row">
+                    <span>Floor</span>
+                    <strong><?= ($listing['floor'] !== null && $listing['floor'] !== '') ? htmlspecialchars((string) $listing['floor'], ENT_QUOTES, 'UTF-8') : '&mdash;' ?></strong>
+                </div>
+
+                <div class="rd-detail-row">
+                    <span>Parking</span>
+                    <strong><?= ($listing['parking'] !== null && $listing['parking'] !== '') ? htmlspecialchars((string) $listing['parking'], ENT_QUOTES, 'UTF-8') : '&mdash;' ?></strong>
+                </div>
+
+                <div class="rd-detail-row">
+                    <span>Max capacity</span>
+                    <strong><?= htmlspecialchars($listing['capacity_label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                </div>
+
+            </section>
+
+        </aside><!-- /rd-sidebar -->
 
     </div>
 
 </main>
 
-<!-- =========================================================
-     NUDGE — VERIFY SUGGESTION MODAL
-     Shown once per click, unverified renters only.
-========================================================== -->
-<div id="verifyNudgeModal" style="position:fixed;inset:0;z-index:3000;display:none;align-items:center;justify-content:center;background:rgba(15,25,20,.72);padding:20px;">
-  <div style="background:#ffffff;border-radius:18px;max-width:400px;width:100%;padding:28px 24px 24px;text-align:center;box-shadow:0 30px 70px rgba(0,0,0,.4);">
-    <div style="width:64px;height:64px;border-radius:50%;background:#FFF1DC;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;">&#128737;&#65039;</div>
-    <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;color:#1c2a38;">Get Verified before you inquire</h3>
-    <p style="margin:0 0 18px;font-size:13.5px;color:#5d6875;line-height:1.6;">
-      Verified renters get <strong>priority approval</strong> from hosts.
-      It's free and automatic &mdash; complete your profile (name, phone,
-      age, location) and upload one valid ID.
-    </p>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <a href="/webprogg/user/editprofile.php#verify-card"
-         style="display:block;padding:13px;border-radius:10px;background:linear-gradient(135deg,#f6b93b,#eda423);color:#1c2a38;font-weight:800;font-size:13.5px;text-decoration:none;">
-        &#10003; Get Verified Now
-      </a>
-      <button type="button" id="verifyNudgeSkip"
-              style="padding:12px;border:1px solid #e3e7ec;border-radius:10px;background:#ffffff;color:#1c2a38;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;">
-        Continue without verifying
-      </button>
+<!-- =========================
+     VERIFY GATE POPUP
+     intercepts unverified renters BEFORE the form submits
+========================== -->
+<div class="rd-verify-popup" id="rd-verify-popup">
+    <div class="rd-verify-popup-card">
+        <h4>Verify your identity first</h4>
+        <p>
+            Before sending an enquiry, please verify your identity in
+            Edit Profile. It only takes a minute &mdash; hosts only accept
+            verified renters.
+        </p>
+        <div class="rd-verify-popup-actions">
+            <a href="/webprogg/user/editprofile.php#verify-card" class="rd-btn rd-btn-primary">
+                Verify now
+            </a>
+            <button type="button" class="rd-btn rd-btn-outline" id="rd-verify-close">
+                Maybe later
+            </button>
+        </div>
     </div>
-  </div>
 </div>
 
-<!-- Leaflet + flatpickr libraries -->
+<!-- NOTE: if your original file included the site footer here,
+     keep that include at this exact spot. -->
+
+<!-- Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 <script>
-/* =========================
-   SERVER DATA FOR JS
-========================== */
-window.rhUnavailable = <?php
-    echo json_encode(
-        $unavailableRangesJs,
-        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
-    );
-?>;
-
-/* =========================
-   MAP — Leaflet
-========================== */
 (function () {
-    var embed = document.getElementById('rdMapEmbed');
-    if (!embed || typeof L === 'undefined') { return; }
+    'use strict';
 
-    var lat = parseFloat(embed.getAttribute('data-lat'));
-    var lng = parseFloat(embed.getAttribute('data-lng'));
+    /* ---------- data injected from PHP ---------- */
+    var RD_GALLERY      = <?= json_encode($galleryImages) ?>;
+    var RD_BASE_PRICE   = <?= json_encode($basePrice) ?>;
+    var RD_NEED_VERIFY  = <?= $showVerifyNudge ? 'true' : 'false' ?>;
+    var RD_DISABLED     = <?= json_encode($unavailableRangesJs) ?>;
+    var MAX_MONTHS      = 12;
+    var currentMonths   = <?= (int) $durationMonths ?>;
+    var moveinDate      = null;
 
-    if (isNaN(lat) || isNaN(lng)) { return; }
+    /* ---------- helpers ---------- */
+    function peso(n) {
+        return '\u20B1 ' + Number(n).toLocaleString('en-PH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
 
-    var map = L.map(embed, { scrollWheelZoom: false }).setView([lat, lng], 15);
+    function ymd(d) {
+        return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+    }
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    function fmtDate(d) {
+        return d.toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric'
+        });
+    }
 
-    L.marker([lat, lng]).addTo(map);
-})();
+    /* move-out = move-in + N months - 1 day (handles month overflow) */
+    function calcMoveOut(start, months) {
+        var out = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        out.setMonth(out.getMonth() + months);
+        if (out.getDate() !== start.getDate()) {
+            out.setDate(0); /* clamp to last day of the target month */
+        }
+        out.setDate(out.getDate() - 1);
+        return out;
+    }
 
-/* =========================
-   DATE PICKER — flatpickr
-   (range for normal stays, single date for Long Term)
-========================== */
-(function () {
-    var calEl      = document.getElementById('rd-calendar');
-    var longTerm   = document.getElementById('rd-long-term');
-    var checkinEl  = document.getElementById('rd-checkin');
-    var checkoutEl = document.getElementById('rd-checkout');
-    var inDisp     = document.getElementById('rd-checkin-display');
-    var outDisp    = document.getElementById('rd-checkout-display');
-    var outField   = document.getElementById('rd-checkout-summary-field');
-    var sep        = document.getElementById('rd-date-sep');
-    var submitBtn  = document.getElementById('rd-inquiry-submit');
-    var hint       = document.getElementById('rd-date-hint');
+    /* ---------- element handles ---------- */
+    var moveinInput   = document.getElementById('rd-movein');
+    var longTermCb    = document.getElementById('rd-long-term');
+    var durDisplay    = document.getElementById('rd-duration-display');
+    var durHelp       = document.getElementById('rd-dur-help');
+    var durDec        = document.getElementById('rd-dur-dec');
+    var durInc        = document.getElementById('rd-dur-inc');
+    var sumDuration   = document.getElementById('rd-sum-duration');
+    var sumTotalLabel = document.getElementById('rd-sum-total-label');
+    var sumTotal      = document.getElementById('rd-sum-total');
+    var sumReserve    = document.getElementById('rd-sum-reserve');
+    var sumBalance    = document.getElementById('rd-sum-balance');
+    var moveinDisplay = document.getElementById('rd-movein-display');
+    var moveoutField  = document.getElementById('rd-moveout-field');
+    var moveoutDisplay= document.getElementById('rd-moveout-display');
+    var dateHint      = document.getElementById('rd-date-hint');
+    var checkinInput  = document.getElementById('rd-checkin');
+    var checkoutInput = document.getElementById('rd-checkout');
+    var monthsInput   = document.getElementById('rd-months');
+    var form          = document.getElementById('rd-inquiry-form');
+    var verifyPopup   = document.getElementById('rd-verify-popup');
+    var verifyClose   = document.getElementById('rd-verify-close');
 
-    if (!calEl || typeof flatpickr === 'undefined') { return; }
+    /* ---------- central booking updater ---------- */
+    function updateBooking() {
+        var lt     = longTermCb && longTermCb.checked;
+        var months = lt ? 1 : currentMonths;
 
-    /* build the disable list from unavailable ranges */
+        if (monthsInput) { monthsInput.value = months; }
+
+        var label = lt
+            ? 'Long Term'
+            : (currentMonths === 1 ? '1 Month' : currentMonths + ' Months');
+
+        if (durDisplay)  { durDisplay.textContent  = label; }
+        if (sumDuration) { sumDuration.textContent = label; }
+        if (durHelp) {
+            durHelp.textContent = lt
+                ? 'No fixed move-out \u2014 pay month to month'
+                : 'Move-out is set automatically';
+        }
+
+        if (durDec) { durDec.disabled = currentMonths <= 1; }
+        if (durInc) { durInc.disabled = currentMonths >= MAX_MONTHS; }
+
+        var total = RD_BASE_PRICE * months;
+
+        if (sumTotalLabel) {
+            sumTotalLabel.textContent = lt
+                ? 'First month rent'
+                : 'Total rent (' + currentMonths + (currentMonths === 1 ? ' month' : ' months') + ')';
+        }
+        if (sumTotal)    { sumTotal.textContent    = peso(total); }
+        if (sumReserve)  { sumReserve.textContent  = peso(total * 0.5); }
+        if (sumBalance)  { sumBalance.textContent  = peso(total - total * 0.5); }
+
+        if (moveinDisplay) {
+            moveinDisplay.textContent = moveinDate ? fmtDate(moveinDate) : 'Select date';
+        }
+        if (checkinInput) {
+            checkinInput.value = moveinDate ? ymd(moveinDate) : '';
+        }
+
+        if (moveoutField) {
+            if (lt) {
+                moveoutField.classList.add('rd-date-hidden');
+                if (moveoutDisplay) { moveoutDisplay.textContent = 'Open-ended'; }
+                if (checkoutInput)  { checkoutInput.value = ''; }
+            } else {
+                moveoutField.classList.remove('rd-date-hidden');
+                if (moveinDate) {
+                    var out = calcMoveOut(moveinDate, currentMonths);
+                    if (moveoutDisplay) { moveoutDisplay.textContent = fmtDate(out); }
+                    if (checkoutInput)  { checkoutInput.value = ymd(out); }
+                } else {
+                    if (moveoutDisplay) { moveoutDisplay.textContent = '\u2014'; }
+                    if (checkoutInput)  { checkoutInput.value = ''; }
+                }
+            }
+        }
+
+        if (dateHint) {
+            if (moveinDate) {
+                dateHint.textContent = lt
+                    ? 'Long term selected \u2014 only the move-in date is needed'
+                    : 'Dates set. Move-out is calculated automatically.';
+                dateHint.classList.add('rd-hint-ok');
+            } else {
+                dateHint.textContent = 'Select a move-in date to continue';
+                dateHint.classList.remove('rd-hint-ok');
+            }
+        }
+    }
+
+    /* ---------- move-in calendar (flatpickr, blocked days crossed out) ---------- */
     var disabledRanges = [];
-    (window.rhUnavailable || []).forEach(function (r) {
+    RD_DISABLED.forEach(function (r) {
         if (r.start && r.end) {
             disabledRanges.push({ from: r.start, to: r.end });
         } else if (r.start) {
-            /* long-term occupancy: block from check-in onward */
-            disabledRanges.push({ from: r.start, to: '2100-12-31' });
+            /* long-term occupancy — block everything from move-in onward */
+            disabledRanges.push({ from: r.start, to: '2099-12-31' });
         }
     });
 
-    var picker = null;
-
-    function refreshState() {
-        var hasIn  = !!(checkinEl && checkinEl.value);
-        var hasOut = !!(checkoutEl && checkoutEl.value);
-        var long   = !!(longTerm && longTerm.checked);
-
-        if (inDisp && hasIn) {
-            inDisp.textContent = flatpickr.formatDate(
-                flatpickr.parseDate(checkinEl.value, 'Y-m-d'), 'M j, Y'
-            );
-        } else if (inDisp) {
-            inDisp.textContent = 'Select date';
-        }
-
-        if (outDisp && hasOut && !long) {
-            outDisp.textContent = flatpickr.formatDate(
-                flatpickr.parseDate(checkoutEl.value, 'Y-m-d'), 'M j, Y'
-            );
-        } else if (outDisp) {
-            outDisp.textContent = long ? 'Open-ended' : 'Select date';
-        }
-
-        var ok = long ? hasIn : (hasIn && hasOut);
-
-        if (submitBtn) { submitBtn.disabled = !ok; }
-        if (hint) {
-            hint.textContent = ok
-                ? '\u2713 Dates ready \u2014 continue to reserve'
-                : (long
-                    ? 'Select your move-in date to continue'
-                    : 'Select check-in and check-out to continue');
-            hint.className = 'rd-date-hint' + (ok ? ' rd-hint-ok' : '');
-        }
-    }
-
-    function initPicker() {
-        var long = !!(longTerm && longTerm.checked);
-
-        if (picker) { picker.destroy(); picker = null; }
-
-        if (!long) {
-            picker = flatpickr(calEl, {
-                inline: true,
-                mode: 'range',
-                minDate: 'today',
-                dateFormat: 'Y-m-d',
-                disable: disabledRanges,
-                onChange: function (selectedDates) {
-                    if (selectedDates.length >= 1) {
-                        checkinEl.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
-                    }
-                    if (selectedDates.length >= 2) {
-                        checkoutEl.value = flatpickr.formatDate(selectedDates[1], 'Y-m-d');
-                    } else {
-                        checkoutEl.value = '';
-                    }
-                    refreshState();
-                }
-            });
-        } else {
-            picker = flatpickr(calEl, {
-                inline: true,
-                mode: 'single',
-                minDate: 'today',
-                dateFormat: 'Y-m-d',
-                disable: disabledRanges,
-                onChange: function (selectedDates) {
-                    if (selectedDates.length >= 1) {
-                        checkinEl.value = flatpickr.formatDate(selectedDates[0], 'Y-m-d');
-                    } else {
-                        checkinEl.value = '';
-                    }
-                    checkoutEl.value = '';
-                    refreshState();
-                }
-            });
-        }
-
-        refreshState();
-    }
-
-    /* long-term toggle: swap modes + hide the checkout field */
-    if (longTerm) {
-        longTerm.addEventListener('change', function () {
-            var long = longTerm.checked;
-
-            if (outField) { outField.classList.toggle('rd-date-hidden', long); }
-            if (sep)      { sep.classList.toggle('rd-date-hidden', long); }
-            if (checkoutEl) { checkoutEl.value = ''; }
-
-            initPicker();
-        });
-    }
-
-    initPicker();
-})();
-
-/* =========================
-   GALLERY
-========================== */
-(function () {
-    var img    = document.getElementById('rd-gallery-image');
-    var count  = document.getElementById('rd-gallery-count');
-    var prev   = document.getElementById('rd-gallery-prev');
-    var next   = document.getElementById('rd-gallery-next');
-    var thumbs = document.getElementById('rd-gallery-thumbs');
-
-    if (!img) { return; }
-
-    /* the PHP page already renders the list; rebuild from DOM */
-    var sources = [];
-    if (thumbs) {
-        thumbs.querySelectorAll('img.rd-thumb').forEach(function (t) {
-            sources.push(t.getAttribute('src'));
-        });
-    } else {
-        sources.push(img.getAttribute('src'));
-    }
-
-    var index = 0;
-
-    function show(i) {
-        index = (i + sources.length) % sources.length;
-        img.src = sources[index];
-        if (count) { count.textContent = (index + 1) + ' / ' + sources.length; }
-        if (thumbs) {
-            thumbs.querySelectorAll('img.rd-thumb').forEach(function (t, ti) {
-                t.classList.toggle('active', ti === index);
-            });
-        }
-    }
-
-    if (prev) { prev.addEventListener('click', function () { show(index - 1); }); }
-    if (next) { next.addEventListener('click', function () { show(index + 1); }); }
-
-    if (thumbs) {
-        thumbs.querySelectorAll('img.rd-thumb').forEach(function (t) {
-            t.addEventListener('click', function () {
-                show(parseInt(t.getAttribute('data-index'), 10) || 0);
-            });
-        });
-    }
-})();
-
-/* =========================
-   ABOUT — SHOW MORE / LESS
-========================== */
-(function () {
-    var btn  = document.getElementById('rd-show-more');
-    var text = document.getElementById('rd-about-text');
-
-    if (!btn || !text) { return; }
-
-    text.style.maxHeight = '120px';
-    text.style.overflow = 'hidden';
-    text.style.transition = 'max-height .3s ease';
-
-    var open = false;
-
-    btn.addEventListener('click', function () {
-        open = !open;
-        text.style.maxHeight = open ? 'none' : '120px';
-        btn.innerHTML = open
-            ? 'Show less &#9652;'
-            : 'Show more &#9662;';
-    });
-})();
-
-/* =========================
-   SAVE (wishlist) + SHARE
-========================== */
-(function () {
-    var saveBtn = document.getElementById('rd-save-btn');
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', function () {
-            var listingId = new URLSearchParams(window.location.search).get('id');
-            if (!listingId) { return; }
-
-            fetch('/webprogg/user/togglewishlist.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'listing_id=' + encodeURIComponent(listingId),
-                credentials: 'same-origin'
-            })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data && data.success) {
-                    var saved = !!data.saved;
-                    saveBtn.classList.toggle('active', saved);
-                    var heart = saveBtn.querySelector('.rd-heart-icon');
-                    if (heart) {
-                        heart.innerHTML = saved ? '&#9829;' : '&#9825;';
-                    }
-                } else if (data && data.login) {
-                    window.location.href = '/webprogg/auth/loginform.php';
-                } else {
-                    alert((data && data.message) || 'Could not update your wishlist.');
-                }
-            })
-            .catch(function () {
-                alert('Something went wrong. Please try again.');
-            });
-        });
-    }
-
-    var shareBtn = document.getElementById('rd-share-btn');
-
-    if (shareBtn) {
-        shareBtn.addEventListener('click', function () {
-            var url = window.location.href;
-            var title = document.title;
-
-            if (navigator.share) {
-                navigator.share({ title: title, url: url }).catch(function () {});
-            } else if (navigator.clipboard) {
-                navigator.clipboard.writeText(url).then(function () {
-                    alert('Link copied to clipboard!');
-                }).catch(function () {
-                    prompt('Copy this link:', url);
-                });
-            } else {
-                prompt('Copy this link:', url);
+    if (moveinInput && typeof flatpickr !== 'undefined') {
+        flatpickr(moveinInput, {
+            dateFormat: 'Y-m-d',
+            minDate: 'today',
+            disable: disabledRanges,
+            onChange: function (selectedDates) {
+                moveinDate = selectedDates[0] || null;
+                moveinInput.classList.remove('rd-input-error');
+                updateBooking();
             }
         });
     }
-})();
-</script>
 
-<!-- =========================================================
-     NUDGE — VERIFY SUGGESTION SCRIPT
-     Intercepts Send Inquiry ONCE for unverified renters.
-========================================================== -->
-<script>
-(function () {
-    "use strict";
+    /* ---------- duration picker ---------- */
+    if (durDec) {
+        durDec.addEventListener('click', function () {
+            currentMonths = Math.max(1, currentMonths - 1);
+            updateBooking();
+        });
+    }
+    if (durInc) {
+        durInc.addEventListener('click', function () {
+            currentMonths = Math.min(MAX_MONTHS, currentMonths + 1);
+            updateBooking();
+        });
+    }
+    if (longTermCb) {
+        longTermCb.addEventListener('change', updateBooking);
+    }
 
-    /* PHP decides: only unverified renters get true */
-    var nudgeEnabled = <?php echo $showVerifyNudge ? 'true' : 'false'; ?>;
+    /* ---------- enquiry form gate ---------- */
+    if (form) {
+        form.addEventListener('submit', function (e) {
 
-    var form    = document.getElementById('rd-inquiry-form');
-    var modal   = document.getElementById('verifyNudgeModal');
-    var skipBtn = document.getElementById('verifyNudgeSkip');
-    var nudged  = false;
+            /* verification gate popup — intercepts BEFORE submit */
+            if (RD_NEED_VERIFY) {
+                e.preventDefault();
+                if (verifyPopup) { verifyPopup.classList.add('open'); }
+                return;
+            }
 
-    if (!nudgeEnabled || !form || !modal || !skipBtn) { return; }
+            /* require a move-in date */
+            if (!checkinInput || !checkinInput.value) {
+                e.preventDefault();
+                if (moveinInput) {
+                    moveinInput.classList.add('rd-input-error');
+                    moveinInput.focus();
+                }
+                if (dateHint) { dateHint.textContent = 'Please choose your move-in date first'; }
+                return;
+            }
+        });
+    }
 
-    /* First click: suggest verification instead of navigating */
-    form.addEventListener('submit', function (e) {
-        if (nudged) { return; }   /* second click proceeds */
-        e.preventDefault();
-        e.stopPropagation();
-        modal.style.display = 'flex';
-    }, true);
+    if (verifyClose) {
+        verifyClose.addEventListener('click', function () {
+            if (verifyPopup) { verifyPopup.classList.remove('open'); }
+        });
+    }
+    if (verifyPopup) {
+        verifyPopup.addEventListener('click', function (e) {
+            if (e.target === verifyPopup) { verifyPopup.classList.remove('open'); }
+        });
+    }
 
-    /* "Continue without verifying" — submit for real this time */
-    skipBtn.addEventListener('click', function () {
-        nudged = true;
-        modal.style.display = 'none';
-        form.submit();
-    });
+    /* ---------- gallery ---------- */
+    var mainImg  = document.getElementById('rd-gallery-image');
+    var countEl  = document.getElementById('rd-gallery-count');
+    var prevBtn  = document.getElementById('rd-gallery-prev');
+    var nextBtn  = document.getElementById('rd-gallery-next');
+    var thumbEls = Array.prototype.slice.call(document.querySelectorAll('.rd-thumb'));
+    var gIndex   = 0;
 
-    /* Backdrop click closes the suggestion */
-    modal.addEventListener('click', function (e) {
-        if (e.target === modal) {
-            modal.style.display = 'none';
+    function showImage(i) {
+        if (!mainImg || RD_GALLERY.length === 0) { return; }
+        gIndex = ((i % RD_GALLERY.length) + RD_GALLERY.length) % RD_GALLERY.length;
+        mainImg.src = RD_GALLERY[gIndex];
+        if (countEl) { countEl.textContent = (gIndex + 1) + ' / ' + RD_GALLERY.length; }
+        thumbEls.forEach(function (t, ti) {
+            t.classList.toggle('active', ti === gIndex);
+        });
+        var act = thumbEls[gIndex];
+        if (act && act.scrollIntoView) {
+            act.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
+    }
+
+    if (prevBtn) { prevBtn.addEventListener('click', function () { showImage(gIndex - 1); }); }
+    if (nextBtn) { nextBtn.addEventListener('click', function () { showImage(gIndex + 1); }); }
+    thumbEls.forEach(function (t) {
+        t.addEventListener('click', function () {
+            showImage(parseInt(t.getAttribute('data-index'), 10) || 0);
+        });
     });
 
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && modal.style.display === 'flex') {
-            modal.style.display = 'none';
-        }
+    /* ---------- about "show more" ---------- */
+    var aboutText  = document.getElementById('rd-about-text');
+    var showMoreBtn= document.getElementById('rd-show-more');
+    if (aboutText && showMoreBtn) {
+        showMoreBtn.addEventListener('click', function () {
+            var isExp = aboutText.classList.contains('expanded') ||
+                        aboutText.classList.contains('rd-expanded');
+            aboutText.classList.toggle('expanded', !isExp);
+            aboutText.classList.toggle('rd-expanded', !isExp);
+            showMoreBtn.innerHTML = !isExp ? 'Show less \u25B4' : 'Show more \u25BE';
+        });
+    }
+
+    /* ---------- save (visual toggle) ---------- */
+    var saveBtn = document.getElementById('rd-save-btn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+            this.classList.toggle('active');
+            var heart = this.querySelector('.rd-heart-icon');
+            if (heart) {
+                heart.innerHTML = this.classList.contains('active') ? '&#9829;' : '&#9825;';
+            }
+        });
+    }
+
+    /* ---------- share ---------- */
+    var shareBtn = document.getElementById('rd-share-btn');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', function () {
+            var url   = window.location.href;
+            var title = document.title;
+            var btn   = this;
+            var original = btn.innerHTML;
+            function copied() {
+                btn.innerHTML = '&#10003; Link copied!';
+                setTimeout(function () { btn.innerHTML = original; }, 1600);
+            }
+            if (navigator.share) {
+                navigator.share({ title: title, url: url }).catch(function () {});
+            } else if (navigator.clipboard) {
+                navigator.clipboard.writeText(url).then(copied).catch(function () {});
+            }
+        });
+    }
+
+    /* ---------- account dropdown (navbar) ---------- */
+    document.querySelectorAll('.account-dropdown').forEach(function (dd) {
+        var trigger = dd.querySelector('.my-account');
+        if (!trigger) { return; }
+        trigger.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dd.classList.toggle('open');
+        });
     });
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('.account-dropdown.open').forEach(function (dd) {
+            if (!dd.contains(e.target)) { dd.classList.remove('open'); }
+        });
+    });
+
+    /* ---------- Leaflet map — Where you'll be ---------- */
+    <?php if ($listing['latitude'] !== null && $listing['longitude'] !== null): ?>
+    (function () {
+        var el = document.getElementById('rd-map');
+        if (!el || typeof L === 'undefined') { return; }
+        var lat = <?= json_encode($listing['latitude']) ?>;
+        var lng = <?= json_encode($listing['longitude']) ?>;
+        var map = L.map(el, { scrollWheelZoom: false }).setView([lat, lng], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        L.marker([lat, lng], {
+            icon: L.divIcon({
+                className: 'rd-pin-icon',
+                html: '<div class="rd-pin">\u{1F4CD}</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 28]
+            })
+        }).addTo(map);
+    })();
+    <?php endif; ?>
+
+    /* ---------- initial paint ---------- */
+    updateBooking();
+
 })();
 </script>
 

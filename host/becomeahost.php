@@ -2,6 +2,12 @@
 
 /* =========================================================
    ROOMHIVE - BECOME A HOST (STEP 1)
+
+   === HIVE CLUB REMOVED ===
+   === SHARED FOOTER (this version) ===
+   The footer is now includes/footer.php (single source of
+   truth). $listingCategories and $quickLinks were
+   footer-only on this page and are deleted.
    ========================================================= */
 
 session_start();
@@ -75,7 +81,6 @@ if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true) {
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => "/webprogg/host/becomeahost.php",
-    "HIVE CLUB" => "/webprogg/hiveclub.php",
     "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
 
@@ -123,33 +128,8 @@ if (isset($_SESSION["is_host"]) && $_SESSION["is_host"] === true) {
 // strip can highlight where they currently stand.
  $currentHostStep = 1;
 
-// =========================================================
-// LISTING CATEGORIES
-// =========================================================
-
- $listingCategories = [
-
-    "Shared Bedroom" => "shared-bedroom",
-    "Private Room" => "private-room",
-    "Entire House" => "entire-house",
-    "Boarding House" => "boarding-house",
-    "Studio Loft" => "studio-loft"
-
-];
-
-// =========================================================
-// QUICK LINKS
-// =========================================================
-
- $quickLinks = [
-
-    "About Us" => "/webprogg/index.php",
-    "How It Works" => "/webprogg/host/howitworks.php",
-    "Become a Host" => "/webprogg/host/becomeahost.php",
-    "Hive Club" => "/webprogg/hiveclub.php",
-    "Contacts" => "/webprogg/misc/contacts.php"
-
-];
+/* SHARED FOOTER: $listingCategories and $quickLinks were
+   deleted — includes/footer.php owns the footer links now. */
 
 // =========================================================
 // FORM PROCESSING
@@ -526,7 +506,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <!-- MAIN CSS -->
     <link
         rel="stylesheet"
-        href="/webprogg/assets/style.css"
+        href="/webprogg/assets/style.css?v=2"
     >
 
     <!-- NEW: enables JS-gated entrance animations -->
@@ -534,13 +514,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <!-- =====================================================
          BECOME-A-HOST ENHANCEMENT LAYER (STEP 1)
-         Scoped to .host-page-v2 so it layers on top of
-         style.css. CHANGED: adds the site-wide honeycomb
-         hero texture, shimmer title, balanced form grids
-         (2 + 2 + 3 instead of a 3 + 1 orphan), a trust note
-         under the ID upload, gradient CTA with shine sweep,
-         and a refined reduced-motion block that no longer
-         kills the loading spinner.
     ====================================================== -->
 
     <style>
@@ -1476,9 +1449,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
             <!-- =================================================
-                 ROW 1 — CHANGED: rebalanced grids. The old layout
-                 put 4 fields in a 3-column grid, stranding "Age"
-                 alone on a second line. Now 2 + 2 + 3, no orphans.
+                 ROW 1 — rebalanced grids: 2 + 2 + 3, no orphans.
             ================================================== -->
 
             <div class="form-grid two-columns">
@@ -1651,6 +1622,10 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
                 <!-- ID TYPE -->
+                <!-- ⚠ RECONSTRUCTED below the Passport/Driver's License
+                     options (your paste cut off here). VERIFY the
+                     remaining option values match your original —
+                     they are stored in the DB. -->
 
                 <div class="input-group" data-field="id_type">
 
@@ -1700,11 +1675,11 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
                         <option
-                            value="national-id"
-                            <?php echo (($_POST["id_type"] ?? "") === "national-id") ? "selected" : ""; ?>
+                            value="philid"
+                            <?php echo (($_POST["id_type"] ?? "") === "philid") ? "selected" : ""; ?>
                         >
 
-                            National ID
+                            PhilID / National ID
 
                         </option>
 
@@ -1720,15 +1695,16 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
                         <option
-                            value="philhealth"
-                            <?php echo (($_POST["id_type"] ?? "") === "philhealth") ? "selected" : ""; ?>
+                            value="umid"
+                            <?php echo (($_POST["id_type"] ?? "") === "umid") ? "selected" : ""; ?>
                         >
 
-                            PhilHealth ID
+                            UMID
 
                         </option>
 
                     </select>
+
                     <small class="field-hint" id="hint_id_type"></small>
 
                 </div>
@@ -1750,11 +1726,12 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                         type="text"
                         id="id_number"
                         name="id_number"
-                        placeholder="Enter ID Number"
+                        placeholder="Enter your ID number"
                         value="<?php echo htmlspecialchars($_POST["id_number"] ?? ""); ?>"
                         aria-describedby="hint_id_number"
                         required
                     >
+
                     <small class="field-hint" id="hint_id_number"></small>
 
                 </div>
@@ -1762,85 +1739,123 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-<!-- =================================================
-     UPLOAD ID
-     The preview (image + filename + remove button) is
-     rendered directly inside #uploadBox by the script
-     at the bottom of this file — no separate preview
-     element needed anymore. Drag-and-drop is supported
-     in addition to the click-to-browse label.
-================================================== -->
 
-<div class="upload-section" data-field="upload_id" style="margin-bottom:24px;">
+            <!-- =================================================
+                 UPLOAD ID  ⚠ RECONSTRUCTED SECTION
+            ================================================== -->
 
-    <label>
-        Upload ID
-    </label>
+            <div class="upload-section" data-field="upload_id">
 
-    <label
-        for="upload_id"
-        class="upload-box"
-        id="uploadBox"
-    >
-        <div class="upload-icon">
-            &#9729;
-        </div>
+                <label for="upload_id">
 
-        <div class="upload-text">
-            <strong>
-                Click to upload your ID
-            </strong>
+                    Upload Valid ID
 
-            <span>
-                or drag and drop &middot; JPG, PNG &middot; Max 5MB
-            </span>
-        </div>
-    </label>
+                </label>
 
-    <input
-        type="file"
-        id="upload_id"
-        name="upload_id"
-        accept=".jpg,.jpeg,.png"
-        hidden
-        required
-    >
 
-    <small class="upload-error" id="uploadError"></small>
+                <div class="upload-box" id="uploadBox">
 
-    <!-- NEW: trust reassurance -->
-    <p class="upload-secure-note">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/>
-            <path d="m9 12 2 2 4-4"/>
-        </svg>
-        Your ID is only visible to the RoomHive admin team.
-    </p>
+                    <span class="upload-icon">&#9730;</span>
 
-</div>
+
+                    <div class="upload-text">
+
+                        <strong>
+                            Click to upload or drag your ID here
+                        </strong>
+
+
+                        <span>
+                            JPG or PNG, up to 5MB
+                        </span>
+
+                    </div>
+
+
+                    <input
+                        type="file"
+                        id="upload_id"
+                        name="upload_id"
+                        accept="image/jpeg,image/png"
+                        hidden
+                    >
+
+
+                    <!-- Shown by JS once an image is chosen -->
+
+                    <div class="upload-box-overlay" id="uploadOverlay" hidden>
+
+                        <strong id="uploadFileName"></strong>
+
+                        <span>
+                            ID ready to upload
+                        </span>
+
+
+                        <span class="upload-check">
+
+                            &#10003; Valid format
+
+                        </span>
+
+                    </div>
+
+
+                    <button
+                        type="button"
+                        class="upload-remove-btn"
+                        id="uploadRemoveBtn"
+                        aria-label="Remove selected ID"
+                        hidden
+                    >
+                        &times;
+                    </button>
+
+                </div>
+
+
+                <small class="upload-error" id="uploadError"></small>
+
+
+                <!-- Trust note -->
+
+                <div class="upload-secure-note">
+
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="10" width="16" height="11" rx="2"/>
+                        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+                    </svg>
+
+
+                    <span>
+                        Your ID is stored securely and only reviewed by our verification team.
+                    </span>
+
+                </div>
+
+            </div>
 
 
 
             <!-- =================================================
-                 FORM BUTTON
+                 FORM ACTIONS
             ================================================== -->
 
             <div class="form-actions">
 
-
                 <button
                     type="submit"
                     class="next-button"
-                    id="submitBtn"
+                    id="nextButton"
                 >
+
                     <span class="btn-spinner"></span>
-                    <span class="btn-label">NEXT STEP</span>
+
+                    NEXT STEP
 
                 </button>
 
-
             </div>
-
 
         </form>
 
@@ -1849,622 +1864,236 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 </main>
 
 
-
 <!-- =========================================================
-     FOOTER
+     SHARED FOOTER — single source of truth (includes/footer.php)
 ========================================================= -->
 
-<footer class="site-footer">
-
-
-    <div class="footer-top">
-
-
-        <!-- BRAND -->
-
-        <div class="footer-brand">
-
-
-            <a href="/webprogg/index.php">
-
-                <img
-                    src="/webprogg/images/RoomHiveLogos.png"
-                    alt="RoomHive Logo"
-                    class="footer-logo"
-                >
-
-            </a>
-
-
-            <p class="footer-tagline">
-
-                Your trusted platform for finding and listing
-                quality living spaces — made simple, safe,
-                and stress-free.
-
-            </p>
-
-        </div>
-
-
-
-        <!-- LISTINGS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                LISTINGS
-
-            </span>
-
-
-            <?php foreach ($listingCategories as $category => $type): ?>
-
-                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
-
-                    <?php echo htmlspecialchars($category); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- QUICK LINKS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                QUICK LINKS
-
-            </span>
-
-
-            <?php foreach ($quickLinks as $name => $link): ?>
-
-                <a href="<?php echo htmlspecialchars($link); ?>"
-                    class="<?php echo ($link === $currentPage) ? 'active' : ''; ?>"
-                >
-
-                    <?php echo htmlspecialchars($name); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- GET THE APP -->
-
-        <div class="footer-contact">
-
-
-            <span class="footer-heading">
-
-                GET THE APP
-
-            </span>
-
-
-            <div class="footer-app-badges">
-
-
-                <img
-                    src="/webprogg/images/GooglePlay.jpg"
-                    alt="Get it on Google Play"
-                >
-
-
-                <img
-                    src="/webprogg/images/AppStore.jpg"
-                    alt="Download on the App Store"
-                >
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/PhoneIcon.jpg"
-                    alt="Phone"
-                >
-
-
-                <span>
-
-                    +63 927 569 3574
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/EmailIcon.jpg"
-                    alt="Email"
-                >
-
-
-                <span>
-
-                    hello@roomhive.ph
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/GPSIcon.png"
-                    alt="Location"
-                >
-
-
-                <span>
-
-                    Dumaguete City, Negros Oriental
-
-                </span>
-
-
-            </div>
-
-
-        </div>
-
-    </div>
-
-
-
-    <div class="footer-bottom">
-
-
-        <p>
-
-            &copy;
-
-            <?php echo date("Y"); ?>
-
-            RoomHive.
-
-            All rights reserved.
-
-        </p>
-
-
-    </div>
-
-</footer>
-
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
+
+
+<!-- =========================================================
+     PAGE SCRIPT  ⚠ RECONSTRUCTED SECTION
+     Progress bar, live field validation, upload preview /
+     drag-drop / remove, shake + spinner. Hooks the same
+     IDs/classes your CSS defines.
+========================================================= -->
 <script>
 (function () {
     "use strict";
 
-    /* =====================================================
-       SHARED STATE
-    ====================================================== */
+    var form = document.getElementById("hostForm");
+    if (!form) return;
 
-    const form         = document.getElementById('hostForm');
-    const submitBtn    = document.getElementById('submitBtn');
-    const fileInput    = document.getElementById('upload_id');
-    const uploadBox    = document.getElementById('uploadBox');
-    const uploadError  = document.getElementById('uploadError');
-    const progressFill = document.getElementById('progressFill');
-    const progressCount = document.getElementById('progressCount');
-    const formCard     = form ? form.closest('.host-form-card') : null;
+    var card = form.closest(".host-form-card");
+    var progressCount = document.getElementById("progressCount");
+    var progressTotal = document.getElementById("progressTotal");
+    var progressFill  = document.getElementById("progressFill");
 
-    const REQUIRED_FIELDS = ['full_name', 'email', 'phone', 'age', 'location', 'id_type', 'id_number'];
-    const TOTAL_TRACKED   = REQUIRED_FIELDS.length + 1; // +1 for the ID upload
+    /* Shake the card once if the server returned errors */
+    <?php if (!empty($errors)): ?>
+    if (card) { card.classList.add("shake"); }
+    <?php endif; ?>
 
-    /* =====================================================
-       PER-FIELD VALIDATORS
-       Each returns "" when valid, or a short message to
-       show under the field when it isn't.
-    ====================================================== */
+    /* ---------- progress bar ---------- */
 
-    const validators = {
+    var REQUIRED = form.querySelectorAll("input[required], select[required]");
+    var TOTAL = REQUIRED.length + 1; // + the ID upload
+    if (progressTotal) { progressTotal.textContent = TOTAL; }
 
-        full_name(value) {
-            if (!value.trim()) return "Full name is required.";
-            if (value.trim().length < 2) return "That name looks too short.";
-            return "";
-        },
-
-        email(value) {
-            if (!value.trim()) return "Email is required.";
-            const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-            return ok ? "" : "Enter a valid email address.";
-        },
-
-        phone(value) {
-            const digits = value.replace(/\D/g, '');
-            if (!digits) return "Phone number is required.";
-            if (digits.length !== 11) return `${digits.length}/11 digits entered.`;
-            return "";
-        },
-
-        age(value) {
-            if (value === "") return "Age is required.";
-            const n = Number(value);
-            if (!Number.isInteger(n)) return "Enter a whole number.";
-            if (n < 18) return "You must be at least 18 to host.";
-            if (n > 120) return "Enter a valid age.";
-            return "";
-        },
-
-        location(value) {
-            if (!value.trim()) return "Location is required.";
-            return "";
-        },
-
-        id_type(value) {
-            return value ? "" : "Select an ID type.";
-        },
-
-        id_number(value) {
-            if (!value.trim()) return "ID number is required.";
-            if (value.trim().length < 4) return "That ID number looks too short.";
-            return "";
-        }
-
-    };
-
-    const successHints = {
-        full_name: "Looks good.",
-        email: "Valid email.",
-        phone: "Valid phone number.",
-        age: "Looks good.",
-        location: "Looks good.",
-        id_type: "Selected.",
-        id_number: "Looks good."
-    };
-
-    /* =====================================================
-       LIVE FIELD VALIDATION
-       Marks .is-valid / .is-invalid on the group and fills
-       the hint. silent=true updates the progress bar only —
-       used on load so PHP-repopulated fields aren't painted
-       red before the user touches anything.
-    ====================================================== */
-
-    function validateField(name, silent) {
-        const input = document.getElementById(name);
-        const group = document.querySelector(`.input-group[data-field="${name}"]`);
-
-        if (!input || !group) return false;
-
-        const message = validators[name] ? validators[name](input.value) : "";
-        const valid = message === "";
-
-        if (!silent) {
-            group.classList.toggle('is-valid', valid);
-            group.classList.toggle('is-invalid', !valid);
-
-            const hint = group.querySelector('.field-hint');
-            if (hint) {
-                hint.textContent = valid ? (successHints[name] || "") : message;
-            }
-        }
-
-        return valid;
-    }
-
-    /* =====================================================
-       PROGRESS BAR
-    ====================================================== */
+    var uploadInput = document.getElementById("upload_id");
 
     function updateProgress() {
-        let done = REQUIRED_FIELDS.filter((name) => validateField(name, true)).length;
+        var done = 0;
 
-        if (fileInput && fileInput.files.length > 0) {
-            done += 1;
+        REQUIRED.forEach(function (field) {
+            if (field.value.trim() !== "") { done++; }
+        });
+
+        if (uploadInput && uploadInput.files && uploadInput.files.length) {
+            done++;
         }
 
+        if (progressCount) { progressCount.textContent = done; }
         if (progressFill) {
-            progressFill.style.width = `${Math.round((done / TOTAL_TRACKED) * 100)}%`;
-        }
-
-        if (progressCount) {
-            progressCount.textContent = String(done);
+            progressFill.style.width = Math.round((done / TOTAL) * 100) + "%";
         }
     }
 
-    /* =====================================================
-       ID UPLOAD — preview, remove, drag & drop
-       Renders a bottom overlay (filename + size + check)
-       and a floating remove button inside #uploadBox, and
-       paints the preview as the box's background so the
-       whole ID stays legible (.has-image uses contain).
-    ====================================================== */
+    /* ---------- live valid/invalid hints ---------- */
 
-    const MAX_SIZE = 5 * 1024 * 1024;
-    const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
+    var PATTERNS = {
+        full_name: function (v) { return v.length >= 2; },
+        email:     function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); },
+        phone:     function (v) { return /^[0-9]{11}$/.test(v); },
+        age:       function (v) { return /^[0-9]+$/.test(v) && +v >= 18 && +v <= 120; },
+        location:  function (v) { return v.length >= 2; },
+        id_type:   function (v) { return v !== ""; },
+        id_number: function (v) { return v.trim().length >= 3; }
+    };
 
-    let overlay = null;
-    let removeBtn = null;
+    form.querySelectorAll("[data-field]").forEach(function (group) {
+        var name = group.getAttribute("data-field");
+        if (name === "upload_id" || !PATTERNS[name]) { return; }
 
-    function formatSize(bytes) {
-        if (bytes >= 1024 * 1024) {
-            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-        }
-        return Math.max(1, Math.round(bytes / 1024)) + ' KB';
-    }
+        var field = group.querySelector("input, select");
+        var hint  = group.querySelector(".field-hint");
+        if (!field) { return; }
 
-    function clearUploadUI() {
-        uploadBox.classList.remove('has-image');
-        uploadBox.style.backgroundImage = '';
+        function check() {
+            var v = field.value.trim();
+            var ok = PATTERNS[name](v);
 
-        if (overlay) { overlay.remove(); overlay = null; }
-        if (removeBtn) { removeBtn.remove(); removeBtn = null; }
-
-        if (uploadError) {
-            uploadError.textContent = '';
-            uploadError.classList.remove('show');
-        }
-
-        updateProgress();
-    }
-
-    function showUploadError(message) {
-        if (!uploadError) return;
-
-        uploadError.textContent = message;
-        uploadError.classList.add('show');
-    }
-
-    function handleFile(file) {
-        if (!file) {
-            clearUploadUI();
-            return;
-        }
-
-        if (!ALLOWED_TYPES.includes(file.type)) {
-            clearUploadUI();
-            fileInput.value = '';
-            showUploadError('Only JPG and PNG files are allowed.');
-            return;
-        }
-
-        if (file.size > MAX_SIZE) {
-            clearUploadUI();
-            fileInput.value = '';
-            showUploadError('That file is too large. Maximum is 5MB.');
-            return;
-        }
-
-        const reader = new FileReader();
-
-        reader.onload = function (event) {
-            uploadBox.classList.add('has-image');
-            uploadBox.style.backgroundImage = `url(${event.target.result})`;
-
-            /* Rebuild the overlay + remove button each time */
-            if (overlay) overlay.remove();
-            if (removeBtn) removeBtn.remove();
-
-            overlay = document.createElement('div');
-            overlay.className = 'upload-box-overlay';
-
-            const name = document.createElement('strong');
-            name.textContent = file.name;
-
-            const size = document.createElement('span');
-            size.textContent = formatSize(file.size);
-
-            const check = document.createElement('span');
-            check.className = 'upload-check';
-            check.textContent = 'Uploaded ✓';
-
-            overlay.appendChild(name);
-            overlay.appendChild(size);
-            overlay.appendChild(check);
-
-            removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'upload-remove-btn';
-            removeBtn.setAttribute('aria-label', 'Remove uploaded ID');
-            removeBtn.innerHTML = '&times;';
-
-            removeBtn.addEventListener('click', function (e) {
-                /* The box is a <label for="upload_id"> — without
-                   preventDefault the click would reopen the picker. */
-                e.preventDefault();
-                e.stopPropagation();
-
-                fileInput.value = '';
-                clearUploadUI();
-            });
-
-            uploadBox.appendChild(overlay);
-            uploadBox.appendChild(removeBtn);
-
-            if (uploadError) {
-                uploadError.textContent = '';
-                uploadError.classList.remove('show');
+            if (v === "") {
+                group.classList.remove("is-valid", "is-invalid");
+            } else if (ok) {
+                group.classList.add("is-valid");
+                group.classList.remove("is-invalid");
+                if (hint && hint.id !== "hint_phone" && hint.id !== "hint_age") {
+                    hint.textContent = "Looks good.";
+                }
+            } else {
+                group.classList.add("is-invalid");
+                group.classList.remove("is-valid");
             }
+            updateProgress();
+        }
+
+        field.addEventListener("input", check);
+        field.addEventListener("change", check);
+    });
+
+    /* ---------- upload box: pick / drag / preview / remove ---------- */
+
+    var box        = document.getElementById("uploadBox");
+    var input      = document.getElementById("upload_id");
+    var overlay    = document.getElementById("uploadOverlay");
+    var fileNameEl = document.getElementById("uploadFileName");
+    var removeBtn  = document.getElementById("uploadRemoveBtn");
+    var uploadErr  = document.getElementById("uploadError");
+
+    function showUploadError(msg) {
+        if (!uploadErr) { return; }
+        uploadErr.textContent = msg;
+        uploadErr.classList.add("show");
+    }
+
+    function clearUploadError() {
+        if (uploadErr) { uploadErr.classList.remove("show"); }
+    }
+
+    function acceptFile(file) {
+        clearUploadError();
+
+        if (!file) { return; }
+
+        if (["image/jpeg", "image/png"].indexOf(file.type) === -1) {
+            showUploadError("Only JPG and PNG files are allowed.");
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            showUploadError("ID file must not exceed 5MB.");
+            return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            box.style.backgroundImage = "url('" + e.target.result + "')";
+            box.classList.add("has-image");
+
+            if (fileNameEl) { fileNameEl.textContent = file.name; }
+            if (overlay)   { overlay.hidden = false; }
+            if (removeBtn) { removeBtn.hidden = false; }
 
             updateProgress();
         };
-
         reader.readAsDataURL(file);
     }
 
-    if (fileInput && uploadBox) {
+    if (box && input) {
 
-        fileInput.addEventListener('change', function () {
-            handleFile(fileInput.files && fileInput.files[0]);
+        box.addEventListener("click", function (e) {
+            if (e.target === removeBtn) { return; }
+            input.click();
         });
 
-        /* ---- drag & drop ---- */
+        input.addEventListener("change", function () {
+            acceptFile(input.files && input.files[0]);
+        });
 
-        ['dragenter', 'dragover'].forEach(function (eventName) {
-            uploadBox.addEventListener(eventName, function (e) {
+        ["dragenter", "dragover"].forEach(function (evt) {
+            box.addEventListener(evt, function (e) {
                 e.preventDefault();
-                e.stopPropagation();
-                uploadBox.classList.add('drag-over');
+                box.classList.add("drag-over");
             });
         });
 
-        ['dragleave', 'drop'].forEach(function (eventName) {
-            uploadBox.addEventListener(eventName, function (e) {
+        ["dragleave", "drop"].forEach(function (evt) {
+            box.addEventListener(evt, function (e) {
                 e.preventDefault();
-                e.stopPropagation();
-                uploadBox.classList.remove('drag-over');
+                box.classList.remove("drag-over");
             });
         });
 
-        uploadBox.addEventListener('drop', function (e) {
-            const files = e.dataTransfer && e.dataTransfer.files;
-
-            if (files && files.length > 0) {
-                /* Route the dropped file through the same
-                   input so it actually submits with the form. */
-                try {
-                    const transfer = new DataTransfer();
-                    transfer.items.add(files[0]);
-                    fileInput.files = transfer.files;
-                } catch (err) {
-                    /* Older browsers: fall back silently —
-                       the change event below just won't fire. */
-                }
-
-                handleFile(fileInput.files && fileInput.files[0]);
+        box.addEventListener("drop", function (e) {
+            if (e.dataTransfer && e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                acceptFile(e.dataTransfer.files[0]);
             }
         });
     }
 
-    /* =====================================================
-       WIRE UP LIVE VALIDATION
-    ====================================================== */
+    if (removeBtn) {
+        removeBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
 
-    REQUIRED_FIELDS.forEach(function (name) {
-        const input = document.getElementById(name);
+            input.value = "";
+            box.style.backgroundImage = "";
+            box.classList.remove("has-image");
 
-        if (!input) return;
+            if (overlay)   { overlay.hidden = true; }
+            if (removeBtn) { removeBtn.hidden = true; }
 
-        /* Phone: digits only, max 11 — matches the server's
-           /^[0-9]{11}$/ rule and stops paste-mess early. */
-        if (name === 'phone') {
-            input.addEventListener('input', function () {
-                const cleaned = input.value.replace(/\D/g, '').slice(0, 11);
-                if (cleaned !== input.value) {
-                    input.value = cleaned;
-                }
-            });
+            clearUploadError();
+            updateProgress();
+        });
+    }
+
+    /* ---------- submit: client gate + spinner ---------- */
+
+    form.addEventListener("submit", function (e) {
+        var missing = false;
+
+        REQUIRED.forEach(function (field) {
+            if (field.value.trim() === "") { missing = true; }
+        });
+
+        if (missing || !(input.files && input.files.length)) {
+            e.preventDefault();
+            if (missing) {
+                showUploadError("Please complete all fields before continuing.");
+            } else {
+                showUploadError("Please upload your ID before continuing.");
+            }
+            if (card) {
+                card.classList.remove("shake");
+                void card.offsetWidth; /* restart animation */
+                card.classList.add("shake");
+            }
+            return;
         }
 
-        input.addEventListener('input', function () {
-            validateField(name, false);
-            updateProgress();
-        });
-
-        input.addEventListener('change', function () {
-            validateField(name, false);
-            updateProgress();
-        });
-
-        /* Selects clear :invalid styling as soon as a real
-           option is picked, even before blur. */
-        input.addEventListener('blur', function () {
-            validateField(name, false);
-        });
+        var btn = document.getElementById("nextButton");
+        if (btn) {
+            btn.classList.add("is-loading");
+            btn.disabled = true;
+        }
     });
 
-    /* =====================================================
-       SUBMIT — validate everything first; shake + focus the
-       first bad field if anything is off. On success, flip
-       the button into its loading state while the POST
-       navigates to step 2.
-    ====================================================== */
-
-    if (form) {
-        form.addEventListener('submit', function (e) {
-
-            let firstInvalid = null;
-
-            REQUIRED_FIELDS.forEach(function (name) {
-                const valid = validateField(name, false);
-                if (!valid && !firstInvalid) {
-                    firstInvalid = document.getElementById(name);
-                }
-            });
-
-            let fileOk = fileInput && fileInput.files.length > 0;
-
-            if (!fileOk) {
-                showUploadError('Please upload your ID.');
-                if (!firstInvalid) firstInvalid = fileInput;
-            } else if (uploadError) {
-                uploadError.textContent = '';
-                uploadError.classList.remove('show');
-            }
-
-            if (firstInvalid) {
-                e.preventDefault();
-
-                if (formCard) {
-                    formCard.classList.remove('shake');
-                    /* restart the animation if it's already run */
-                    void formCard.offsetWidth;
-                    formCard.classList.add('shake');
-                }
-
-                if (firstInvalid.focus) {
-                    firstInvalid.focus();
-                }
-
-                if (firstInvalid.scrollIntoView) {
-                    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-
-                return;
-            }
-
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.classList.add('is-loading');
-
-                const label = submitBtn.querySelector('.btn-label');
-                if (label) label.textContent = 'SUBMITTING...';
-            }
-        });
-    }
-
-    /* =====================================================
-       INITIAL STATE
-       Server-side errors re-render the page with values
-       repopulated — compute progress silently so nothing
-       is painted red before the user touches it.
-    ====================================================== */
-
     updateProgress();
-
 })();
 </script>
+
 
 </body>
 

@@ -6,15 +6,30 @@
     1-12. (previous fixes: layout, filters synced with host
        form, hearts = wishlist via togglewishlist.php, chip
        row kill switch)
-    13. WISHLIST BUTTON FIX v2 — the heart handler now runs
-        from a small EARLY script placed BEFORE javaScript.js
-        loads, registered on document in CAPTURE phase with
-        stopImmediatePropagation(). Whatever handler
-        javaScript.js adds (bubble OR capture, any order),
-        ours fires first and blocks it — exactly ONE
-        togglewishlist.php call per click. Guests get the
-        login modal. Late script no longer handles hearts
-        (no double-fire from our own code either).
+    13. WISHLIST BUTTON FIX v2 — early capture-phase handler,
+        exactly ONE togglewishlist.php call per click.
+    14. AMENITY HEART REMOVED — unchecked = icon + label only.
+    15. TOOLBAR ICONS REMOVED — text-only toolbar buttons.
+    16. WISHLIST HEART FIX v3 — data-saved exposes server
+        state; busy-locked; UI lands on the server's state.
+    17. FEATURED SORT FIXED — #rh-sort has a working handler.
+    18. ICON FIXES — parking uses caricon.png; GPS icons get
+        onerror guards.
+    19. REAL REVIEW DATA — listings query aggregates reviews.
+    20. MUTED THEME — inline styles toned down.
+    21. MY WISHLIST NAVIGATION FIXED — early capture listener
+        on #rh-wishlist-link navigates itself.
+    22. SORT HANDLER v3 — capture phase, grid cleanup, all
+        sort orders working.
+    23. PRICE RANGE — LIVE NUMBERS: the max price label updates
+        LIVE while the thumb drags (formatted + gold highlight);
+        javaScript.js's price handler is blocked via capture +
+        stopImmediatePropagation; on release the filter
+        auto-applies after a 350ms debounce.
+    24. LOGIN NAVIGATION FIX (this version): the floating login
+        modal + its styles + its script are REMOVED — the guest
+        "Save this search" link now navigates to loginform.php
+        like every other login link.
     ========================== */
     session_start();
     require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
@@ -107,8 +122,6 @@
         $_SESSION["logged_in"] === true
     );
 
-    $autoOpenLoginPopup = !$isLoggedIn && empty($_SESSION['admin_logged_in']);
-
     $userName = $_SESSION['user_name'] ?? 'Guest';
 
     if ($isLoggedIn && isset($_SESSION['user_id'])) {
@@ -173,22 +186,58 @@
         ['name' => 'APARTMENT',      'image' => '/webprogg/images/Apartment.png',     'slug' => 'apartment'],
     ];
 
-    $listingsStmt = $pdo->query(
-        "SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
-                l.bedrooms, l.parking, l.amenities, l.created_at,
-                p.photo_path AS cover_photo
-        FROM listings l
-        LEFT JOIN listing_photos p
-                ON p.listing_id = l.id AND p.photo_type = 'cover'
-        WHERE l.status = 'approved'
-        AND NOT EXISTS (
-            SELECT 1 FROM bookings b
-            WHERE b.listing_id = l.id
-                AND b.status = 'pending'
-                AND b.payment_status = 'paid'
-        )
-        ORDER BY l.created_at DESC"
-    );
+    /* =========================================================
+       LISTINGS FETCH — real review data (FIX #19)
+    ========================================================== */
+ $listingsSqlWithReviews = "
+    SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
+           l.bedrooms, l.parking, l.amenities, l.created_at,
+           p.photo_path AS cover_photo,
+           COALESCE(r.avg_rating, 0)    AS avg_rating,
+           COALESCE(r.review_count, 0)  AS review_count
+    FROM listings l
+    LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+    LEFT JOIN (
+        SELECT listing_id,
+               ROUND(AVG(rating), 1) AS avg_rating,
+               COUNT(*)              AS review_count
+        FROM reviews
+        GROUP BY listing_id
+    ) r ON r.listing_id = l.id
+    WHERE l.status = 'approved'
+    AND NOT EXISTS (
+        SELECT 1 FROM bookings b
+        WHERE b.listing_id = l.id
+            AND b.status = 'pending'
+            AND b.payment_status = 'paid'
+    )
+    ORDER BY l.created_at DESC";
+
+ $listingsSqlFallback = "
+    SELECT l.id, l.title, l.category, l.location, l.exact_address, l.price,
+           l.bedrooms, l.parking, l.amenities, l.created_at,
+           p.photo_path AS cover_photo,
+           0 AS avg_rating, 0 AS review_count
+    FROM listings l
+    LEFT JOIN listing_photos p
+            ON p.listing_id = l.id AND p.photo_type = 'cover'
+    WHERE l.status = 'approved'
+    AND NOT EXISTS (
+        SELECT 1 FROM bookings b
+        WHERE b.listing_id = l.id
+            AND b.status = 'pending'
+            AND b.payment_status = 'paid'
+    )
+    ORDER BY l.created_at DESC";
+
+ try {
+    $listingRows = $pdo->query($listingsSqlWithReviews)->fetchAll();
+ } catch (PDOException $e) {
+    error_log('listing.php: reviews aggregate failed, falling back: ' . $e->getMessage());
+    $listingRows = $pdo->query($listingsSqlFallback)->fetchAll();
+ }
+
     $allListings = array_map(function ($row) {
         return [
             'id'             => (int) $row['id'],
@@ -207,24 +256,27 @@
             'bedrooms'       => (int) $row['bedrooms'],
             'parking_available' => strtolower(trim((string) ($row['parking'] ?? ''))) === 'yes',
             'amenities'      => roomhive_amenity_keys($row['amenities'] ?? null),
-            'rating'         => 0,
-            'reviews'        => 0,
+
+            'rating'         => (float) ($row['avg_rating'] ?? 0),
+            'reviews'        => (int) ($row['review_count'] ?? 0),
+
             'verified'       => false,
             'date_added'     => $row['created_at'],
         ];
-    }, $listingsStmt->fetchAll());
+    }, $listingRows);
 
     $locations = [];
     foreach ($negrosOrientalLocations as $citySlug => $cityData) {
         $locations[$citySlug] = ($cityData['type'] === 'city' ? 'City of ' : '') . $cityData['label'];
     }
 
-    $categories = [
+        $categories = [
         'shared-bedroom' => 'Shared Bedroom',
         'private-room'   => 'Private Room',
         'entire-house'   => 'Entire House',
         'boarding-house' => 'Boarding House',
         'studio-loft'    => 'Studio Loft',
+        'apartment'      => 'Apartment',
     ];
 
     $amenityOptions = [
@@ -239,7 +291,7 @@
 
     $amenityIcons = [
         'wifi'             => '/webprogg/images/wifiicon.png',
-        'parking'          => '/webprogg/images/parkingicon.png',
+        'parking'          => '/webprogg/images/caricon.png',
         'aircon'           => '/webprogg/images/airconicon.png',
         'pet-friendly'     => '/webprogg/images/petsicon.png',
         'free-water'       => '/webprogg/images/watericon.png',
@@ -510,35 +562,6 @@
 
     <style>
 
-/* ============ LOGIN MODAL ============ */
-.lx-modal{position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px;visibility:hidden;pointer-events:none}
-.lx-modal.open{visibility:visible;pointer-events:auto}
-.lx-modal-backdrop{position:absolute;inset:0;background:rgba(22,58,48,.38);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);opacity:0;transition:opacity .3s ease}
-.lx-modal.open .lx-modal-backdrop{opacity:1}
-.lx-modal-card{position:relative;z-index:1;width:362px;max-height:calc(100vh - 48px);overflow-y:auto;background:#fff;border-radius:22px;padding:32px 30px 26px;box-shadow:0 30px 70px rgba(22,58,48,.35);opacity:0;transform:translateY(26px) scale(.96);transition:opacity .32s cubic-bezier(.22,1,.36,1),transform .32s cubic-bezier(.22,1,.36,1)}
-.lx-modal.open .lx-modal-card{opacity:1;transform:translateY(0) scale(1);animation:lxFloat 5s ease-in-out .4s infinite}
-.lx-modal-card::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#dd930f,#fbf1dc,#dd930f);border-radius:22px 22px 0 0}
-.lx-modal-close{position:absolute;top:12px;right:14px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#f4f1e7;border:none;border-radius:50%;color:#62705f;font-size:17px;line-height:1;cursor:pointer;transition:background .15s ease,color .15s ease,transform .15s ease}
-.lx-modal-close:hover{background:#dd930f;color:#fff;transform:rotate(90deg)}
-.lx-modal-logo{text-align:center;margin-bottom:10px}
-.lx-modal-logo img{width:96px;display:inline-block}
-.lx-modal-title{margin:0 0 16px;font-family:"Fraunces",serif;font-size:1.45rem;font-weight:600;text-align:center;color:#1c2b24}
-.lx-hint{padding:10px 14px;margin-bottom:14px;background:#fbf1dc;border:1px solid #f0dcb4;border-radius:11px;color:#b8760a;font-size:.8rem;font-weight:600;text-align:center}
-.lx-field{margin-bottom:12px}
-.lx-field label{display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#1c2b24;font-size:.82rem;font-weight:500}
-.lx-input{width:100%;height:44px;padding:0 13px;background:#fdfcf8;border:1.5px solid #e8e1cf;border-radius:11px;outline:none;color:#1c2b24;font-family:"Poppins",sans-serif;font-size:.9rem;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
-.lx-input:focus{background:#fff;border-color:#dd930f;box-shadow:0 0 0 4px rgba(221,147,15,.14)}
-.lx-forgot{text-align:center;margin:4px 0 12px}
-.lx-forgot a{color:#1c2b24;font-size:.8rem;font-weight:600;text-decoration:none}
-.lx-forgot a:hover{color:#b8760a}
-.lx-submit{width:100%;height:46px;background:linear-gradient(135deg,#eda423,#dd930f);border:none;border-radius:12px;color:#fff;font-family:"Poppins",sans-serif;font-size:.92rem;font-weight:700;letter-spacing:.02em;cursor:pointer;box-shadow:0 8px 18px rgba(221,147,15,.35);transition:transform .2s ease,box-shadow .2s ease}
-.lx-submit:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(221,147,15,.45)}
-.lx-create{margin:14px 0 0;text-align:center;color:#62705f;font-size:.83rem}
-.lx-create a{color:#b8760a;font-weight:700;text-decoration:none}
-.lx-create a:hover{text-decoration:underline}
-@keyframes lxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-@media (max-width:480px){.lx-modal{padding:14px}.lx-modal-card{width:100%;padding:26px 20px 22px}}
-
 .js-hidden{display:none !important}
 
 .listings-page{padding-top:130px}
@@ -553,8 +576,8 @@
 
 /* ============ AMENITY CHIPS ON CARDS ============ */
 .rh-card-amenities{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
-.rh-chip-mini{font-size:.68rem;font-weight:600;color:#b8760a;background:#fbf1dc;border:1px solid #f0dcb4;border-radius:999px;padding:3px 9px;white-space:nowrap}
-.rh-chip-more{font-size:.68rem;font-weight:600;color:#62705f;align-self:center}
+.rh-chip-mini{font-size:.68rem;font-weight:600;color:#9c6a08;background:#f1e3c4;border:1px solid #e2d0a8;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.rh-chip-more{font-size:.68rem;font-weight:600;color:#57655c;align-self:center}
 
 /* ============ KILL ACTIVE-FILTER CHIP ROW ============ */
 .rh-chip-row,
@@ -584,9 +607,22 @@
 .amenity-check{font-size:.8rem;line-height:1}
 
 .amenity-clear-btn{display:inline-flex;align-items:center;border:1px solid var(--rh-line);background:none;border-radius:var(--rh-radius-pill);padding:8px 16px;font-family:inherit;font-size:.83rem;font-weight:600;color:var(--rh-coral);cursor:pointer;white-space:nowrap;transition:border-color .15s ease,background .15s ease}
-.amenity-clear-btn:hover{border-color:var(--rh-coral);background:#fceaea}
+.amenity-clear-btn:hover{border-color:var(--rh-coral);background:#f6e2e2}
 
 .category-dropdown-panel:not(.open){display:none}
+
+.rh-rating-none{font-weight:500;color:var(--rh-ink-soft);font-size:.78rem;white-space:nowrap}
+
+/* ============ PRICE RANGE — LIVE NUMBER FEEDBACK (FIX #23) ============ */
+.price-value {
+    transition: color .15s ease, transform .15s ease;
+}
+
+.price-value.price-live {
+    color: var(--rh-gold-deep, #9c6a08);
+    font-weight: 700;
+    transform: scale(1.08);
+}
 
     </style>
 
@@ -616,6 +652,7 @@
                     src="/webprogg/images/GPSIcon.png"
                     alt=""
                     class="filter-icon"
+                    onerror="this.style.display='none';"
                 >
 
                 <select
@@ -732,6 +769,8 @@
                 </div>
 
             </div>
+
+            <div class="filter-divider"></div>
 
             <div class="filter-group price-filter">
 
@@ -871,10 +910,11 @@
                                 src="<?= htmlspecialchars($amenityIcons[$value], ENT_QUOTES, 'UTF-8') ?>"
                                 alt=""
                                 class="amenity-ico"
+                                onerror="this.style.display='none';"
                             >
                         <?php endif; ?>
 
-                        <span class="amenity-check"><?= $isChecked ? '&#10003;' : '&#9825;' ?></span>
+                        <span class="amenity-check"><?= $isChecked ? '&#10003;' : '' ?></span>
 
                         <?= htmlspecialchars($label) ?>
                     </button>
@@ -953,17 +993,17 @@
                             data-price-max="<?= htmlspecialchars($priceMax, ENT_QUOTES, 'UTF-8') ?>"
                             data-amenities="<?= htmlspecialchars(implode(',', $selectedAmenities), ENT_QUOTES, 'UTF-8') ?>"
                         >
-                            <span class="rh-heart-icon">&#128190;</span>
                             Save this search
                         </button>
 
                     <?php else: ?>
 
+                        <!-- FIX #24 — navigates to loginform.php like every
+                             other login link (modal removed) -->
                         <a
                             class="rh-saved-toggle"
                             href="/webprogg/auth/loginform.php"
                         >
-                            <span class="rh-heart-icon">&#128190;</span>
                             Save this search
                         </a>
 
@@ -972,8 +1012,8 @@
                     <a
                         href="/webprogg/user/userwishlist.php"
                         class="rh-saved-toggle"
+                        id="rh-wishlist-link"
                     >
-                        <span class="rh-heart-icon">&#9829;</span>
                         My Wishlist
                     </a>
 
@@ -1026,6 +1066,7 @@
                             class="listing-box"
                             data-listing-id="<?= (int) $listing['id'] ?>"
                             data-price="<?= (float) $listing['price'] ?>"
+                            data-rating="<?= (float) $listing['rating'] ?>"
                         >
 
                             <div class="rh-card-media">
@@ -1059,6 +1100,7 @@
                                     type="button"
                                     class="rh-save-btn<?= $isSaved ? ' saved' : '' ?>"
                                     data-listing-id="<?= (int) $listing['id'] ?>"
+                                    data-saved="<?= $isSaved ? '1' : '0' ?>"
                                     aria-pressed="<?= $isSaved ? 'true' : 'false' ?>"
                                     aria-label="Save <?= htmlspecialchars($listing['title'], ENT_QUOTES, 'UTF-8') ?>"
                                 >
@@ -1079,10 +1121,14 @@
                                         ) ?>
                                     </h4>
 
-                                    <span class="rh-rating">
-                                        &#9733; <?= number_format($listing['rating'], 1) ?>
-                                        <span class="rh-rating-count">(<?= (int) $listing['reviews'] ?>)</span>
-                                    </span>
+                                    <?php if ($listing['reviews'] > 0): ?>
+                                        <span class="rh-rating">
+                                            &#9733; <?= number_format($listing['rating'], 1) ?>
+                                            <span class="rh-rating-count">(<?= (int) $listing['reviews'] ?>)</span>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="rh-rating-none">No reviews yet</span>
+                                    <?php endif; ?>
 
                                 </div>
 
@@ -1091,6 +1137,8 @@
                                     <img
                                         src="/webprogg/images/GPSIcon.png"
                                         alt=""
+                                        class="rh-loc-ico"
+                                        onerror="this.style.display='none';"
                                     >
 
                                     <span>
@@ -1101,54 +1149,29 @@
                                         ) ?>
                                     </span>
 
-                                    <span class="rh-bedrooms">
-                                        &middot; <?= (int) $listing['bedrooms'] ?>
-                                        <?= $listing['bedrooms'] === 1 ? 'bedroom' : 'bedrooms' ?>
+                                </div>
+
+                                <!-- ⚠ VERIFY — reconstructed from the fix notes -->
+                                <div class="rh-card-price-row">
+
+                                    <span class="rh-card-price">
+                                        &#8369; <?= number_format($listing['price']) ?>
+                                        <span class="rh-card-per">/ month</span>
                                     </span>
 
                                 </div>
 
-                                <?php if (!empty($visibleAmenities)): ?>
+                                <div class="rh-card-amenities">
 
-                                    <div class="rh-card-amenities">
+                                    <?php foreach ($visibleAmenities as $amKey): ?>
+                                        <span class="rh-chip-mini">
+                                            <?= htmlspecialchars($amenityOptions[$amKey] ?? ucfirst($amKey), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    <?php endforeach; ?>
 
-                                        <?php foreach ($visibleAmenities as $amKey): ?>
-
-                                            <?php
-                                            $amLabel = isset($amenityOptions[$amKey])
-                                                ? $amenityOptions[$amKey]
-                                                : ucwords(str_replace('-', ' ', $amKey));
-                                            ?>
-
-                                            <span class="rh-chip-mini">
-                                                <?= htmlspecialchars($amLabel, ENT_QUOTES, 'UTF-8') ?>
-                                            </span>
-
-                                        <?php endforeach; ?>
-
-                                        <?php if ($extraAmenities > 0): ?>
-
-                                            <span class="rh-chip-more">
-                                                +<?= $extraAmenities ?> more
-                                            </span>
-
-                                        <?php endif; ?>
-
-                                    </div>
-
-                                <?php endif; ?>
-
-                                <div class="listing-box-price">
-
-                                    <span class="peso">
-                                        ₱
-                                    </span>
-
-                                    <?= number_format($listing['price']) ?>
-
-                                    <span class="per">
-                                        /month
-                                    </span>
+                                    <?php if ($extraAmenities > 0): ?>
+                                        <span class="rh-chip-more">+<?= $extraAmenities ?> more</span>
+                                    <?php endif; ?>
 
                                 </div>
 
@@ -1160,123 +1183,32 @@
 
                 </div>
 
-                <!-- ========================= PAGINATION ========================= -->
-
+                <!-- ⚠ VERIFY — reconstructed pagination -->
                 <?php if ($totalPages > 1): ?>
 
-                    <div class="listings-pagination">
-
-                        <?php if ($page > 1): ?>
-
-                            <a
-                                class="page-arrow"
-                                href="<?= htmlspecialchars(
-                                    roomhive_url(['page' => $page - 1]),
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                            >
-
-                                <img
-                                    src="/webprogg/images/LookingLeftArrow.png"
-                                    alt="Previous"
-                                >
-
-                            </a>
-
-                        <?php else: ?>
-
-                            <button
-                                class="page-arrow"
-                                type="button"
-                                disabled
-                            >
-
-                                <img
-                                    src="/webprogg/images/LookingLeftArrow.png"
-                                    alt="Previous"
-                                >
-
-                            </button>
-
-                        <?php endif; ?>
+                    <div class="rh-pagination" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; justify-content:center; margin-top:26px;">
 
                         <?php for ($p = 1; $p <= $totalPages; $p++): ?>
 
-                            <?php
-                            $showPage =
-                                $p === 1 ||
-                                $p === $totalPages ||
-                                abs($p - $page) <= 1;
-                            ?>
-
-                            <?php if (!$showPage): ?>
-
-                                <?php
-                                $previousShown =
-                                    $p === 2 ||
-                                    ($p - 1 === $page + 1);
-
-                                if (!$previousShown) {
-                                    continue;
-                                }
-                                ?>
-
-                                <span class="page-dots">
-                                    ...
-                                </span>
-
-                                <?php continue; ?>
-
-                            <?php endif; ?>
-
                             <a
-                                class="page-num <?= $p === $page ? 'active' : '' ?>"
-                                href="<?= htmlspecialchars(
-                                    roomhive_url(['page' => $p]),
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
+                                href="<?= htmlspecialchars(roomhive_url(['page' => $p > 1 ? $p : null]), ENT_QUOTES, 'UTF-8') ?>"
+                                style="
+                                    min-width: 36px;
+                                    padding: 8px 11px;
+                                    text-align: center;
+                                    border: 1px solid var(--rh-line, #E2E8F0);
+                                    border-radius: 9px;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    text-decoration: none;
+                                    color: <?= $p === $page ? '#ffffff' : 'var(--rh-ink-soft, #57655C)' ?>;
+                                    background: <?= $p === $page ? 'var(--rh-gold, #d68e0e)' : '#ffffff' ?>;
+                                "
                             >
                                 <?= $p ?>
                             </a>
 
                         <?php endfor; ?>
-
-                        <?php if ($page < $totalPages): ?>
-
-                            <a
-                                class="page-arrow"
-                                href="<?= htmlspecialchars(
-                                    roomhive_url(['page' => $page + 1]),
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>"
-                            >
-
-                                <img
-                                    src="/webprogg/images/LookingRightArrow.png"
-                                    alt="Next"
-                                >
-
-                            </a>
-
-                        <?php else: ?>
-
-                            <button
-                                class="page-arrow"
-                                type="button"
-                                disabled
-                            >
-
-                                <img
-                                    src="/webprogg/images/LookingRightArrow.png"
-                                    alt="Next"
-                                >
-
-                            </button>
-
-                        <?php endif; ?>
 
                     </div>
 
@@ -1288,345 +1220,266 @@
 
     </main>
 
-    <!-- ========================= FOOTER ========================= -->
-    <footer class="site-footer">
-        <div class="footer-top">
-            <div class="footer-brand">
-                <a href="/webprogg/index.php">
-                    <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive Logo" class="footer-logo">
-                </a>
-                <p class="footer-tagline">Find, stay, relax, at home. RoomHive helps you discover comfortable stays across Negros Oriental.</p>
-                <div class="footer-contact-line"><img src="/webprogg/images/PhoneIcon.jpg" alt=""><span>0927 569 3574</span></div>
-                <div class="footer-contact-line"><img src="/webprogg/images/EmailIcon.jpg" alt=""><span>kimdivino55@gmail.com</span></div>
-                <div class="footer-contact-line"><img src="/webprogg/images/GPSIcon.png" alt=""><span>Dumaguete City, Negros Oriental, Philippines</span></div>
-            </div>
-            <div class="footer-links">
-                <span class="footer-heading">LISTINGS</span>
-                <a href="/webprogg/Listings/listing.php?category=studio-loft">Studios</a>
-                <a href="/webprogg/Listings/listing.php?category=shared-bedroom">Shared Rooms</a>
-                <a href="/webprogg/Listings/listing.php?category=entire-house">Entire House</a>
-                <a href="/webprogg/Listings/listing.php">Featured Stays</a>
-            </div>
-            <div class="footer-links">
-                <span class="footer-heading">QUICK LINKS</span>
-                <a href="/webprogg/index.php">About Us</a>
-                <a href="/webprogg/misc/contacts.php">Contact</a>
-                <a href="/webprogg/host/becomeahost.php">Become a Host</a>
-                <a href="/webprogg/hiveclub.php">Hive Club</a>
-            </div>
-            <div class="footer-contact">
-                <span class="footer-heading">GET THE APP</span>
-                <div class="footer-app-badges">
-                    <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
-                    <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
-                </div>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>&copy; <?= date('Y') ?> RoomHive. All rights reserved.</p>
-        </div>
-    </footer>
+    <script src="/webprogg/assets/javaScript.js"></script>
 
-    <!-- ========================= LOGIN MODAL (guests) ========================= -->
-    <?php if ($autoOpenLoginPopup): ?>
-    <div class="lx-modal" id="lx-login-modal">
-        <div class="lx-modal-backdrop" data-lx-close></div>
-        <div class="lx-modal-card">
-            <button type="button" class="lx-modal-close" data-lx-close aria-label="Close">&times;</button>
-            <div class="lx-modal-logo">
-                <img src="/webprogg/images/RoomHiveLogos.png" alt="RoomHive">
-            </div>
-            <h3 class="lx-modal-title">Welcome back to the Hive</h3>
-            <p class="lx-hint" id="lx-login-hint" style="display:none;">
-                Log in to save listings to your wishlist
-            </p>
-            <form method="post" action="/webprogg/auth/login_process.php">
-                <div class="lx-field">
-                    <label for="lx-email">Email</label>
-                    <input class="lx-input" type="email" id="lx-email" name="email" required autocomplete="email">
-                </div>
-                <div class="lx-field">
-                    <label for="lx-password">Password</label>
-                    <input class="lx-input" type="password" id="lx-password" name="password" required autocomplete="current-password">
-                </div>
-                <p class="lx-forgot"><a href="/webprogg/auth/forgotpassword.php">Forgot password?</a></p>
-                <button class="lx-submit" type="submit">Log In</button>
-            </form>
-            <p class="lx-create">Don't have an account? <a href="/webprogg/auth/registerform.php">Create one</a></p>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <!-- =========================================================
-         CHANGE #13 v2 — HEARTS, EARLY SCRIPT.
-         Registered BEFORE javaScript.js loads, document
-         CAPTURE phase, stopImmediatePropagation(): our handler
-         fires first no matter what javaScript.js registers
-         (bubble or capture, any order), and blocks every other
-         handler. Exactly ONE togglewishlist.php call per click.
-         The late script no longer touches hearts at all.
-    ========================================================== -->
+    <!-- =====================================================
+         PRICE RANGE — LIVE NUMBERS (FIX #23)
+         input  -> updates the displayed numbers LIVE while
+                   dragging (capture phase + stopImmediate-
+                   Propagation blocks javaScript.js's price
+                   handler, which submits mid-drag).
+         change -> debounced auto-apply on release so the
+                   results refresh to the new range.
+    ====================================================== -->
     <script>
     (function () {
         "use strict";
 
-        var isLoggedIn = document.body.getAttribute('data-logged-in') === '1';
-        var saveBusy = false;
+        var range = document.getElementById('price-range');
+        var minEl = document.getElementById('price-min');
+        var maxEl = document.getElementById('price-max');
+        var form  = document.getElementById('filter-form');
 
-        function openLoginForWishlist() {
-            var loginModal = document.getElementById('lx-login-modal');
-            var loginHint  = document.getElementById('lx-login-hint');
+        if (!range || !maxEl || !form) { return; }
 
-            if (loginModal) {
-                if (loginHint) loginHint.style.display = '';
-                loginModal.classList.add('open');
-            } else {
-                window.location.href = '/webprogg/auth/loginform.php';
+        var PESO = '\u20B1';
+        var submitTimer = null;
+
+        function fmt(n) {
+            return PESO + Number(n).toLocaleString('en-US');
+        }
+
+        function render() {
+            var v = parseInt(range.value, 10) || 0;
+
+            /* LIVE — the max number follows the thumb */
+            maxEl.textContent = fmt(v);
+            maxEl.classList.add('price-live');
+            if (minEl) { minEl.classList.add('price-live'); }
+
+            /* cancel a pending auto-apply if the user grabs
+               the slider again before it fired */
+            if (submitTimer) {
+                window.clearTimeout(submitTimer);
+                submitTimer = null;
             }
         }
 
-        function toggleWishlist(btn) {
-            if (saveBusy) { return; }
+        function settle() {
+            maxEl.classList.remove('price-live');
+            if (minEl) { minEl.classList.remove('price-live'); }
 
-            if (!isLoggedIn) {
-                openLoginForWishlist();
+            /* auto-apply shortly after release */
+            if (submitTimer) { window.clearTimeout(submitTimer); }
+            submitTimer = window.setTimeout(function () {
+                submitTimer = null;
+                form.submit();
+            }, 350);
+        }
+
+        /* CAPTURE PHASE — fires BEFORE javaScript.js's handlers;
+           stopImmediatePropagation blocks them entirely. */
+        document.addEventListener('input', function (e) {
+            if (e.target !== range) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+            render();
+        }, true);
+
+        document.addEventListener('change', function (e) {
+            if (e.target !== range) { return; }
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+            settle();
+        }, true);
+    })();
+    </script>
+
+    <!-- =====================================================
+         WISHLIST HEARTS (v3) + MY WISHLIST LINK + SORT + VIEW
+         — early capture-phase handlers per fix notes #13/#16/
+         #17/#21/#22. Kept from the confirmed version.
+    ====================================================== -->
+    <script>
+    (function () {
+        "use strict";
+
+        var LOGGED_IN = document.body.getAttribute('data-logged-in') === '1';
+        var busy = false;
+
+        function setHeart(btn, saved) {
+            btn.classList.toggle('saved', saved);
+            btn.setAttribute('data-saved', saved ? '1' : '0');
+            btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+            btn.innerHTML = saved ? '&#9829;' : '&#9825;';
+        }
+
+        document.addEventListener('click', function (e) {
+            if (!e.target || !e.target.closest) { return; }
+
+            var btn = e.target.closest('.rh-save-btn');
+            if (!btn) { return; }
+
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+
+            if (!LOGGED_IN) {
+                /* FIX #24 — navigate to the login page like before */
+                window.location.href = '/webprogg/auth/loginform.php';
                 return;
             }
+
+            if (busy) { return; }
 
             var listingId = btn.getAttribute('data-listing-id');
             if (!listingId) { return; }
 
-            saveBusy = true;
-            btn.disabled = true;
+            busy = true;
 
             fetch('/webprogg/user/togglewishlist.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'listing_id=' + encodeURIComponent(listingId),
                 credentials: 'same-origin'
             })
             .then(function (res) {
-                if (!res.ok) {
-                    return res.text().then(function (t) {
-                        throw new Error('HTTP ' + res.status + ': ' + t.substring(0, 150));
-                    });
-                }
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
                 return res.json();
             })
             .then(function (data) {
-                saveBusy = false;
-                btn.disabled = false;
-
-                if (!data || !data.success) {
-                    if (data && data.login) {
-                        isLoggedIn = false;
-                        openLoginForWishlist();
-                    } else {
-                        alert((data && data.message) || 'Could not update your wishlist.');
-                    }
-                    return;
+                busy = false;
+                if (data && data.success) {
+                    setHeart(btn, !!data.saved);
+                } else if (data && data.login) {
+                    window.location.href = '/webprogg/auth/loginform.php';
+                } else {
+                    setHeart(btn, btn.getAttribute('data-saved') === '1');
+                    alert((data && data.message) || 'Could not update your wishlist.');
                 }
-
-                var saved = !!data.saved;
-
-                btn.classList.toggle('saved', saved);
-                btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
-                btn.innerHTML = saved ? '&#9829;' : '&#9825;';
             })
-            .catch(function (err) {
-                saveBusy = false;
-                btn.disabled = false;
-                console.error('[wishlist toggle]', err);
-                alert('Wishlist update failed: ' + (err && err.message ? err.message : 'network error'));
+            .catch(function () {
+                busy = false;
+                setHeart(btn, btn.getAttribute('data-saved') === '1');
+                alert('Could not update your wishlist. Please try again.');
             });
-        }
-
-        /* Capture-phase + registered FIRST + stopImmediatePropagation
-           = nothing can run before or after us for this click. */
-        document.addEventListener('click', function (e) {
-            if (!e.target || !e.target.closest) { return; }
-
-            var heart = e.target.closest('.rh-save-btn');
-            if (heart) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                toggleWishlist(heart);
-                return;
-            }
-
-            /* login modal close (data-lx-close) — also early */
-            if (e.target.closest('[data-lx-close]')) {
-                var m = document.getElementById('lx-login-modal');
-                if (m) { m.classList.remove('open'); }
-            }
         }, true);
 
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
-                var m = document.getElementById('lx-login-modal');
-                if (m) { m.classList.remove('open'); }
-            }
-        });
-    })();
-    </script>
+        /* My Wishlist navigation (FIX #21) */
+        document.addEventListener('click', function (e) {
+            if (!e.target || !e.target.closest) { return; }
+            var link = e.target.closest('#rh-wishlist-link');
+            if (!link) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+            window.location.href = '/webprogg/user/userwishlist.php';
+        }, true);
 
-    <script src="/webprogg/assets/javaScript.js"></script>
+        /* Sort (FIX #22 — capture owner) */
+        var sortSel = document.getElementById('rh-sort');
+        var grid    = document.getElementById('rh-listings-results');
 
-    <!-- =========================================================
-         PAGE SCRIPTS (late) — everything EXCEPT hearts.
-    ========================================================== -->
-    <script>
-    (function () {
-        "use strict";
-
-        var resultsGrid = document.getElementById('rh-listings-results');
-
-        /* ============ PRICE RANGE SLIDER ============ */
-        var priceRange = document.getElementById('price-range');
-        var priceMaxLabel = document.getElementById('price-max');
-
-        if (priceRange && priceMaxLabel) {
-            priceRange.addEventListener('input', function () {
-                priceMaxLabel.textContent =
-                    Number(this.value).toLocaleString();
-            });
-            priceRange.addEventListener('change', function () {
-                document.getElementById('filter-form').submit();
-            });
-        }
-
-        /* ============ CATEGORY DROPDOWN ============ */
-        var catToggle = document.getElementById('categoryDropdownToggle');
-        var catPanel  = document.getElementById('categoryDropdownPanel');
-
-        if (catToggle && catPanel) {
-            catToggle.addEventListener('click', function (e) {
+        if (sortSel && grid) {
+            document.addEventListener('change', function (e) {
+                if (e.target !== sortSel) { return; }
                 e.stopPropagation();
+                if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
 
-                var isOpen = catPanel.classList.contains('open');
-                catPanel.classList.toggle('open', !isOpen);
-                catToggle.setAttribute('aria-expanded', String(!isOpen));
-            });
-
-            document.addEventListener('click', function (e) {
-                if (!catPanel.contains(e.target) && e.target !== catToggle) {
-                    catPanel.classList.remove('open');
-                    catToggle.setAttribute('aria-expanded', 'false');
-                }
-            });
-        }
-
-        /* ============ RESULTS COUNT ============ */
-        var toolbar      = document.querySelector('.rh-toolbar');
-        var resultsCount = document.getElementById('rh-results-count');
-
-        if (toolbar && resultsCount) {
-            var shown = parseInt(toolbar.getAttribute('data-shown'), 10) || 0;
-            var total = parseInt(toolbar.getAttribute('data-total'), 10) || 0;
-            resultsCount.textContent =
-                'Showing ' + shown + ' of ' + total +
-                ' space' + (total === 1 ? '' : 's');
-        }
-
-        /* ============ SORT + VIEW TOGGLE ============ */
-        var sortSelect = document.getElementById('rh-sort');
-
-        if (resultsGrid && sortSelect) {
-            var originalOrder = Array.prototype.slice.call(
-                resultsGrid.querySelectorAll('.listing-box')
-            );
-
-            sortSelect.addEventListener('change', function () {
-                var list = originalOrder.slice();
-
-                if (sortSelect.value === 'price-asc') {
-                    list.sort(function (a, b) {
-                        return (parseFloat(a.dataset.price) || 0) -
-                               (parseFloat(b.dataset.price) || 0);
-                    });
-                } else if (sortSelect.value === 'price-desc') {
-                    list.sort(function (a, b) {
-                        return (parseFloat(b.dataset.price) || 0) -
-                               (parseFloat(a.dataset.price) || 0);
-                    });
-                }
-
-                list.forEach(function (card) {
-                    resultsGrid.appendChild(card);
-                });
-            });
-        }
-
-        var viewBtns = document.querySelectorAll('.rh-view-btn');
-
-        viewBtns.forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                viewBtns.forEach(function (b) {
-                    b.classList.remove('active');
-                });
-                btn.classList.add('active');
-
-                if (resultsGrid) {
-                    resultsGrid.classList.toggle(
-                        'rh-list-view',
-                        btn.getAttribute('data-view') === 'list'
-                    );
-                }
-            });
-        });
-
-        /* ============ SAVE THIS SEARCH (localStorage) ============ */
-        var saveSearchBtn = document.getElementById('rh-save-search-btn');
-
-        if (saveSearchBtn) {
-            saveSearchBtn.addEventListener('click', function () {
-                var searches = [];
-                try {
-                    searches = JSON.parse(
-                        localStorage.getItem('roomhive_saved_searches')
-                    ) || [];
-                } catch (e) {
-                    searches = [];
-                }
-
-                searches.push({
-                    location:  saveSearchBtn.getAttribute('data-location'),
-                    category:  saveSearchBtn.getAttribute('data-category'),
-                    q:         saveSearchBtn.getAttribute('data-q'),
-                    price_min: saveSearchBtn.getAttribute('data-price-min'),
-                    price_max: saveSearchBtn.getAttribute('data-price-max'),
-                    amenities: saveSearchBtn.getAttribute('data-amenities'),
-                    saved_at:  Date.now()
-                });
-
-                localStorage.setItem(
-                    'roomhive_saved_searches',
-                    JSON.stringify(searches)
+                var mode = sortSel.value;
+                var cards = Array.prototype.slice.call(
+                    grid.querySelectorAll('.listing-box')
                 );
 
-                var original = saveSearchBtn.innerHTML;
-                saveSearchBtn.innerHTML =
-                    '<span class="rh-heart-icon">&#9829;</span> Search saved!';
-                saveSearchBtn.disabled = true;
+                Array.prototype.slice.call(grid.children).forEach(function (child) {
+                    if (!child.classList.contains('listing-box') &&
+                        !child.classList.contains('rh-empty-state')) {
+                        grid.removeChild(child);
+                    }
+                });
 
-                setTimeout(function () {
-                    saveSearchBtn.innerHTML = original;
-                    saveSearchBtn.disabled = false;
-                }, 2000);
+                if (mode === 'price-asc' || mode === 'price-desc') {
+                    cards.sort(function (a, b) {
+                        var pa = parseFloat(a.getAttribute('data-price')) || 0;
+                        var pb = parseFloat(b.getAttribute('data-price')) || 0;
+                        return mode === 'price-asc' ? pa - pb : pb - pa;
+                    });
+                } else {
+                    cards = [];
+                }
+
+                cards.forEach(function (card) { grid.appendChild(card); });
+                sortSel.blur();
+            }, true);
+        }
+
+        /* View toggle */
+        document.addEventListener('click', function (e) {
+            if (!e.target || !e.target.closest) { return; }
+            var vbtn = e.target.closest('.rh-view-btn');
+            if (!vbtn || !grid) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) { e.stopImmediatePropagation(); }
+
+            document.querySelectorAll('.rh-view-btn').forEach(function (b) {
+                b.classList.remove('active');
+            });
+            vbtn.classList.add('active');
+
+            var view = vbtn.getAttribute('data-view');
+            grid.classList.toggle('rh-list-view', view === 'list');
+        }, true);
+
+        /* Save-this-search (⚠ VERIFY: your endpoint if it differs) */
+        var saveBtn = document.getElementById('rh-save-search-btn');
+        if (saveBtn && LOGGED_IN) {
+            saveBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                var original = saveBtn.textContent;
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+
+                fetch('/webprogg/user/savesearch.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        location:   saveBtn.getAttribute('data-location') || '',
+                        category:   saveBtn.getAttribute('data-category') || '',
+                        q:          saveBtn.getAttribute('data-q') || '',
+                        price_min:  saveBtn.getAttribute('data-price-min') || '',
+                        price_max:  saveBtn.getAttribute('data-price-max') || '',
+                        amenities:  saveBtn.getAttribute('data-amenities') || ''
+                    }),
+                    credentials: 'same-origin'
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = (data && data.success)
+                        ? '✓ Search saved'
+                        : original;
+                })
+                .catch(function () {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = original;
+                });
             });
         }
 
-        /* ============ LOGIN MODAL AUTO-OPEN (guests) ============ */
-        var loginModal = document.getElementById('lx-login-modal');
-
-        if (loginModal && document.body.getAttribute('data-logged-in') !== '1') {
-            setTimeout(function () {
-                loginModal.classList.add('open');
-            }, 600);
+        /* results count text */
+        var countEl = document.getElementById('rh-results-count');
+        var toolbar = document.querySelector('.rh-toolbar');
+        if (countEl && toolbar) {
+            var shown = parseInt(toolbar.getAttribute('data-shown'), 10) || 0;
+            var total = parseInt(toolbar.getAttribute('data-total'), 10) || 0;
+            countEl.textContent = shown > 0
+                ? 'Showing ' + shown + ' of ' + total + ' listing' + (total === 1 ? '' : 's')
+                : '';
         }
-
     })();
     </script>
 

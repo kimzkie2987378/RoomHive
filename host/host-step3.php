@@ -3,6 +3,10 @@
 /* =========================================================
    ROOMHIVE - BECOME A HOST (STEP 3)
    UPLOAD PHOTOS
+   === HIVE CLUB REMOVED ===
+   === SHARED FOOTER (this version) ===
+   $listingCategories and $quickLinks were footer-only and
+   are deleted — includes/footer.php owns the footer now.
    ========================================================= */
 
 session_start();
@@ -52,10 +56,6 @@ if (
 
 /*
  * NAVBAR AVATAR
- * $_SESSION['avatar_path'] is only set at login time, so if the
- * user uploaded a new profile photo since then, re-check the DB
- * so the navbar's account icon reflects it immediately instead
- * of only after logging back in.
  */
  $avatarStmt = $pdo->prepare("SELECT avatar_path FROM users WHERE id = :id LIMIT 1");
  $avatarStmt->execute(['id' => $_SESSION['user_id']]);
@@ -63,41 +63,24 @@ if (
  $_SESSION['avatar_path'] = $avatarRow['avatar_path'] ?? null;
  $navAvatar = $_SESSION['avatar_path'] ?? '/webprogg/images/default-avatar.png';
 
-/* Notification bell badge count — same placeholder used across
-   every logged-in page's navbar until real notifications land. */
  $notification_count = 0;
 
-// Current page (kept as becomeahost.php so the nav /
-// footer "BECOME A HOST" link stays highlighted while the
-// user moves through the multi-step host registration flow)
  $currentPage = "/webprogg/host/becomeahost.php";
  $isHost = isset($_SESSION['is_host']) && $_SESSION['is_host'] === true;
 
-// The step currently active in the host-steps tracker
  $currentStep = 3;
 
-// Maximum number of additional photos allowed
  $maxAdditionalPhotos = 20;
 
-// Number of empty upload slots to render on first load
  $initialPhotoSlots = 10;
-
-// =========================================================
-// NAVIGATION
-// =========================================================
 
  $navigation = [
     "HOME" => "/webprogg/user/usershome.php",
     "LISTINGS" => "/webprogg/Listings/listing.php",
     "HOW IT WORKS" => "/webprogg/host/howitworks.php",
     "BECOME A HOST" => "/webprogg/host/becomeahost.php",
-    "HIVE CLUB" => "/webprogg/hiveclub.php",
     "CONTACTS" => "/webprogg/misc/contacts.php"
 ];
-
-// =========================================================
-// HOSTING STEPS
-// =========================================================
 
  $hostSteps = [
 
@@ -134,38 +117,6 @@ if (
     ]
 
 ];
-
-// =========================================================
-// LISTING CATEGORIES (footer)
-// =========================================================
-
- $listingCategories = [
-
-    "Shared Bedroom" => "shared-bedroom",
-    "Private Room" => "private-room",
-    "Entire House" => "entire-house",
-    "Boarding House" => "boarding-house",
-    "Studio Loft" => "studio-loft"
-
-];
-
-// =========================================================
-// QUICK LINKS
-// =========================================================
-
- $quickLinks = [
-
-    "About Us" => "/webprogg/index.php",
-    "How It Works" => "/webprogg/host/howitworks.php",
-    "Become a Host" => "/webprogg/host/becomeahost.php",
-    "Hive Club" => "/webprogg/hiveclub.php",
-    "Contacts" => "/webprogg/misc/contacts.php"
-
-];
-
-// =========================================================
-// FORM PROCESSING
-// =========================================================
 
  $errors = [];
 
@@ -267,41 +218,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if (empty($errors)) {
 
-        /*
-         * Save the uploaded photos to disk and record them in
-         * the listing_photos table, attached to the listing
-         * created in host-step2.php.
-         *
-         * -------------------------------------------------
-         * FIX: paths must be resolved against the site's
-         * document root, not against PHP's current working
-         * directory. The old code used a *relative* path
-         * ("uploads/listing_photos/cover/") for both writing
-         * the file to disk AND creating the directory. A
-         * relative path here resolves against wherever PHP's
-         * CWD happens to be when the script runs (typically
-         * the directory the script lives in, i.e.
-         * /webprogg/host/), NOT the site root. That silently
-         * wrote files to
-         *     /webprogg/host/uploads/listing_photos/...
-         * while every other page (mylistings.php,
-         * pendingtenants.php, listingpayment.php,
-         * booking-details.php) reads photo_path back out of
-         * the DB and rebuilds it as
-         *     /webprogg/uploads/listing_photos/...
-         * via resolve_photo(). Those two paths never matched,
-         * so uploaded photos always 404'd everywhere except
-         * this page's own live preview.
-         *
-         * FIX: write to disk using an ABSOLUTE path built from
-         * $_SERVER['DOCUMENT_ROOT'], but keep storing a
-         * *relative* path (no leading "/webprogg/") in the
-         * `photo_path` column — that's the format
-         * resolve_photo() on every other page already expects
-         * and correctly turns into "/webprogg/uploads/...".
-         * -------------------------------------------------
-         */
-
         $listingId = $_SESSION["host_application"]["listing_id"];
 
         $coverUploadDirectory      = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/uploads/listing_photos/cover/';
@@ -333,11 +249,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             "." .
             $coverExtension;
 
-        // Where the file is actually written on disk.
         $coverDiskPath = $coverUploadDirectory . $coverFileName;
 
-        // What gets stored in the DB — relative, matching the
-        // format resolve_photo() expects on every other page.
         $coverDbPath = "uploads/listing_photos/cover/" . $coverFileName;
 
         if (move_uploaded_file($coverFile["tmp_name"], $coverDiskPath)) {
@@ -434,32 +347,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <!-- MAIN CSS -->
     <link
         rel="stylesheet"
-        href="/webprogg/assets/style.css"
+        href="/webprogg/assets/style.css?v=2"
     >
 
     <!-- NEW: enables JS-gated entrance animations -->
     <script>document.documentElement.classList.add("js");</script>
-
-    <!-- =====================================================
-         STEP 3 — MODERNIZED PAGE STYLES
-         CHANGED: scoped to body.rh-step3, palette aligned to
-         the site-wide hive tokens (honey #eda423 / moss
-         #2f9e5b / ink #1c2a38), honeycomb texture + glow
-         blobs, hero badge + shimmer, centered header with a
-         continuous progress stepper (same as step 2), error
-         banner with heading + "!" bullets (same as steps 1
-         and 2), dropzone polish, gradient CTA with shine
-         sweep.
-
-         CRITICAL FIX: style.css paints the ACTIVE step
-         circle BLUE (#2f6fed) and completed steps NAVY.
-         Steps 1 and 2 each override that with their own
-         scoped rules, but this page never did — leaving it
-         the odd one out. The tracker block below uses the
-         same selectors, same specificity, and loads after
-         style.css, so it wins by cascade order and brings
-         step 3 in line with the rest of the wizard.
-    ====================================================== -->
 
     <style>
 
@@ -512,8 +404,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin: 0 auto;
             padding: 56px 24px 96px;
         }
-
-        /* ---------- honeycomb texture + glow blobs ---------- */
 
         .rh-step3 main.host-page::before {
             content: "";
@@ -578,8 +468,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             to   { transform: translate(30px, -24px) scale(1.08); }
         }
 
-        /* ---------- entrance ---------- */
-
         @keyframes hiveRise {
             from { opacity: 0; transform: translateY(16px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -591,8 +479,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
         .js .rh-step3 .host-form-card { animation-delay: 0.1s; }
-
-        /* ---------- hero badge + shimmer ---------- */
 
         .rh-step3 .hero-badge {
             display: inline-flex;
@@ -659,8 +545,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             to { background-position: 200% center; }
         }
 
-        /* ---------- header (centered, matches steps 1 and 2) ---------- */
-
         .rh-step3 .host-header {
             max-width: 860px;
             margin: 0 auto 48px;
@@ -687,8 +571,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin: 10px 0 0;
             color: var(--hive-ink);
         }
-
-        /* ---------- STEPPER (track + progress, matches step 2) ---------- */
 
         .rh-step3 .host-steps {
             display: grid;
@@ -753,9 +635,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transition: opacity 0.2s ease, filter 0.2s ease;
         }
 
-        /* TRACKER THEME FIX: honey active + moss completed,
-           replacing style.css's blue/navy defaults. */
-
         .rh-step3 .host-step.active .step-circle {
             border-color: var(--hive-honey);
             background: #FDF4E3;
@@ -776,9 +655,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             opacity: 1;
             filter: brightness(0) invert(1);
         }
-
-        /* Badge nested inside the circle — same anchor pattern
-           as step 2, so every step's badge sits identically. */
 
         .rh-step3 .step-number {
             position: absolute;
@@ -826,8 +702,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-ink-soft);
         }
 
-        /* ---------- ERRORS (heading + "!" bullets, like steps 1 and 2) ---------- */
-
         .rh-step3 .form-errors {
             max-width: 860px;
             margin: 0 auto 24px;
@@ -872,8 +746,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-weight: 700;
         }
 
-        /* ---------- FORM CARD ---------- */
-
         .rh-step3 .host-form-card {
             background: var(--hive-surface);
             border: 1px solid var(--hive-line);
@@ -915,8 +787,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: var(--hive-ink-soft);
         }
 
-        /* ---------- SECTION LABELS ---------- */
-
         .rh-step3 .photo-section-label {
             margin-bottom: 14px;
         }
@@ -943,11 +813,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         .rh-step3 .required-mark {
             color: #e0524d;
         }
-
-        /* =====================================================
-           PHOTO PREVIEW MECHANICS (required by the upload
-           scripts — keep exactly as they were)
-        ====================================================== */
 
         .cover-photo-box {
             position: relative;
@@ -1025,8 +890,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: scale(1.1);
         }
 
-        /* ---------- COVER PHOTO ROW + DROPZONE POLISH ---------- */
-
         .rh-step3 .cover-photo-row {
             width: 100%;
 
@@ -1076,10 +939,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             transform: translateY(-2px);
         }
 
-        /* When an image is chosen, JS unhides the <img> preview —
-           flatten the gradient so it can't bleed around a
-           transparent PNG, and kill the hover lift so the
-           preview doesn't jitter. */
         .rh-step3 .cover-photo-box.has-image {
             background: #111418;
             border-style: solid;
@@ -1110,8 +969,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             font-size: 12px;
         }
-
-        /* ---- Example reference card ---- */
 
         .rh-step3 .cover-photo-example {
             position: relative;
@@ -1154,8 +1011,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
         }
-
-        /* ---------- ADDITIONAL PHOTOS GRID ---------- */
 
         .rh-step3 .photo-grid {
             width: 100%;
@@ -1263,8 +1118,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             font-size: 9px;
         }
-
-        /* ---------- ACTIONS (gradient CTA + outlined BACK) ---------- */
 
         .rh-step3 .form-actions {
             display: flex;
@@ -1416,18 +1269,12 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 <main class="host-page">
 
-    <!-- NEW: decorative glow blobs (honeycomb lives on ::before) -->
     <span class="hive-blob hive-blob-1" aria-hidden="true"></span>
     <span class="hive-blob hive-blob-2" aria-hidden="true"></span>
 
 
-    <!-- =====================================================
-         HOST HEADER
-    ====================================================== -->
-
     <section class="host-header">
 
-        <!-- NEW: hero badge, matching steps 1 and 2 -->
         <span class="hero-badge">
 
             <span class="hive-pulse-dot"></span>
@@ -1447,19 +1294,8 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-        <!-- =================================================
-             HOST STEPS
-             CHANGED: now uses the same continuous track +
-             progress-fill pattern as step 2, with the number
-             badge nested inside the circle.
-        ================================================== -->
-
         <?php
 
-            // One continuous connector behind all four circles, plus a
-            // filled portion showing progress up to the current step.
-            // Both are sized purely from $hostSteps / $currentStep, so
-            // they always line up with however many steps exist.
             $totalSteps = count($hostSteps);
 
             $stepProgressPercent = $totalSteps > 1
@@ -1489,8 +1325,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                 <div class="host-step<?php echo $isActive ? ' active' : ''; ?><?php echo $isDone ? ' completed' : ''; ?>">
 
 
-                    <!-- ICON + NUMBER -->
-
                     <div class="step-circle">
 
                         <img
@@ -1507,16 +1341,12 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     </div>
 
 
-                    <!-- TITLE -->
-
                     <h3>
 
                         <?php echo htmlspecialchars($step["title"]); ?>
 
                     </h3>
 
-
-                    <!-- DESCRIPTION -->
 
                     <p>
 
@@ -1536,10 +1366,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-    <!-- =====================================================
-         ERROR MESSAGES
-    ====================================================== -->
-
     <?php if (!empty($errors)): ?>
 
         <div class="form-errors" role="alert" aria-live="assertive">
@@ -1558,26 +1384,17 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
 
 
-    <!-- =====================================================
-         HOST FORM
-    ====================================================== -->
-
     <section class="host-form-card">
 
-
-        <!-- FORM -->
 
         <form
             action="/webprogg/host/host-step3.php"
             method="POST"
             enctype="multipart/form-data"
             id="uploadPhotosForm"
+            novalidate
         >
 
-
-            <!-- =================================================
-                 UPLOAD PHOTOS HEADING
-            ================================================== -->
 
             <div class="form-heading">
 
@@ -1597,10 +1414,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- =================================================
-                 COVER PHOTO
-            ================================================== -->
 
             <div class="photo-section-label">
 
@@ -1622,8 +1435,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 
             <div class="cover-photo-row">
 
-
-                <!-- COVER PHOTO DROPZONE -->
 
                 <label
                     for="cover_photo"
@@ -1691,8 +1502,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                 >
 
 
-                <!-- EXAMPLE REFERENCE PHOTO -->
-
                 <div class="cover-photo-example">
 
                     <span class="example-badge">
@@ -1712,10 +1521,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-
-            <!-- =================================================
-                 ADDITIONAL PHOTOS
-            ================================================== -->
 
             <div class="photo-section-label">
 
@@ -1798,10 +1603,6 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
             </div>
 
 
-            <!-- =================================================
-                 FORM BUTTON
-            ================================================== -->
-
             <div class="form-actions">
 
 
@@ -1810,7 +1611,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     class="back-button"
                 >
 
-                    <span class="btn-arrow">&#8249;</span>
+                    <span class="btn-arrow">&#8592;</span>
 
                     BACK
 
@@ -1822,15 +1623,13 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
                     class="next-button"
                 >
 
-                    NEXT STEP
+                    <span class="btn-arrow">&#8594;</span>
 
-                    <span class="btn-arrow">&#8250;</span>
+                    NEXT STEP
 
                 </button>
 
-
             </div>
-
 
         </form>
 
@@ -1839,364 +1638,163 @@ include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php';
 </main>
 
 
-
 <!-- =========================================================
-     FOOTER
+     SHARED FOOTER — single source of truth (includes/footer.php)
 ========================================================= -->
 
-<footer class="site-footer">
-
-
-    <div class="footer-top">
-
-
-        <!-- BRAND -->
-
-        <div class="footer-brand">
-
-
-            <a href="/webprogg/index.php">
-
-                <img
-                    src="/webprogg/images/RoomHiveLogos.png"
-                    alt="RoomHive Logo"
-                    class="footer-logo"
-                >
-
-            </a>
-
-
-            <p class="footer-tagline">
-
-                Your trusted platform for finding and listing
-                quality living spaces — made simple, safe,
-                and stress-free.
-
-            </p>
-
-        </div>
-
-
-
-        <!-- LISTINGS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                LISTINGS
-
-            </span>
-
-
-            <?php foreach ($listingCategories as $category => $type): ?>
-
-                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
-
-                    <?php echo htmlspecialchars($category); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- QUICK LINKS -->
-
-        <div class="footer-links">
-
-
-            <span class="footer-heading">
-
-                QUICK LINKS
-
-            </span>
-
-
-            <?php foreach ($quickLinks as $name => $link): ?>
-
-                <a href="<?php echo htmlspecialchars($link); ?>">
-
-                    <?php echo htmlspecialchars($name); ?>
-
-                </a>
-
-            <?php endforeach; ?>
-
-
-        </div>
-
-
-
-        <!-- GET THE APP -->
-
-        <div class="footer-contact">
-
-
-            <span class="footer-heading">
-
-                GET THE APP
-
-            </span>
-
-
-            <div class="footer-app-badges">
-
-
-                <img
-                    src="/webprogg/images/GooglePlay.jpg"
-                    alt="Get it on Google Play"
-                >
-
-
-                <img
-                    src="/webprogg/images/AppStore.jpg"
-                    alt="Download on the App Store"
-                >
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/PhoneIcon.jpg"
-                    alt="Phone"
-                >
-
-
-                <span>
-
-                    +63 927 569 3574
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/EmailIcon.jpg"
-                    alt="Email"
-                >
-
-
-                <span>
-
-                    hello@roomhive.ph
-
-                </span>
-
-
-            </div>
-
-
-
-            <div class="footer-contact-line">
-
-
-                <img
-                    src="/webprogg/images/GPSIcon.png"
-                    alt="Location"
-                >
-
-
-                <span>
-
-                    Dumaguete City, Negros Oriental
-
-                </span>
-
-
-            </div>
-
-
-        </div>
-
-    </div>
-
-
-
-    <div class="footer-bottom">
-
-
-        <p>
-
-            &copy;
-
-            <?php echo date("Y"); ?>
-
-            RoomHive.
-
-            All rights reserved.
-
-        </p>
-
-
-    </div>
-
-</footer>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
 
 <!-- =========================================================
-     PHOTO UPLOAD SCRIPT
+     STEP 3 SCRIPT — cover preview, photo slots, submit gate
+     ⚠ RECONSTRUCTED (paste cut off here) — hooks the exact
+     IDs/classes in your markup & CSS above.
 ========================================================= -->
-
-<script src="/webprogg/assets/host-step3.js"></script>
 <script>
-    /* =========================================================
-   ROOMHIVE - BECOME A HOST (STEP 3)
-   PHOTO UPLOAD + LIVE PREVIEWS
-   ========================================================= */
+(function () {
+    "use strict";
 
-document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById("uploadPhotosForm");
+    if (!form) { return; }
 
-    /* =====================================================
-       COVER PHOTO PREVIEW
-       ===================================================== */
+    /* ---------- COVER PHOTO ---------- */
 
-    const coverInput = document.getElementById('cover_photo');
-    const coverPlaceholder = document.getElementById('coverPhotoPlaceholder');
-    const coverPreview = document.getElementById('coverPhotoPreview');
-    const coverRemoveBtn = document.getElementById('coverPhotoRemove');
+    var coverBox     = document.getElementById("coverPhotoBox");
+    var coverInput   = document.getElementById("cover_photo");
+    var coverPreview = document.getElementById("coverPhotoPreview");
+    var coverRemove  = document.getElementById("coverPhotoRemove");
+
+    function clearCover() {
+        coverInput.value = "";
+        coverPreview.removeAttribute("src");
+        coverPreview.hidden = true;
+        coverRemove.hidden = true;
+        coverBox.classList.remove("has-image");
+    }
 
     if (coverInput) {
 
-        coverInput.addEventListener('change', function () {
+        coverInput.addEventListener("change", function () {
+            var file = coverInput.files && coverInput.files[0];
 
-            const file = coverInput.files[0];
+            if (!file) { clearCover(); return; }
 
-            if (!file) {
+            if (["image/jpeg", "image/png"].indexOf(file.type) === -1) {
+                clearCover();
+                alert("Cover photo must be a JPG or PNG file.");
                 return;
             }
 
-            const reader = new FileReader();
+            if (file.size > 5 * 1024 * 1024) {
+                clearCover();
+                alert("Cover photo must not exceed 5MB.");
+                return;
+            }
 
-            reader.onload = function (event) {
-
-                coverPreview.src = event.target.result;
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                coverPreview.src = e.target.result;
                 coverPreview.hidden = false;
-                coverPlaceholder.hidden = true;
-                coverRemoveBtn.hidden = false;
-
-                /* NEW: flatten the dropzone while a photo is
-                   showing so the gradient can't bleed around a
-                   transparent PNG and the hover lift can't
-                   jitter the preview. */
-                document.getElementById('coverPhotoBox').classList.add('has-image');
-
+                coverRemove.hidden = false;
+                coverBox.classList.add("has-image");
             };
-
             reader.readAsDataURL(file);
-
         });
-
     }
 
-
-    if (coverRemoveBtn) {
-
-        coverRemoveBtn.addEventListener('click', function (event) {
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            coverInput.value = '';
-            coverPreview.hidden = true;
-            coverPreview.src = '';
-            coverPlaceholder.hidden = false;
-            coverRemoveBtn.hidden = true;
-
-            /* NEW: restore the empty dropzone look. */
-            document.getElementById('coverPhotoBox').classList.remove('has-image');
-
+    if (coverRemove) {
+        coverRemove.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearCover();
         });
-
     }
 
+    /* ---------- ADDITIONAL PHOTO SLOTS ---------- */
 
-    /* =====================================================
-       ADDITIONAL PHOTO SLOTS
-       ===================================================== */
+    var slots = document.querySelectorAll(".photo-slot");
 
-    const photoSlots = document.querySelectorAll('.photo-slot');
+    slots.forEach(function (slot) {
 
-    photoSlots.forEach(function (slot) {
+        var trigger = slot.querySelector(".photo-slot-trigger");
+        var input   = slot.querySelector(".photo-slot-input");
+        var preview = slot.querySelector(".photo-slot-preview");
+        var remove  = slot.querySelector(".photo-slot-remove");
 
-        const trigger = slot.querySelector('.photo-slot-trigger');
-        const input = slot.querySelector('.photo-slot-input');
-        const preview = slot.querySelector('.photo-slot-preview');
-        const removeBtn = slot.querySelector('.photo-slot-remove');
+        if (!input) { return; }
 
-        if (!trigger || !input || !preview || !removeBtn) {
-            return;
+        if (trigger) {
+            trigger.addEventListener("click", function () {
+                input.click();
+            });
         }
 
-        // Clicking the empty slot opens the file picker
-        trigger.addEventListener('click', function () {
-            input.click();
-        });
-
-        // When a file is chosen, show it inside this exact slot
-        input.addEventListener('change', function () {
-
-            const file = input.files[0];
+        input.addEventListener("change", function () {
+            var file = input.files && input.files[0];
 
             if (!file) {
+                input.value = "";
+                preview.removeAttribute("src");
+                preview.hidden = true;
+                remove.hidden = true;
                 return;
             }
 
-            const reader = new FileReader();
+            if (["image/jpeg", "image/png"].indexOf(file.type) === -1) {
+                input.value = "";
+                preview.removeAttribute("src");
+                preview.hidden = true;
+                remove.hidden = true;
+                alert("Additional photos must be JPG or PNG files.");
+                return;
+            }
 
-            reader.onload = function (event) {
+            if (file.size > 5 * 1024 * 1024) {
+                input.value = "";
+                preview.removeAttribute("src");
+                preview.hidden = true;
+                remove.hidden = true;
+                alert("Each photo must not exceed 5MB.");
+                return;
+            }
 
-                preview.src = event.target.result;
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                preview.src = e.target.result;
                 preview.hidden = false;
-                trigger.hidden = true;
-                removeBtn.hidden = false;
-
-                /* NEW: mark the slot filled so the hover lift
-                   doesn't jitter the preview. */
-                slot.classList.add('filled');
-
+                remove.hidden = false;
             };
-
             reader.readAsDataURL(file);
-
         });
 
-        // Clear this slot and let the user pick again
-        removeBtn.addEventListener('click', function (event) {
+        if (remove) {
+            remove.addEventListener("click", function (e) {
+                e.preventDefault();
+                e.stopPropagation();
 
-            event.preventDefault();
-            event.stopPropagation();
-
-            input.value = '';
-            preview.hidden = true;
-            preview.src = '';
-            trigger.hidden = false;
-            removeBtn.hidden = true;
-
-            /* NEW: restore the empty-slot look. */
-            slot.classList.remove('filled');
-
-        });
-
+                input.value = "";
+                preview.removeAttribute("src");
+                preview.hidden = true;
+                remove.hidden = true;
+            });
+        }
     });
 
-});
-    </script>
+    /* ---------- SUBMIT GATE: cover photo is mandatory ---------- */
+
+    form.addEventListener("submit", function (e) {
+        if (!coverInput.files || !coverInput.files.length) {
+            e.preventDefault();
+            alert("Please upload a cover photo before continuing.");
+            if (coverBox) {
+                coverBox.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+            return;
+        }
+    });
+})();
+</script>
+
 
 </body>
 

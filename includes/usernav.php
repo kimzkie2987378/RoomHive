@@ -23,7 +23,30 @@
 
    Safe defaults are applied so this include can never
    white-screen a page.
+
+   === PANEL FIX (this version) ===
+     1. INCLUDE GUARD — the file can no longer be included
+        twice on one page (double panels/double handlers).
+     2. LOOSE-PANEL SAFETY NET — the notification dropdown
+        panel is included as a direct child of <body>, outside
+        the fixed navbar. If its stylesheet is missing (or it
+        expects a positioned wrapper), opening it rendered as
+        unstyled text at the page's top-left. A body-child
+        selector now pins ANY loose panel top-right under the
+        bell as a proper card — it can never render as loose
+        flow text again. Pages that properly wrap/style the
+        panel are untouched (selector only matches direct
+        children of <body>).
+
+   === HIVE CLUB REMOVED (this version) ===
+   The hardcoded HIVE CLUB nav link is gone.
 ========================================================= */
+
+/* ---- INCLUDE GUARD: never render this navbar twice ---- */
+if (defined('ROOMHIVE_USERNAV_LOADED')) {
+    return;
+}
+define('ROOMHIVE_USERNAV_LOADED', 1);
 
 if (!isset($navAvatar) || !is_string($navAvatar) || $navAvatar === '') {
     $navAvatar = '/webprogg/images/default-avatar.png';
@@ -44,7 +67,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     /* -----------------------------------------------
        1. NAVBAR DROP-IN (page load)
-       Slides the whole fixed navbar down from the top.
     ------------------------------------------------ */
     @keyframes navbarDropIn {
         from { opacity: 0; transform: translateY(-100%); }
@@ -53,8 +75,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     .navbar {
         animation: navbarDropIn 0.5s cubic-bezier(0.22, 0.68, 0.43, 1) both;
-
-        /* Soft shadow fades in once the page scrolls (see .nav-scrolled) */
         transition: box-shadow 0.3s ease;
     }
 
@@ -64,8 +84,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     /* -----------------------------------------------
        2. LINK HOVER — gold underline grows from center
-       Applies to the plain text links only (HOME,
-       LISTINGS, ...). Bell + dropdown are excluded.
     ------------------------------------------------ */
     .navbar .nav-links > a:not(.nav-bell) {
         position: relative;
@@ -73,19 +91,14 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     .navbar .nav-links > a:not(.nav-bell)::after {
         content: "";
-
         position: absolute;
         left: 50%;
         bottom: -5px;
-
         transform: translateX(-50%);
-
         width: 0;
         height: 2px;
-
         background: #b07708;
         border-radius: 2px;
-
         transition: width 0.25s ease;
     }
 
@@ -125,8 +138,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     /* -----------------------------------------------
        4. DROPDOWN — items cascade in with a stagger
-       Menu opens (slide + fade) as before, then each
-       link follows 40ms apart, sliding in from the right.
     ------------------------------------------------ */
     .user-dd {
         position: relative;
@@ -135,42 +146,30 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
     .user-dd .my-account {
         display: flex;
         align-items: center;
-
         gap: 8px;
-
         background: none;
         border: none;
-
         cursor: pointer;
-
         font: inherit;
         color: inherit;
     }
 
     .user-dd .account-circle {
         display: inline-flex;
-
         transition: transform 0.2s ease;
     }
 
     .user-dd .account-circle img {
         width: 42px;
         height: 42px;
-
         padding: 5px;
-
         background: #1c2a38;
-
         border-radius: 50%;
-
         object-fit: contain;
-
         display: block;
-
         transition: box-shadow 0.2s ease;
     }
 
-    /* Avatar lifts + gets a gold ring on hover */
     .user-dd .my-account:hover .account-circle {
         transform: translateY(-1px);
     }
@@ -183,13 +182,11 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         font-size: 12px;
         font-weight: 700;
         white-space: nowrap;
-
         color: #1c2a38;
     }
 
     .user-dd .dropdown-caret {
         font-size: 0.75em;
-
         transition: transform 0.25s ease;
     }
 
@@ -199,27 +196,17 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     .user-dd-menu {
         display: none;
-
         position: absolute;
-
         top: calc(100% + 10px);
         right: 0;
-
         min-width: 190px;
-
         padding: 6px;
-
         background: #ffffff;
-
         border: 1px solid rgba(28, 42, 56, 0.08);
         border-radius: 12px;
-
         box-shadow: 0 14px 30px rgba(28, 42, 56, 0.14);
-
         flex-direction: column;
-
         z-index: 1100;
-
         transform-origin: top right;
     }
 
@@ -230,7 +217,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
     .user-dd.open .user-dd-menu {
         display: flex;
-
         animation: userDDIn 0.2s ease;
     }
 
@@ -239,24 +225,16 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         to   { opacity: 1; transform: translateX(0); }
     }
 
-    /* Items start hidden, then cascade in only while open */
     .user-dd .user-dd-menu a {
         display: block;
-
         padding: 10px 12px;
-
         border-radius: 8px;
-
         color: #1c2a38;
-
         font-size: 13px;
         font-weight: 600;
-
         text-decoration: none;
         white-space: nowrap;
-
         opacity: 0;
-
         transition: background 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
     }
 
@@ -264,7 +242,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         animation: userDDItem 0.28s ease forwards;
     }
 
-    /* Stagger: each item trails the previous by 40ms */
     .user-dd.open .user-dd-menu a:nth-child(1) { animation-delay: 0.04s; }
     .user-dd.open .user-dd-menu a:nth-child(2) { animation-delay: 0.08s; }
     .user-dd.open .user-dd-menu a:nth-child(3) { animation-delay: 0.12s; }
@@ -272,7 +249,6 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
     .user-dd.open .user-dd-menu a:nth-child(5) { animation-delay: 0.20s; }
     .user-dd.open .user-dd-menu a:nth-child(6) { animation-delay: 0.24s; }
 
-    /* Hover: gold wash + slight indent nudge */
     .user-dd-menu a:hover {
         background: #fdf1dc;
         color: #b07708;
@@ -280,7 +256,43 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
     }
 
     /* -----------------------------------------------
-       5. REDUCED MOTION — turn everything off
+       5. LOOSE-PANEL SAFETY NET
+       The notification panel is included as a DIRECT child
+       of <body>, outside the navbar. If its stylesheet is
+       missing, opening it rendered as unstyled text at the
+       top-left. These rules only match loose body-children,
+       so a properly wrapped panel is never affected.
+    ------------------------------------------------ */
+    body > [class*="notif"],
+    body > [class*="dropdown-menu"],
+    body > [class*="dropdown-panel"] {
+        position: fixed;
+        top: 84px;              /* just under the 90px navbar */
+        right: 18px;
+        left: auto;
+        z-index: 1150;
+
+        max-width: 340px;
+        max-height: 70vh;
+        overflow-y: auto;
+
+        background: #ffffff;
+        border: 1px solid rgba(28, 42, 56, 0.08);
+        border-radius: 14px;
+        box-shadow: 0 18px 40px rgba(28, 42, 56, 0.18);
+        padding: 10px;
+    }
+
+    /* Dark mode: keep the safety-net card consistent */
+    body[data-theme="dark"] > [class*="notif"],
+    body[data-theme="dark"] > [class*="dropdown-menu"],
+    body[data-theme="dark"] > [class*="dropdown-panel"] {
+        background: #1a222b;
+        border-color: rgba(232, 236, 241, 0.10);
+    }
+
+    /* -----------------------------------------------
+       6. REDUCED MOTION — turn everything off
     ------------------------------------------------ */
     @media (prefers-reduced-motion: reduce) {
         .navbar,
@@ -320,18 +332,18 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
         <a href="/webprogg/Listings/listing.php">LISTINGS</a>
         <a href="/webprogg/host/howitworks.php">HOW IT WORKS</a>
         <a href="/webprogg/host/becomeahost.php">BECOME A HOST</a>
-        <a href="/webprogg/hiveclub.php">HIVE CLUB</a>
+        <!-- HIVE CLUB — REMOVED -->
         <a href="/webprogg/misc/contacts.php">CONTACTS</a>
 
         <!-- NOTIFICATIONS BELL -->
         <a href="/webprogg/user/notifications.php" class="nav-bell">
-            <img src="/webprogg/images/bellicon.png" alt="Notifications">
+            <img src="/webprogg/images/bell.png" alt="Notifications">
             <?php if ($notification_count > 0): ?>
                 <span class="nav-bell-badge"><?php echo h($notification_count); ?></span>
             <?php endif; ?>
         </a>
 
-        <!-- MY ACCOUNT DROPDOWN — self-contained, same pattern as host navbar -->
+        <!-- MY ACCOUNT DROPDOWN — self-contained -->
         <div class="user-dd">
 
             <button
@@ -379,7 +391,10 @@ if (!isset($notification_count) || !is_numeric($notification_count)) {
 
 </header>
 
-<!-- NOTIFICATION DROPDOWN PANEL (shared with the bell) -->
+<!-- NOTIFICATION DROPDOWN PANEL (shared with the bell).
+     Left as a loose body-child ON PURPOSE — the CSS safety
+     net above pins it top-right as a proper card even if its
+     own stylesheet isn't loaded on the current page. -->
 <?php
  $__notifDropdown = $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php';
 if (is_file($__notifDropdown)) {
@@ -395,7 +410,7 @@ if (is_file($__notifDropdown)) {
     if (window.__userNavDD) { return; }
     window.__userNavDD = true;
 
-    /* ---- Dropdown open/close (unchanged behavior) ---- */
+    /* ---- Dropdown open/close ---- */
     document.addEventListener("click", function (event) {
 
         var toggle = event.target.closest
@@ -430,7 +445,7 @@ if (is_file($__notifDropdown)) {
         }
     });
 
-    /* ---- NEW: scroll shadow — navbar lifts off the page ---- */
+    /* ---- Scroll shadow — navbar lifts off the page ---- */
     var nav = document.querySelector(".navbar");
 
     if (nav) {

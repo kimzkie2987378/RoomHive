@@ -3,42 +3,32 @@
    ROOMHIVE — PROCESS PAYMENT
    process-payment.php
 
-   Flow A (new inquiry): listingpayment.php -> HERE -> receipt
+   Flow A (new inquiry): listing-detail.php -> listingpayment.php -> HERE -> receipt
    Flow B (pay balance): booking-details.php -> listingpayment.php -> HERE -> receipt
    Flow C (owner "List Now"): listing-detail.php -> listingpayment.php -> HERE -> PUBLISHED
 
-   === PAY FULL PRICE (this version) ===
-   listingpayment.php posts payment_purpose_full=1 when the
-   guest pressed "Pay Full Price". This file:
-     - reads the flag (reservation flow only; balance ignores it)
-     - charges the FULL discounted total instead of the 50% reserve
-     - carries the flag through the mock GCash/Maya/Card screens
-       so it survives the two-step POST (stage=confirm)
-     - re-applies the flag INSIDE the transaction so the amount
-       written to bookings.amount_paid is the full re-verified
-       discounted total (bookings.total stays the discounted total,
-       so amount_paid == total => booking shows 100% paid and the
-       balance flow is automatically skipped)
-     - passes pay_full=1 back to "Change payment method" so full
-       mode survives the round-trip
-     - notification + redirect show the actual amount paid
+   === MONTHLY RENTAL + LONG TERM (this version) ===
+   - Normal: total = discounted monthly price x months (1-12);
+     reserve = 50% of total (or 100% with Pay Full Price).
+   - LONG TERM (long_term=1): open-ended month-to-month.
+     duration forced to 1 => total = ONE month's discounted
+     price; reserve = 50% of it; full = whole first month.
+     checkout_date is stored NULL, which makes the space
+     unavailable to everyone else (open-ended occupancy).
 
-   === HIVE CLUB PHASE 4 — SERVER-SIDE DISCOUNT ===
-   The tier discount shown on listingpayment.php is RECOMPUTED
-   here from the engine (hive_member + hive_discount_pct) —
-   the client never gets to influence pricing:
-     - membership re-verified INSIDE the transaction
-     - bookings.total stores the DISCOUNTED total
-     - reserve = 50% x discounted (or 100% with full payment)
-     - balance flow stays consistent (b.total - amount_paid)
-   Balance mode: NO new discount (already baked into b.total
-   at reserve time) — only the remaining half is charged.
-   Owner "List Now" flow: no discount (host paying own fee).
+   === PAY FULL PRICE ===
+   payment_purpose_full=1 charges the entire discounted
+   total instead of the 50% reserve. Flag is carried through
+   the mock screens and re-applied inside the transaction.
+
+   === HIVE CLUB — SERVER-SIDE DISCOUNT ===
+   Recomputed from the engine; membership re-verified INSIDE
+   the transaction. Discount applies to the MONTHLY price
+   once, then x months. Balance mode: no new discount.
 
    KEPT (all previous fixes):
    - payment_status='paid' written (no paid_at column)
-   - listings row locked FOR UPDATE in the reserve branch
-     (race-safe double-booking guard)
+   - listings row locked FOR UPDATE (race-safe double-booking)
    - guests whitelisted; dates strictly validated
    - expiry sweep runs lazily on load
 ========================================================= */
@@ -93,9 +83,8 @@ function pp_valid_date($value) {
 }
 
 /* -----------------------------------------------------
-   HIVE CLUB — expire lapsed memberships, load this member.
-   Discount is recomputed SERVER-SIDE below; the client's
-   displayed figures are treated as cosmetic only.
+   HIVE CLUB — expire lapsed memberships.
+   Discount is recomputed SERVER-SIDE below.
 ----------------------------------------------------- */
 hive_expiry_sweep($pdo);
 
@@ -109,13 +98,24 @@ hive_expiry_sweep($pdo);
  $paymentPurpose = ($_POST['payment_purpose'] ?? 'reservation') === 'balance' ? 'balance' : 'reservation';
  $bookingId      = isset($_POST['booking_id']) && is_numeric($_POST['booking_id']) ? (int) $_POST['booking_id'] : null;
 
-/* PAY FULL PRICE — '1' when guest pressed "Pay Full Price" on
-   listingpayment.php. Only valid for the reservation flow;
-   balance payments can never exceed the remaining balance. */
+/* PAY FULL PRICE — '1' when guest pressed "Pay Full Price".
+   Only valid for the reservation flow; balance payments can
+   never exceed the remaining balance. */
  $paymentPurposeFull = (($_POST['payment_purpose_full'] ?? '0') === '1')
     && $paymentPurpose === 'reservation';
 
+/* MONTHLY RENTAL — duration recomputed server-side (1-12) */
+ $allowedDurations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+ $durationMonths = (int) ($_POST['months'] ?? 1);
+ if (!in_array($durationMonths, $allowedDurations, true)) { $durationMonths = 1; }
+
  $longTerm = ($_POST['long_term'] ?? '0') === '1';
+
+/* LONG TERM — month-to-month: pay is ONE month at a time and
+   there is no move-out date, so force duration to 1 month. */
+if ($longTerm) {
+    $durationMonths = 1;
+}
 
  $checkinRaw  = $_POST['checkin_date']  ?? '';
  $checkoutRaw = $_POST['checkout_date'] ?? '';
@@ -155,9 +155,8 @@ if ($listing === false) {
 }
 
 /* =========================================================
-   HIVE CLUB PRICING — recomputed server-side
-   Owner "List Now" flow: no discount (host paying own fee).
-   Balance mode: no discount (already baked into b.total).
+   HIVE CLUB + MONTHLY PRICING — recomputed server-side
+   total = discounted monthly x months; reserve = 50% of total
 ========================================================= */
  $isListingOwner = ((int) $listing['host_id'] === (int) $_SESSION['user_id']);
  $listingStatus  = $listing['status'] ?? '';
@@ -166,24 +165,30 @@ if ($listing === false) {
  $hiveDiscountPct = 0;
  $hiveTierLabel   = null;
  $discountAmount  = 0.0;
- $discountedTotal = $listingPrice;
+ $discountedMonthly = $listingPrice;
 
 if ($paymentPurpose === 'reservation' && !$isListingOwner) {
     $hiveMember     = hive_member($pdo, $_SESSION['user_id']);
     $hiveDiscountPct = hive_discount_pct($hiveMember);
 
     if ($hiveDiscountPct > 0) {
-        $hiveTierLabel  = (string) $hiveMember['tier'];
-        $discountAmount = round($listingPrice * ($hiveDiscountPct / 100), 2);
-        $discountedTotal = round($listingPrice - $discountAmount, 2);
+        $hiveTierLabel     = (string) $hiveMember['tier'];
+        $discountAmount    = round($listingPrice * ($hiveDiscountPct / 100), 2);
+        $discountedMonthly = round($listingPrice - $discountAmount, 2);
     }
 }
 
-/* RESERVE = 50% OF THE (DISCOUNTED) LISTING PRICE.
-   With payment_purpose_full=1 the FULL discounted total is
-   charged instead (see $amountDue below + reserve branch).
-   Matches listingpayment.php — keep the same formula in BOTH. */
+/* MONTHLY RENTAL — total rent = discounted monthly x duration
+   (Long Term: duration was forced to 1 above, so this is
+   exactly ONE month's discounted price). */
+ $discountedTotal = round($discountedMonthly * $durationMonths, 2);
+
+/* RESERVE = 50% OF THE TOTAL (first month for Long Term). */
  $reservationFee = round($discountedTotal * 0.5, 2);
+
+ $durationLabel = $longTerm
+    ? 'long-term'
+    : ($durationMonths === 1 ? '1-month' : $durationMonths . '-month');
 
 /* -----------------------------------------------------
    LISTING STATUS + DATE GUARDS (reservation flow only)
@@ -214,6 +219,7 @@ if ($paymentPurpose === 'reservation') {
 
 /* -----------------------------------------------------
    BALANCE MODE — load + validate the existing booking
+   (duration ignored here; b.total already carries it)
 ----------------------------------------------------- */
  $balanceBooking = null;
  $balanceDueNow  = null;
@@ -260,8 +266,7 @@ if ($paymentPurpose === 'balance') {
     }
 }
 
-/* PAY FULL PRICE — charge the full discounted total instead
-   of the 50% reserve. Balance mode always pays the remainder. */
+/* Amount charged on the mock screens */
  $amountDue = $paymentPurpose === 'balance'
     ? $balanceDueNow
     : ($paymentPurposeFull ? $discountedTotal : $reservationFee);
@@ -304,8 +309,9 @@ if ($stage === 'confirm') {
 
             /* ---------------------------------------------
                PAY REMAINING BALANCE — no new discount here;
-               b.total already carries the discounted price.
-               (payment_purpose_full is ignored in this mode.)
+               b.total already carries the discounted
+               price. payment_purpose_full and months are
+               ignored in this mode.
             --------------------------------------------- */
             $pdo->beginTransaction();
 
@@ -406,40 +412,38 @@ if ($stage === 'confirm') {
             /* ---------------------------------------------
                NEW RESERVE — race-safe.
                Lock the listing row, RE-VERIFY membership
-               discount INSIDE the lock (it may have expired
-               between page render and confirm), then insert
-               with bookings.total = DISCOUNTED total.
+               discount INSIDE the lock, then insert with
+               bookings.total = DISCOUNTED monthly x months
+               (ONE month for Long Term).
 
-               PAY FULL PRICE: when payment_purpose_full=1,
-               amount_paid = the FULL re-verified discounted
-               total (== bookings.total), so the booking is
-               created 100% paid and the balance flow is
-               skipped automatically.
+               PAY FULL PRICE: amount_paid = the FULL
+               re-verified total.
+
+               LONG TERM: checkout_date is inserted NULL —
+               the open-ended row is what makes the space
+               disappear for everyone else.
             --------------------------------------------- */
             $pdo->beginTransaction();
 
-            /* Re-check membership inside the transaction so the
-               discount used is the one valid AT PAYMENT TIME. */
             $hiveMemberTx   = hive_member($pdo, $_SESSION['user_id']);
             $hiveDiscountTx = hive_discount_pct($hiveMemberTx);
 
             if ($hiveDiscountTx > 0) {
-                $discountAmountTx = round($listingPrice * ($hiveDiscountTx / 100), 2);
-                $discountedTotal  = round($listingPrice - $discountAmountTx, 2);
-                $reservationFee   = round($discountedTotal * 0.5, 2);
-                $hiveTierLabel    = (string) $hiveMemberTx['tier'];
+                $discountAmountTx  = round($listingPrice * ($hiveDiscountTx / 100), 2);
+                $discountedMonthly = round($listingPrice - $discountAmountTx, 2);
+                $hiveTierLabel     = (string) $hiveMemberTx['tier'];
             } else {
-                $discountAmountTx = 0.0;
-                $discountedTotal  = $listingPrice;
-                $reservationFee   = round($listingPrice * 0.5, 2);
+                $discountAmountTx  = 0.0;
+                $discountedMonthly = $listingPrice;
             }
+            $discountedTotal = round($discountedMonthly * $durationMonths, 2);
+            $reservationFee  = round($discountedTotal * 0.5, 2);
 
-            /* PAY FULL PRICE — charge the whole re-verified discounted
-               total now; otherwise just the 50% reserve. */
+            /* PAY FULL PRICE — charge the whole re-verified total
+               now; otherwise just the 50% reserve. */
             $amountPaidNow = $paymentPurposeFull ? $discountedTotal : $reservationFee;
 
-            /* Lock the listing row — serializes concurrent
-               reserves for this listing. */
+            /* Lock the listing row — serializes concurrent reserves */
             $lockListingStmt = $pdo->prepare(
                 "SELECT id, status FROM listings WHERE id = :id FOR UPDATE"
             );
@@ -452,6 +456,9 @@ if ($stage === 'confirm') {
                 exit;
             }
 
+            /* Conflict check — open-ended stays (NULL checkout,
+               i.e. Long Term) are treated as ending 9999-12-31,
+               so they block any move-in from their start onward. */
             $conflictStmt = $pdo->prepare(
                 "SELECT 1
                  FROM bookings
@@ -490,7 +497,7 @@ if ($stage === 'confirm') {
                 'total'         => $roomTotal,
                 'amount_paid'   => $amountPaidNow,
                 'checkin_date'  => $checkin ?: null,
-                'checkout_date' => $checkout ?: null,
+                'checkout_date' => $checkout ?: null, /* NULL for Long Term */
                 'guests'        => $guests,
             ]);
 
@@ -506,9 +513,10 @@ if ($stage === 'confirm') {
                     $pdo,
                     (int) $listing['host_id'],
                     $guestName . ' applied for "' . $listing['title']
-                        . '" and ' . ($paymentPurposeFull
-                            ? 'paid the FULL amount'
-                            : 'paid the 50% reserve')
+                        . '" (' . $durationLabel . ' stay) and '
+                        . ($paymentPurposeFull
+                            ? ($longTerm ? 'paid the FIRST MONTH in full' : 'paid the FULL amount')
+                            : ($longTerm ? 'paid a 50% reserve on the first month' : 'paid the 50% reserve'))
                         . ' (₱' . number_format($amountPaidNow, 2) . ').'
                         . ' Accept within 24 hours or it is auto-declined.',
                     '/webprogg/booking/pendingtenants.php'
@@ -529,23 +537,18 @@ if ($stage === 'confirm') {
     $stage = 'review';
 }
 
- $methodLabels = [
-    'gcash' => 'GCash',
-    'maya'  => 'Maya',
-    'card'  => 'Credit/Debit Card',
-];
-
 if ($paymentPurpose === 'balance') {
     $changeMethodUrl = '/webprogg/booking/listingpayment.php'
         . '?listing_id=' . rawurlencode((string) $listingId)
         . '&pay_balance=' . rawurlencode((string) $bookingId);
 } else {
-    /* Keep full-payment mode when the guest switches method. */
+    /* Keep duration + long-term + full-payment mode when switching method. */
     $changeMethodUrl = '/webprogg/booking/listingpayment.php'
         . '?listing_id=' . rawurlencode((string) $listingId)
         . '&checkin_date=' . rawurlencode($checkin)
         . '&checkout_date=' . rawurlencode($checkout)
         . '&guests=' . rawurlencode($guests)
+        . '&months=' . rawurlencode((string) $durationMonths)
         . ($longTerm ? '&long_term=1' : '')
         . ($paymentPurposeFull ? '&pay_full=1' : '');
 }
@@ -554,9 +557,10 @@ if ($isListingOwner && $paymentPurpose === 'reservation') {
     $summaryMeta = 'One-time listing fee &middot; publishes your space';
 } elseif ($checkin !== '' && $checkout !== '') {
     $summaryMeta = date('M j, Y', strtotime($checkin)) . ' &rarr; ' . date('M j, Y', strtotime($checkout))
+        . ' &middot; ' . h($durationLabel) . ' stay'
         . ' &middot; ' . h($guests) . ' guest' . ($guests === '1' ? '' : 's');
 } elseif ($checkin !== '' && $longTerm) {
-    $summaryMeta = 'Move-in ' . date('M j, Y', strtotime($checkin)) . ' &middot; Long Term';
+    $summaryMeta = 'Move-in ' . date('M j, Y', strtotime($checkin)) . ' &middot; Long Term (month-to-month)';
 } else {
     $summaryMeta = h($listing['location']);
 }
@@ -565,14 +569,19 @@ if ($paymentPurpose === 'balance') {
     $chargeLabel = 'Balance to Pay';
 } elseif ($isListingOwner) {
     $chargeLabel = $paymentPurposeFull ? 'Listing Fee (Full)' : 'Listing Fee';
+} elseif ($longTerm) {
+    $chargeLabel = ($hiveDiscountPct > 0 ? $hiveTierLabel . ' price — ' : '')
+        . ($paymentPurposeFull
+            ? 'First Month (Full) — month-to-month'
+            : 'Reserve (50%) — First Month, month-to-month');
 } elseif ($paymentPurposeFull) {
     $chargeLabel = $hiveDiscountPct > 0
-        ? 'Full Payment — ' . $hiveTierLabel . ' price'
-        : 'Full Payment — pay everything now';
+        ? 'Full Payment — ' . $hiveTierLabel . ' price (' . $durationLabel . ' stay)'
+        : 'Full Payment — ' . $durationLabel . ' stay';
 } else {
     $chargeLabel = $hiveDiscountPct > 0
-        ? 'Reserve (50%) — ' . $hiveTierLabel . ' price'
-        : 'Reserve (50%) — locks your dates';
+        ? 'Reserve (50%) — ' . $hiveTierLabel . ' price (' . $durationLabel . ' stay)'
+        : 'Reserve (50%) — ' . $durationLabel . ' stay';
 }
 ?>
 <!DOCTYPE html>
@@ -721,7 +730,6 @@ if ($paymentPurpose === 'balance') {
         line-height: 1.4;
     }
 
-    /* ===== HIVE DISCOUNT BANNER ===== */
     .pp-hive-banner {
         display: flex;
         align-items: center;
@@ -878,7 +886,7 @@ if ($paymentPurpose === 'balance') {
         <div class="pp-hive-banner">
             <span class="pp-hive-pct"><?php echo (int) $hiveDiscountPct; ?>% OFF</span>
             <span>Hive Club <?php echo h($hiveTierLabel); ?> member price applied — you're saving
-                &#8369;<?php echo h(number_format($discountAmount, 2)); ?> on this stay.</span>
+                &#8369;<?php echo h(number_format($discountAmount, 2)); ?>/month on this stay.</span>
         </div>
         <?php endif; ?>
 
@@ -914,6 +922,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
+                <input type="hidden" name="months" value="<?php echo (int) $durationMonths; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <input type="hidden" name="payment_purpose_full" value="<?php echo $paymentPurposeFull ? '1' : '0'; ?>">
@@ -937,8 +946,12 @@ if ($paymentPurpose === 'balance') {
 
                 <p class="pp-hint">
                     <?php echo $paymentPurposeFull
-                        ? 'This full payment settles the entire stay now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet.'
-                        : 'This 50% reserve locks your dates for 24 hours while the host reviews. The host must accept within 24 hours or it is auto-declined and refunded.'; ?>
+                        ? ($longTerm
+                            ? 'This pays your ENTIRE first month now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet. Succeeding months are settled with your host.'
+                            : 'This full payment settles your entire ' . $durationLabel . ' stay now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet.')
+                        : ($longTerm
+                            ? 'This 50% reserve on your FIRST month locks the space for 24 hours while the host reviews. If declined, it is auto-refunded. The space stays reserved for you month to month.'
+                            : 'This 50% reserve on your ' . $durationLabel . ' rental locks your dates for 24 hours while the host reviews. If declined, it is auto-refunded.'); ?>
                 </p>
 
                 <button type="submit" class="pp-btn-confirm pp-btn-gcash">
@@ -968,6 +981,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
+                <input type="hidden" name="months" value="<?php echo (int) $durationMonths; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <input type="hidden" name="payment_purpose_full" value="<?php echo $paymentPurposeFull ? '1' : '0'; ?>">
@@ -991,8 +1005,12 @@ if ($paymentPurpose === 'balance') {
 
                 <p class="pp-hint">
                     <?php echo $paymentPurposeFull
-                        ? 'This full payment settles the entire stay now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet.'
-                        : 'This 50% reserve locks your dates for 24 hours while the host reviews. The host must accept within 24 hours or it is auto-declined and refunded.'; ?>
+                        ? ($longTerm
+                            ? 'This pays your ENTIRE first month now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet. Succeeding months are settled with your host.'
+                            : 'This full payment settles your entire ' . $durationLabel . ' stay now. The host still has 24 hours to accept — if declined, the full amount is refunded to your RoomHive wallet.')
+                        : ($longTerm
+                            ? 'This 50% reserve on your FIRST month locks the space for 24 hours while the host reviews. If declined, it is auto-refunded. The space stays reserved for you month to month.'
+                            : 'This 50% reserve on your ' . $durationLabel . ' rental locks your dates for 24 hours while the host reviews. If declined, it is auto-refunded.'); ?>
                 </p>
 
                 <button type="submit" class="pp-btn-confirm pp-btn-maya">
@@ -1022,6 +1040,7 @@ if ($paymentPurpose === 'balance') {
                 <input type="hidden" name="checkout_date" value="<?php echo h($checkout); ?>">
                 <input type="hidden" name="guests" value="<?php echo h($guests); ?>">
                 <input type="hidden" name="long_term" value="<?php echo $longTerm ? '1' : '0'; ?>">
+                <input type="hidden" name="months" value="<?php echo (int) $durationMonths; ?>">
                 <input type="hidden" name="payment_method" value="<?php echo h($paymentMethod); ?>">
                 <input type="hidden" name="payment_purpose" value="<?php echo h($paymentPurpose); ?>">
                 <input type="hidden" name="payment_purpose_full" value="<?php echo $paymentPurposeFull ? '1' : '0'; ?>">
