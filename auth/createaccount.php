@@ -2,14 +2,36 @@
 // ================================
 // RoomHive - Create Account
 // ================================
-session_start();
+// NOTE: session_start() is NOT called here. db_connect.php
+// owns session setup (30-day cookie params + no-cache
+// headers) and starts the session for this page.
+
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
+/*
+ * ★ NEW — BACK-BUTTON GUARD: logged-in users never see this form
+ * =========================================================
+ * If someone creates an account, logs in, then presses the
+ * browser Back arrow, this page would otherwise show the
+ * signup form again (same problem loginform.php already
+ * guards against). Bounce authenticated visitors to their
+ * home page instead. Must run BEFORE any output.
+ */
+if (!empty($_SESSION['logged_in'])) {
+    header("Location: /webprogg/user/usershome.php");
+    exit();
+}
+
+if (!empty($_SESSION['admin_logged_in'])) {
+    header("Location: /webprogg/admin/admin.php");
+    exit();
+}
+
 // Form variables
-$fullName = "";
-$email = "";
-$error = "";
-$success = "";
+ $fullName = "";
+ $email = "";
+ $error = "";
+ $success = "";
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -72,20 +94,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 'password' => $passwordHash,
             ]);
 
-            $userId = $pdo->lastInsertId();
-
             /*
-             * Log the new user in immediately, same as loginform.php,
-             * and send them to their home page.
+             * =========================================================
+             * ACCOUNT CREATED — GO TO LOGIN FORM
+             * =========================================================
+             * Do NOT log the user in here. Send them to the login
+             * form so they sign in with the credentials they just
+             * registered.
+             *
+             *   ?created=1  -> loginform.php shows a success message
+             *   &email=...  -> loginform.php pre-fills their email
              */
-            session_regenerate_id(true);
-
-            $_SESSION["user_id"] = $userId;
-            $_SESSION["user_name"] = $fullName;
-            $_SESSION["user_email"] = $email;
-            $_SESSION["logged_in"] = true;
-
-            header("Location: /webprogg/user/usershome.php");
+            header(
+                "Location: /webprogg/auth/loginform.php?created=1&email="
+                . urlencode($email)
+            );
             exit();
         }
     }
@@ -113,10 +136,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 </head>
 
 <body class="create-account-page">
-<!-- Close / Back to Home -->
-        <a href="/webprogg/index.php" class="close-button" aria-label="Close">
-            &times;
-        </a>
+
+    <!-- Close / Back to Home -->
+    <a href="/webprogg/index.php" class="close-button" aria-label="Close">
+        &times;
+    </a>
+
     <div class="create-account-container">
 
         <div class="create-account-card">
@@ -150,7 +175,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 </div>
             <?php endif; ?>
 
-
             <!-- Create Account Form -->
             <form method="POST" action="">
 
@@ -175,7 +199,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 </div>
 
-
                 <!-- Email -->
                 <div class="form-group">
 
@@ -196,7 +219,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     >
 
                 </div>
-
 
                 <!-- Password -->
                 <div class="form-group">
@@ -225,7 +247,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             onclick="togglePassword('password', this)"
                             aria-label="Show password"
                         >
-                            ◉
+                            &#9673;
                         </button>
 
                     </div>
@@ -235,7 +257,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     </p>
 
                 </div>
-
 
                 <!-- Confirm Password -->
                 <div class="form-group">
@@ -263,13 +284,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                             onclick="togglePassword('confirm_password', this)"
                             aria-label="Show password"
                         >
-                            ◉
+                            &#9673;
                         </button>
 
                     </div>
 
                 </div>
-
 
                 <!-- Terms -->
                 <div class="terms-container">
@@ -290,7 +310,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 </div>
 
-
                 <!-- Create Account Button -->
                 <button
                     type="submit"
@@ -301,7 +320,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             </form>
 
-
             <!-- OR Divider -->
             <div class="or-divider">
                 <span></span>
@@ -309,8 +327,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <span></span>
             </div>
 
-
-                     <!-- Google -->
+            <!-- Google -->
             <button
                 type="button"
                 class="social-login google-login"
@@ -325,7 +342,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 <span>Continue with Google</span>
 
             </button>
-
 
             <!-- Apple -->
             <button
@@ -343,7 +359,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             </button>
 
-
             <!-- Login -->
             <p class="login-text">
                 Already have an account?
@@ -354,25 +369,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     </div>
 
-
-    <!-- Password Toggle -->
+    <!-- ★ NEW — BFCache Guard + Password Toggle -->
     <script>
+
+        /* =========================================================
+           BFCACHE GUARD — same as loginform.php
+           Safari/Firefox can restore this page from the
+           back-forward cache (Back/Forward buttons) with NO
+           server request — bypassing the PHP guard above. If
+           that happens, force a reload so the PHP guard re-runs
+           and bounces any logged-in user to their home page.
+        ========================================================= */
+        window.addEventListener("pageshow", function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
 
         function togglePassword(inputId, button) {
 
             const input = document.getElementById(inputId);
+            const isHidden = input.type === "password";
 
-            if (input.type === "password") {
+            input.type = isHidden ? "text" : "password";
 
-                input.type = "text";
-                button.textContent = "◉";
-
-            } else {
-
-                input.type = "password";
-                button.textContent = "◉";
-
-            }
+            // \u25C9 = filled circle (hidden), \u25CE = bullseye (visible)
+            button.textContent = isHidden ? "\u25C9" : "\u25CE";
         }
 
     </script>

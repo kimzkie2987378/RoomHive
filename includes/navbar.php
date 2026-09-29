@@ -3,6 +3,8 @@
    ROOMHIVE — SHARED NAVIGATION HEADER
    /webprogg/includes/navbar.php
 
+   (Single merged version — supersedes both older copies.)
+
    Same design as host_navbar.php: 42px avatar, 12px bold
    MY PROFILE label, white rounded dropdown with honey hover.
 
@@ -15,21 +17,22 @@
    HOME + LOGO:
      - Guest            → /webprogg/index.php (public landing)
      - Logged-in (ANY)  → /webprogg/user/usershome.php
-   A page can override by setting $homeHref BEFORE including.
+   No role crossing: HOME never goes to hostprofile.php or
+   userprofile.php. A page can override by setting $homeHref
+   BEFORE including.
 
-   === NOTIFICATION BELL FIX (this version) ===
-   The bell <img> had NO size rule in this file, so once the
-   old sizing rule was lost from style.css it rendered at its
-   natural (huge) size, overflowing the navbar over the hero.
-   The bell is now explicitly sized + positioned here:
-     - img fixed at 24px
+   === NOTIFICATION BELL ===
+   The bell <img> is explicitly sized + positioned HERE:
+     - img fixed at 24px (fixes the "giant bell" overflow
+       over the hero when style.css lost its sizing rule)
      - anchor position:relative (badge anchor)
      - badge styles live HERE so they exist even on pages
        that don't include notification_dropdown.php
      - bell excluded from the sliding-underline effect
-   The bell href is now ROLE-AWARE (hostnotifications.php for
-   hosts). notification_dropdown.php (when included) still
-   intercepts clicks and turns the bell into a dropdown toggle.
+   The bell href is ROLE-AWARE (hostnotifications.php for
+   hosts). notification_dropdown.php (when included after
+   this navbar) still intercepts clicks and turns the bell
+   into a dropdown toggle via JS.
 
    === HIVE CLUB REMOVED ===
    Defensive filter: any $navigation entry keyed "HIVE CLUB"
@@ -75,13 +78,13 @@ foreach ($navigation as $navName => $navHref) {
 
 /* =========================================================
    HOME LINK — logged-in users ALWAYS go to userhome.
-   Guests get the public landing page.
+   Guests get the public landing page. Per-page override
+   via $homeHref wins over the default.
 ========================================================= */
  $navHomeHref = '/webprogg/index.php';
 if ($isLoggedIn) {
     $navHomeHref = '/webprogg/user/usershome.php';
 }
-/* Optional per-page override (wins over the default) */
 if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
     $navHomeHref = $homeHref;
 }
@@ -272,6 +275,7 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
         transform: scaleX(1);
     }
 
+    /* Bell + CTA + account button get NO underline */
     header.navbar .nav-links a.list-space::after,
     header.navbar .nav-links a.nav-bell::after,
     header.navbar .account-dd .my-account::after {
@@ -279,10 +283,10 @@ if (isset($homeHref) && is_string($homeHref) && $homeHref !== '') {
     }
 
     /* =====================================================
-       NOTIFICATION BELL — GIANT BELL FIX (this version)
+       NOTIFICATION BELL — GIANT BELL FIX
        The bell img previously had no size rule here, so it
        rendered at its natural size and overflowed the fixed
-       navbar over the hero. Now explicitly sized + anchored.
+       navbar over the hero. Explicitly sized + anchored.
     ====================================================== */
 
     header.navbar .nav-bell {

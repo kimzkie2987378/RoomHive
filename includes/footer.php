@@ -1,31 +1,42 @@
 <?php
 /* =========================================================
-   ROOMHIVE — SHARED FOOTER INCLUDE
+   ROOMHIVE — SHARED FOOTER INCLUDE (single merged version)
+   /webprogg/includes/footer.php
    ---------------------------------------------------------
    Usage (any page, right before </body>):
        <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
    Optional variables a page may set BEFORE the include:
-       $currentPage          — href of the nav/footer link to mark active
-       $isLoggedIn           — makes the logo link go to usershome for logged-in users
        $footerQuickLinks     — override the QUICK LINKS array
        $footerListings       — override the LISTINGS array
        $footerShowAdminLink  — true shows the small Admin link (homepage only)
-       $isAdminLoggedIn      — sends the Admin link to the dashboard vs login
+       $isAdminLoggedIn      — sends the Admin link to dashboard vs login
+       $currentPage          — href to mark active in QUICK LINKS
+
+   Auto-derived (pages no longer need to set these):
+       $isLoggedIn           — from $_SESSION['logged_in']
+       $isAdminLoggedIn      — from $_SESSION['admin_logged_in']
    ========================================================= */
 
 /* ---- Fallbacks so the include never fatals on any page ---- */
- $isLoggedIn         = $isLoggedIn ?? false;
- $currentPage        = $currentPage ?? '';
- $isAdminLoggedIn    = $isAdminLoggedIn ?? false;
+ $isLoggedIn          = $isLoggedIn ?? (($_SESSION['logged_in'] ?? false) === true);
+ $currentPage         = $currentPage ?? '';
+ $isAdminLoggedIn     = $isAdminLoggedIn ?? (($_SESSION['admin_logged_in'] ?? false) === true);
  $footerShowAdminLink = $footerShowAdminLink ?? false;
 
+/* ---------------------------------------------------------
+   LISTING URL BUILDER
+   ⚠ If listing.php reads $_GET['type'] instead of
+   $_GET['category'], change 'category' HERE — one place
+   fixes every listing link in every page's footer.
+--------------------------------------------------------- */
+ $footerListingParam = $footerListingParam ?? 'category';
+
  $footerListings = $footerListings ?? [
-    "Shared Bedroom" => "shared-bedroom",
-    "Private Room"   => "private-room",
+    "Studios"        => "studio-loft",
+    "Shared Rooms"   => "shared-bedroom",
     "Entire House"   => "entire-house",
-    "Boarding House" => "boarding-house",
-    "Studio Loft"    => "studio-loft",
+    "Featured Stays" => "",   /* empty slug = plain listing.php */
 ];
 
  $footerQuickLinks = $footerQuickLinks ?? [
@@ -35,8 +46,13 @@
     "Contacts"      => "/webprogg/misc/contacts.php",
 ];
 
-/* HIVE CLUB REMOVED — this include is now the single source
-   of truth for footer links. Do not re-add hiveclub.php. */
+/* HIVE CLUB REMOVED — same defensive filter as navbar.php.
+   Strips any override entry pointing at hiveclub.php. */
+foreach ($footerQuickLinks as $fqLabel => $fqHref) {
+    if (stripos((string) $fqHref, 'hiveclub.php') !== false) {
+        unset($footerQuickLinks[$fqLabel]);
+    }
+}
 
  $footerBrandHref = $isLoggedIn ? "/webprogg/user/usershome.php" : "/webprogg/index.php";
  $footerAdminHref = $isAdminLoggedIn ? "/webprogg/admin/admin.php" : "/webprogg/auth/adminlogin.php";
@@ -76,9 +92,8 @@
             </a>
 
             <p class="footer-tagline">
-                Your trusted platform for finding and listing
-                quality living spaces — made simple, safe,
-                and stress-free.
+                Find, stay, relax, at home. RoomHive helps you discover
+                comfortable stays across Negros Oriental.
             </p>
 
             <div class="footer-contact-line">
@@ -87,8 +102,13 @@
             </div>
 
             <div class="footer-contact-line">
-                <img src="/webprogg/images/EmailIcon.jpg" alt="Email">
+                <img src="/webprogg/images/EmailIcon.png" alt="Email">
                 <span>hello@roomhive.ph</span>
+            </div>
+
+            <div class="footer-contact-line">
+                <img src="/webprogg/images/GPSIcon.png" alt="Location">
+                <span>Dumaguete City, Negros Oriental, Philippines</span>
             </div>
 
         </div>
@@ -98,10 +118,16 @@
 
             <span class="footer-heading">LISTINGS</span>
 
-            <?php foreach ($footerListings as $label => $type): ?>
-                <a href="/webprogg/Listings/listing.php?type=<?php echo urlencode($type); ?>">
-                    <?php echo htmlspecialchars($label); ?>
-                </a>
+            <?php foreach ($footerListings as $label => $slug): ?>
+                <?php if ($slug === ''): ?>
+                    <a href="/webprogg/Listings/listing.php">
+                        <?php echo htmlspecialchars($label); ?>
+                    </a>
+                <?php else: ?>
+                    <a href="/webprogg/Listings/listing.php?<?php echo urlencode($footerListingParam); ?>=<?php echo urlencode($slug); ?>">
+                        <?php echo htmlspecialchars($label); ?>
+                    </a>
+                <?php endif; ?>
             <?php endforeach; ?>
 
         </div>
@@ -130,11 +156,6 @@
             <div class="footer-app-badges">
                 <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play">
                 <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store">
-            </div>
-
-            <div class="footer-contact-line">
-                <img src="/webprogg/images/GPSIcon.png" alt="Location">
-                <span>Dumaguete City, Negros Oriental</span>
             </div>
 
         </div>

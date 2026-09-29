@@ -1,9 +1,15 @@
 <?php
 /*loginform.php*/
 
-session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
 
+/*
+ * NOTE: session_start() is NOT called here. db_connect.php
+ * starts the session (with the 30-day cookie params) and
+ * sends no-store/no-cache headers, so Back-navigation always
+ * produces a fresh request — which lets the guard below fire
+ * instead of showing a cached copy.
+ */
 
 define('ADMIN_NAME', 'Admin User');
 define('ADMIN_EMAIL', 'admin@roomhive.com');
@@ -46,11 +52,35 @@ if (isset($_GET['google_error']) && isset($googleErrorCodes[$_GET['google_error'
  * Only local pages on this whitelist are allowed — never trust
  * $_GET/$_POST['redirect'] directly as a Location header, or it
  * becomes an open-redirect hole.
+ *
+ * (Placed ABOVE the guards so the guards can honor it too.)
  */
  $allowedRedirects = ['/webprogg/hiveclub.php', '/webprogg/user/membership.php'];
 
 // Whichever page sent the person here (from the link's ?redirect=...)
  $redirectParam = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
+
+/*
+ * =========================================================
+ * BACK-BUTTON GUARD — logged-in users never see this form
+ * =========================================================
+ * Runs on GET *and* POST (a stale tab submitting the form
+ * also bounces here). Must run BEFORE any output.
+ */
+if (!empty($_SESSION['admin_logged_in'])) {
+    header("Location: /webprogg/admin/admin.php");
+    exit();
+}
+
+if (!empty($_SESSION['logged_in'])) {
+    /* Honor the whitelist redirect if one was requested,
+       otherwise send them to their home. */
+    $alreadyRedirect = in_array($redirectParam, $allowedRedirects, true)
+        ? $redirectParam
+        : "/webprogg/user/usershome.php";
+    header("Location: " . $alreadyRedirect);
+    exit();
+}
 
 /*
  * =========================================================
@@ -187,7 +217,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     >
 
     <link rel="stylesheet" href="/webprogg/assets/style.css">
-    <link rel="stylesheet" href="/webprogg/assets/loginform.css">
+    <link rel="stylesheet" href="/webprogg/assets/loginform.css?v=2">
 
     <script>document.documentElement.classList.add("js");</script>
 
@@ -719,11 +749,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <body>
 
     <main class="login-page">
-        <!-- Close / Back to Home -->
-        <a href="/webprogg/index.php" class="close-button" aria-label="Close">
-            &times;
-        </a>
         <div class="login-card">
+
+            <!-- Close / Back to Home — INSIDE the card so it pins
+                 to the card's top-right edge (see .close-button in
+                 loginform.css; the card is the position anchor). -->
+            <a href="/webprogg/index.php" class="close-button" aria-label="Close">
+                &times;
+            </a>
 
             <!-- RoomHive Logo -->
             <div class="login-logo">
@@ -787,7 +820,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     <label for="email">
 
                         <img
-                            src="/webprogg/images/EmailIcon.jpg"
+                            src="/webprogg/images/EmailIcon.png"
                             alt="Email"
                         >
 
@@ -993,6 +1026,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     (function () {
         "use strict";
 
+        /* =========================================================
+           BFCACHE GUARD
+           Safari/Firefox can restore this page from the
+           back-forward cache (Back/Forward buttons) with NO
+           server request — bypassing even no-store headers.
+           If that happens, force a reload so the PHP guard at
+           the top of this file re-runs and bounces any
+           logged-in user back to their home page.
+        ========================================================= */
+        window.addEventListener("pageshow", function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+
         var veil      = document.getElementById("liVeil");
         var form      = document.getElementById("loginPageForm");
         var errorBox  = document.getElementById("loginServerError");
@@ -1146,8 +1194,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                         successVeil(data.name, !!data.admin);
 
+                        /* location.replace() removes the login page
+                           from history — Back from the next page can't
+                           land here again. */
                         window.setTimeout(function () {
-                            window.location.href = data.redirect || "/webprogg/user/usershome.php";
+                            window.location.replace(
+                                data.redirect || "/webprogg/user/usershome.php"
+                            );
                         }, REDIRECT_DELAY);
 
                         return;

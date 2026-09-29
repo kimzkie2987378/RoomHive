@@ -335,8 +335,8 @@
 }
 
 .filter-icon {
-  width: 17px;
-  height: 17px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
   opacity: 0.7;
   flex-shrink: 0;

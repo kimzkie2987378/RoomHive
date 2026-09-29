@@ -30,6 +30,54 @@
   padding: 15px 30px 28px;
 
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+
+  /* Anchor for the absolutely-positioned close button,
+     in both the standalone page and the modal. */
+  position: relative;
+}
+
+/* =========================================================
+   CLOSE BUTTON - pinned to the card's top-right edge.
+   The X lives INSIDE .login-card in the markup; the card's
+   position:relative makes it the positioning anchor.
+========================================================= */
+
+.close-button {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 28px;
+
+  background: none;
+  border: none;
+  border-radius: 6px;
+
+  color: #8b93a6;
+  font-size: 20px;
+  line-height: 1;
+
+  text-decoration: none;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.close-button:hover {
+  color: #1c2a38;
+  background: #f2f2f2;
+}
+
+.close-button:focus-visible {
+  outline: 2px solid #eda423;
+  outline-offset: 2px;
 }
 
 /* =========================================================
@@ -187,7 +235,7 @@
 }
 
 /* =========================================================
-   ERROR MESSAGE
+   ERROR / SUCCESS MESSAGE
 ========================================================= */
 
 .login-error {
@@ -276,7 +324,7 @@
 }
 
 /* =========================================================
-   CREATE ACCOUNT
+   CREATE ACCOUNT (login page footer link)
 ========================================================= */
 
 .create-account {
@@ -306,9 +354,8 @@
 }
 
 /* =========================================================
-   LOGIN CARD — FLOAT ANIMATION
-   Used both on the standalone loginform.php page and inside
-   the login modal on index.php (see below).
+   SHARED KEYFRAMES - ENTER + FLOAT
+   Used by both the login page and the create account page.
 ========================================================= */
 
 @keyframes login-card-enter {
@@ -376,7 +423,7 @@
   position: absolute;
   inset: 0;
 
-  /* Frosted-glass blur, no dark dimming — matches the reference */
+  /* Frosted-glass blur, no dark dimming - matches the reference */
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px); /* Safari needs the prefix */
@@ -411,23 +458,39 @@
   animation: login-card-float 4.5s ease-in-out 0.35s infinite;
 }
 
+/* Same geometry as .close-button so the modal X sits on the
+   card's top-right edge identically. Requires the button to be
+   INSIDE .login-card in the modal markup - the card is the
+   nearest positioned ancestor, so it's the anchor. */
 .login-modal-close {
   position: absolute;
-  top: 10px;
-  right: 14px;
+  top: 6px;
+  right: 10px;
+  z-index: 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 28px;
+  height: 28px;
 
   background: none;
   border: none;
+  border-radius: 6px;
 
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   color: #8b93a6;
 
   cursor: pointer;
+
+  transition: 0.2s ease;
 }
 
 .login-modal-close:hover {
   color: #1c2a38;
+  background: #f2f2f2;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -438,5 +501,439 @@
 
   .login-modal-overlay.open .login-card {
     animation: none;
+  }
+}
+
+/* =========================================================
+   ROOMHIVE CREATE ACCOUNT PAGE
+   Matches the login page: same colors, card geometry,
+   and animations. Reuses .social-login styles + keyframes
+   defined earlier in this file.
+========================================================= */
+
+/* =========================================================
+   PAGE SHELL
+========================================================= */
+
+.create-account-page {
+  width: 100%;
+  min-height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background: #ffffff;
+
+  padding: 40px 30px;
+}
+
+.create-account-container {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* =========================================================
+   CLOSE BUTTON
+   On this page the X is a direct child of <body> (not inside
+   the card), so pin it to the viewport. If you ever move it
+   inside .create-account-card, delete this override - the
+   card's position:relative will anchor it like the login card.
+========================================================= */
+
+.create-account-page .close-button {
+  position: fixed;
+  top: 18px;
+  right: 20px;
+}
+
+/* =========================================================
+   CREATE ACCOUNT CARD
+========================================================= */
+
+.create-account-card {
+  width: 338px;
+  min-height: 434px;
+
+  background: #ffffff;
+
+  border-radius: 14px;
+
+  padding: 18px 30px 24px;
+
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+
+  position: relative;
+}
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.create-logo {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  margin-bottom: 6px;
+}
+
+.create-logo img {
+  width: 105px;
+  height: auto;
+
+  display: block;
+}
+
+/* =========================================================
+   TITLE + SUBTITLE
+========================================================= */
+
+.create-account-card h1 {
+  margin: 4px 0;
+
+  color: #1c2a38;
+  font-size: 19px;
+  font-weight: 700;
+
+  text-align: center;
+}
+
+.create-subtitle {
+  margin: 0 0 16px;
+
+  color: #555555;
+  font-size: 12.5px;
+  font-weight: 400;
+
+  text-align: center;
+}
+
+/* =========================================================
+   FORM MESSAGES (error / success)
+========================================================= */
+
+.form-message {
+  width: 100%;
+
+  margin-bottom: 12px;
+  padding: 8px 10px;
+
+  border-radius: 6px;
+
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.form-message.error {
+  background: #fdecec;
+  border: 1px solid #f3b9b9;
+
+  color: #a4302f;
+}
+
+.form-message.success {
+  background: #eaf7ee;
+  border: 1px solid #b9e3c5;
+
+  color: #206a3c;
+}
+
+/* =========================================================
+   INPUT GROUPS
+========================================================= */
+
+.form-group {
+  width: 100%;
+
+  margin-bottom: 10px;
+
+  text-align: left;
+}
+
+.form-group label {
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  color: #111111;
+
+  font-size: 14px;
+  font-weight: 400;
+
+  cursor: text;
+}
+
+.form-group label img {
+  width: 18px;
+  height: 18px;
+
+  object-fit: contain;
+}
+
+.form-group input {
+  width: 100%;
+  height: 34px;
+
+  margin-top: 2px;
+
+  padding: 5px 10px;
+
+  background: #ffffff;
+
+  border: 1px solid #d9d9d9;
+  border-radius: 5px;
+
+  outline: none;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 14px;
+
+  transition: 0.2s ease;
+}
+
+.form-group input:focus {
+  border-color: #eda423;
+
+  box-shadow: 0 0 0 1px rgba(237, 164, 35, 0.15);
+}
+
+/* =========================================================
+   PASSWORD FIELD + SHOW/HIDE TOGGLE
+========================================================= */
+
+.password-container {
+  position: relative;
+  width: 100%;
+
+  /* Wrapper owns the spacing so the toggle centers
+     perfectly on the input. */
+  margin-top: 2px;
+}
+
+.password-container input {
+  margin-top: 0;
+
+  /* Room for the toggle button */
+  padding-right: 36px;
+}
+
+.show-password {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 26px;
+  height: 26px;
+
+  background: none;
+  border: none;
+  border-radius: 5px;
+
+  color: #8b93a6;
+  font-size: 13px;
+  line-height: 1;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.show-password:hover {
+  color: #1c2a38;
+  background: #f2f2f2;
+}
+
+.show-password:focus-visible {
+  outline: 2px solid #eda423;
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   PASSWORD HINT
+========================================================= */
+
+.password-hint {
+  margin: 5px 0 0;
+
+  color: #8b93a6;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+/* =========================================================
+   TERMS CHECKBOX
+========================================================= */
+
+.terms-container {
+  width: 100%;
+
+  display: flex;
+  align-items: flex-start;
+
+  gap: 8px;
+
+  margin: 6px 0 14px;
+
+  color: #555555;
+  font-size: 12.5px;
+}
+
+.terms-container input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+
+  flex-shrink: 0;
+
+  accent-color: #eda423;
+
+  cursor: pointer;
+}
+
+.terms-container label {
+  cursor: pointer;
+}
+
+.terms-container a {
+  color: #eda423;
+
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.terms-container a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   CREATE ACCOUNT BUTTON
+========================================================= */
+
+.create-account-button {
+  width: 100%;
+  height: 27px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: #eda423;
+
+  color: #1c2a38;
+
+  font-family: "Poppins", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  margin-bottom: 4px;
+
+  transition: 0.2s ease;
+}
+
+.create-account-button:hover {
+  background: #d99218;
+}
+
+.create-account-button:active {
+  transform: scale(0.99);
+}
+
+/* =========================================================
+   OR DIVIDER
+========================================================= */
+
+.or-divider {
+  width: 100%;
+
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin: 14px 0;
+}
+
+.or-divider span {
+  flex: 1;
+  height: 1px;
+
+  background: #e3e3e3;
+}
+
+.or-divider p {
+  margin: 0;
+
+  color: #8b93a6;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+/* =========================================================
+   LOGIN LINK
+========================================================= */
+
+.login-text {
+  width: 100%;
+
+  margin: 12px 0 0;
+
+  text-align: center;
+
+  color: #555555;
+  font-size: 13px;
+}
+
+.login-text a {
+  color: #eda423;
+
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.login-text a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   CARD ENTER + FLOAT ANIMATION
+   Reuses the keyframes from the login section above.
+========================================================= */
+
+.create-account-page .create-account-card {
+  animation:
+    login-card-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both,
+    login-card-float 4.5s ease-in-out 0.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .create-account-page .create-account-card {
+    animation: none;
+  }
+}
+
+/* =========================================================
+   SMALL SCREENS
+========================================================= */
+
+@media (max-width: 380px) {
+  .create-account-card {
+    width: 100%;
   }
 }

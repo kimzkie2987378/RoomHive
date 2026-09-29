@@ -1,8 +1,38 @@
 <?php
-session_start();
+/*
+ * index.php — public landing page (guests only once guarded)
+ *
+ * NOTE: session_start() is NOT called here. db_connect.php
+ * starts the session (with the 30-day cookie params) and
+ * sends no-store/no-cache headers, so Back-navigation always
+ * produces a fresh request — which lets the guard below fire.
+ */
+require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+
+/*
+ * =========================================================
+ * BACK-BUTTON GUARD — logged-in users never see this page
+ * =========================================================
+ * index.php sits BEFORE loginform.php in browser history.
+ * After the login-form guard, pressing Back from
+ * usershome.php lands here on the stale guest landing page.
+ * Bounce logged-in users (and admins) to their real home,
+ * so Back is dead-ended at usershome.php instead.
+ */
+if (!empty($_SESSION['logged_in'])) {
+    header("Location: /webprogg/user/usershome.php");
+    exit();
+}
+
+if (!empty($_SESSION['admin_logged_in'])) {
+    header("Location: /webprogg/admin/admin.php");
+    exit();
+}
 
 /*
  * Check whether the user is logged in.
+ * (Only guests reach the render now, so this is always
+ * false — kept for safety if you ever lift the guard.)
  */
  $isLoggedIn = (
     isset($_SESSION["logged_in"]) &&

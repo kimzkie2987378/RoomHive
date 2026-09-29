@@ -2222,3 +2222,15 @@ img#epAvatarImg {
 .up-profile-photo img {
   max-width: 100% !important;
 }
+/* Lucide icons in the account sidebar */
+.up-side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.up-side-link svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}

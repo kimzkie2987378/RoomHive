@@ -1,10 +1,17 @@
 <?php
-session_start();
 require_once $_SERVER['DOCUMENT_ROOT'] . '/webprogg/config/db_connect.php';
+
 /*
  * =========================================================
  * ROOMHIVE USER HOME - AUTHENTICATION CHECK
  * =========================================================
+ *
+ * NOTE: session_start() is NOT called here. db_connect.php
+ * owns session setup (30-day cookie params, no-cache headers).
+ * Calling session_start() before including db_connect.php
+ * would cause:
+ *   Warning: ini_set(): Session ini settings cannot be changed
+ *   when a session is active
  *
  * Only logged-in users can access usershome.php.
  */
@@ -55,6 +62,13 @@ if (isset($_SESSION['user_id'])) {
 
 // =========================
 // PAGE DATA Users Home
+//
+// === SHARED FOOTER (this version) ===
+// The hard-coded footer, $footerCompanyLinks,
+// $footerInvolvedLinks, $phoneNumber, $emailAddress and
+// $currentYear are gone — replaced by
+// includes/footer.php, the single source of truth for
+// footer links (same as index.php).
 // =========================
 
  $listings = [
@@ -130,24 +144,6 @@ if (isset($_SESSION['user_id'])) {
     '/webprogg/images/SecondImageRight.jpg',
 ];
 
- $footerCompanyLinks = [
-    ['label' => 'Home', 'href' => '/webprogg/user/usershome.php'],
-    ['label' => 'Listings', 'href' => '/webprogg/Listings/listing.php'],
-    ['label' => 'How It Works', 'href' => '/webprogg/host/howitworks.php'],
-    ['label' => 'Contacts', 'href' => '/webprogg/misc/contacts.php'],
-];
-
-/* HIVE CLUB REMOVED from the footer links */
- $footerInvolvedLinks = [
-    ['label' => 'Become A Host', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'List Your Space', 'href' => '/webprogg/host/becomeahost.php'],
-    ['label' => 'Terms Of Service', 'href' => '#'],
-];
-
- $phoneNumber = '+639275693574';
- $emailAddress = 'RoomHive@gmail.com';
- $currentYear = date('Y');
-
 /* =========================================================
    SPONSORED AD LISTINGS (floating ad widget)
    Same source as listing.php: approved listings with no
@@ -169,7 +165,7 @@ if (isset($_SESSION['user_id'])) {
      )
      ORDER BY l.created_at DESC
      LIMIT 8"
- );
+);
  $adListings = array_map(function ($row) {
     $cover = (string) ($row['cover_photo'] ?? '');
 
@@ -190,7 +186,7 @@ if (isset($_SESSION['user_id'])) {
         'image'    => $adImage,
         'url'      => '/webprogg/Listings/listing-detail.php?id=' . (int) $row['id'],
     ];
- }, $adStmt->fetchAll());
+}, $adStmt->fetchAll());
 ?>
 <!doctype html>
 <html lang="en">
@@ -204,8 +200,9 @@ if (isset($_SESSION['user_id'])) {
       rel="stylesheet"
     />
     <!-- CSS -->
-    <link rel="stylesheet" href="/webprogg/assets/style.css" />
-    <link rel="stylesheet" href="/webprogg/assets/motion.css" />
+    <!-- ?v=2: cache-buster so browsers pick up the hero-gap fixes -->
+    <link rel="stylesheet" href="/webprogg/assets/style.css?v=2" />
+    <link rel="stylesheet" href="/webprogg/assets/motion.css?v=2" />
 
     <script>document.documentElement.classList.add("js-animations");</script>
 
@@ -629,54 +626,11 @@ if (isset($_SESSION['user_id'])) {
     </div>
     <?php endif; ?>
 
-    <!-- =========================
-         FOOTER
-    ========================== -->
-    <footer class="site-footer">
-      <div class="footer-top">
-        <div class="footer-brand">
-          <img
-            src="/webprogg/images/RoomHiveLogos.png"
-            alt="RoomHive Logo"
-            class="footer-logo"
-          />
-          <div class="footer-contact-line">
-            <img src="/webprogg/images/PhoneIcon.jpg" alt="Phone" />
-            <span><?php echo htmlspecialchars($phoneNumber); ?></span>
-          </div>
-          <div class="footer-contact-line">
-            <img src="/webprogg/images/EmailIcon.jpg" alt="Email" />
-            <span><?php echo htmlspecialchars($emailAddress); ?></span>
-          </div>
-        </div>
+    <!-- =========================================================
+         SHARED FOOTER — single source of truth (includes/footer.php)
+    ========================================================== -->
 
-        <div class="footer-links">
-          <span class="footer-heading">COMPANY</span>
-          <?php foreach ($footerCompanyLinks as $link): ?>
-            <a href="<?php echo htmlspecialchars($link['href']); ?>"><?php echo htmlspecialchars($link['label']); ?></a>
-          <?php endforeach; ?>
-        </div>
-
-        <div class="footer-links">
-          <span class="footer-heading">GET INVOLVED</span>
-          <?php foreach ($footerInvolvedLinks as $link): ?>
-            <a href="<?php echo htmlspecialchars($link['href']); ?>"><?php echo htmlspecialchars($link['label']); ?></a>
-          <?php endforeach; ?>
-        </div>
-
-        <div class="footer-contact">
-          <span class="footer-heading">GET THE APP</span>
-          <div class="footer-app-badges">
-            <img src="/webprogg/images/AppStore.jpg" alt="Download on the App Store" />
-            <img src="/webprogg/images/GooglePlay.jpg" alt="Get it on Google Play" />
-          </div>
-        </div>
-      </div>
-
-      <div class="footer-bottom">
-        <p>&copy; <?php echo htmlspecialchars($currentYear); ?> RoomHive. All rights reserved.</p>
-      </div>
-    </footer>
+    <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
     <script src="/webprogg/assets/javaScript.js"></script>
 

@@ -405,6 +405,32 @@ try {
 ];
 
  $activePage = 'overview';
+
+/* =========================================================
+   SHARED NAV + FOOTER SETUP
+   includes/navbar.php + includes/footer.php replace the
+   host-specific host_navbar.php / host_footer.php.
+========================================================= */
+ $isLoggedIn = true;   /* host pages are auth-gated */
+ $isHost     = true;   /* role-aware bell href + dropdown */
+
+ $navAvatar = !empty($dbUser['avatar_path'])
+    ? $dbUser['avatar_path']
+    : '/webprogg/images/default-avatar.png';
+
+ $notification_count = $notification_count ?? 0;
+
+ $navigation = [
+    'HOME'          => '/webprogg/user/usershome.php',
+    'LISTINGS'      => '/webprogg/Listings/listing.php',
+    'HOW IT WORKS'  => '/webprogg/host/howitworks.php',
+    'BECOME A HOST' => '/webprogg/host/becomeahost.php',
+    'CONTACTS'      => '/webprogg/misc/contacts.php',
+ ];
+
+/* hostprofile.php isn't a top-nav item, so no navbar link
+   gets the active highlight — intended. */
+ $currentPage = '/webprogg/host/hostprofile.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -808,7 +834,7 @@ try {
 </head>
 <body>
 
-    <?php include __DIR__ . '/host_navbar.php'; ?>
+      <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/navbar.php'; ?>
     <?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/notification_dropdown.php'; ?>
 
 <!-- HERO — REMOVED. Total earnings show in Performance
@@ -1239,7 +1265,7 @@ try {
   </div>
 </main>
 
-<?php include __DIR__ . '/host_footer.php'; ?>
+<?php include $_SERVER['DOCUMENT_ROOT'] . '/webprogg/includes/footer.php'; ?>
 
 <!-- =========================================================
      SCRIPT — reveal, count-ups, donut, trend bars, spotlight,
